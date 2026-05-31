@@ -207,6 +207,53 @@ class PeopleUser(Base):
                 "created_at": self.created_at.isoformat() if self.created_at else None}
 
 
+class QualityUser(Base):
+    """Separate credential table for the Service Quality dashboard."""
+    __tablename__ = "quality_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    pw_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="viewer")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "email": self.email, "role": self.role,
+                "created_at": self.created_at.isoformat() if self.created_at else None}
+
+
+class QualityBranch(Base):
+    """One branch's Service Survey (Survei Layanan) result for a period.
+    Scores are 0–100. Intangible = CS/Teller/Security; Tangible = facilities."""
+    __tablename__ = "quality_branches"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    period: Mapped[str] = mapped_column(String(40), default="")          # e.g. "Period 35"
+    period_label: Mapped[str] = mapped_column(String(60), default="")    # e.g. "Mar–Apr 2026"
+    branch: Mapped[str] = mapped_column(String(160), nullable=False)
+    region: Mapped[str] = mapped_column(String(80), default="")
+    cs_score: Mapped[float] = mapped_column(Numeric, nullable=True)        # Customer Service
+    teller_score: Mapped[float] = mapped_column(Numeric, nullable=True)
+    security_score: Mapped[float] = mapped_column(Numeric, nullable=True)
+    intangible_score: Mapped[float] = mapped_column(Numeric, nullable=True)
+    tangible_score: Mapped[float] = mapped_column(Numeric, nullable=True)  # facilities
+    overall_score: Mapped[float] = mapped_column(Numeric, nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="")            # Excellent/Good/Needs Improvement
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        def f(v): return None if v is None else float(v)
+        return {
+            "id": self.id, "period": self.period, "period_label": self.period_label,
+            "branch": self.branch, "region": self.region,
+            "cs_score": f(self.cs_score), "teller_score": f(self.teller_score),
+            "security_score": f(self.security_score),
+            "intangible_score": f(self.intangible_score),
+            "tangible_score": f(self.tangible_score),
+            "overall_score": f(self.overall_score),
+            "status": self.status, "notes": self.notes,
+        }
+
+
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
@@ -246,7 +293,12 @@ def require(*allowed_roles):
             claims, err = _decode()
             if err:
                 return jsonify({"error": err[0]}), err[1]
-            expected_module = "people" if request.path.startswith("/api/people/") else "pmo"
+            if request.path.startswith("/api/people/"):
+                expected_module = "people"
+            elif request.path.startswith("/api/quality/"):
+                expected_module = "quality"
+            else:
+                expected_module = "pmo"
             if claims.get("module") != expected_module:
                 return jsonify({"error": "Please sign in to this dashboard"}), 403
             if allowed_roles and claims.get("role") not in allowed_roles:
@@ -303,6 +355,11 @@ def people_login_api():
     return _do_login(PeopleUser, "people")
 
 
+@app.post("/api/quality/login")
+def quality_login_api():
+    return _do_login(QualityUser, "quality")
+
+
 # legacy alias — old PMO clients posted here
 @app.post("/api/login")
 def login():
@@ -318,6 +375,12 @@ def pmo_me():
 @app.get("/api/people/me")
 @require()
 def people_me():
+    return jsonify({"email": request.user["email"], "role": request.user["role"]})
+
+
+@app.get("/api/quality/me")
+@require()
+def quality_me():
     return jsonify({"email": request.user["email"], "role": request.user["role"]})
 
 
@@ -770,6 +833,163 @@ def delete_people_user(uid):
 
 
 # ---------------------------------------------------------------------------
+# Service Quality — API  (Survei Layanan / branch service survey)
+# ---------------------------------------------------------------------------
+QUALITY_FIELDS = ["period", "period_label", "branch", "region", "cs_score",
+                  "teller_score", "security_score", "intangible_score",
+                  "tangible_score", "overall_score", "status", "notes"]
+
+
+def _avg(vals):
+    vals = [v for v in vals if v is not None]
+    return round(sum(vals) / len(vals), 1) if vals else None
+
+
+@app.get("/api/quality/summary")
+@require()
+def quality_summary():
+    with Session() as s:
+        rows = s.scalars(select(QualityBranch)).all()
+        if not rows:
+            return jsonify({"overall_avg": None, "cs_avg": None, "teller_avg": None,
+                            "tangible_avg": None, "branches_count": 0,
+                            "top": None, "bottom": None})
+        overall = [float(r.overall_score) for r in rows if r.overall_score is not None]
+        ranked = sorted([r for r in rows if r.overall_score is not None],
+                        key=lambda r: float(r.overall_score), reverse=True)
+        return jsonify({
+            "overall_avg": _avg([float(r.overall_score) for r in rows if r.overall_score is not None]),
+            "cs_avg":      _avg([float(r.cs_score) for r in rows if r.cs_score is not None]),
+            "teller_avg":  _avg([float(r.teller_score) for r in rows if r.teller_score is not None]),
+            "tangible_avg":_avg([float(r.tangible_score) for r in rows if r.tangible_score is not None]),
+            "branches_count": len(rows),
+            "top":    ({"branch": ranked[0].branch, "score": float(ranked[0].overall_score)} if ranked else None),
+            "bottom": ({"branch": ranked[-1].branch, "score": float(ranked[-1].overall_score)} if ranked else None),
+        })
+
+
+@app.get("/api/quality/branches")
+@require()
+def list_quality_branches():
+    with Session() as s:
+        rows = s.scalars(
+            select(QualityBranch).order_by(QualityBranch.overall_score.desc(), QualityBranch.id)
+        ).all()
+        return jsonify([r.to_dict() for r in rows])
+
+
+@app.post("/api/quality/branches")
+@require("admin", "editor")
+def create_quality_branch():
+    data = request.get_json(force=True) or {}
+    if not (data.get("branch") or "").strip():
+        return jsonify({"error": "branch is required"}), 400
+    with Session() as s:
+        b = QualityBranch()
+        for f in QUALITY_FIELDS:
+            if f in data:
+                setattr(b, f, data[f])
+        s.add(b); s.commit()
+        return jsonify(b.to_dict()), 201
+
+
+@app.put("/api/quality/branches/<int:bid>")
+@require("admin", "editor")
+def update_quality_branch(bid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        b = s.get(QualityBranch, bid)
+        if not b:
+            return jsonify({"error": "not found"}), 404
+        for f in QUALITY_FIELDS:
+            if f in data:
+                setattr(b, f, data[f])
+        s.commit()
+        return jsonify(b.to_dict())
+
+
+@app.delete("/api/quality/branches/<int:bid>")
+@require("admin", "editor")
+def delete_quality_branch(bid):
+    with Session() as s:
+        b = s.get(QualityBranch, bid)
+        if not b:
+            return jsonify({"error": "not found"}), 404
+        s.delete(b); s.commit()
+        return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Service Quality — Users  (Quality admin only; separate from PMO/People)
+# ---------------------------------------------------------------------------
+@app.get("/api/quality/users")
+@require("admin")
+def list_quality_users():
+    with Session() as s:
+        rows = s.scalars(select(QualityUser).order_by(QualityUser.id)).all()
+        return jsonify([u.to_dict() for u in rows])
+
+
+@app.post("/api/quality/users")
+@require("admin")
+def create_quality_user():
+    data = request.get_json(force=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pw = data.get("password") or ""
+    role = data.get("role") or "viewer"
+    if not email or not pw:
+        return jsonify({"error": "email and password are required"}), 400
+    if role not in ROLES:
+        return jsonify({"error": "role must be admin, editor, or viewer"}), 400
+    with Session() as s:
+        if s.scalar(select(QualityUser).where(QualityUser.email == email)):
+            return jsonify({"error": "a user with that email already exists"}), 409
+        u = QualityUser(email=email, role=role,
+                        pw_hash=bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode())
+        s.add(u); s.commit()
+        return jsonify(u.to_dict()), 201
+
+
+@app.put("/api/quality/users/<int:uid>")
+@require("admin")
+def update_quality_user(uid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        u = s.get(QualityUser, uid)
+        if not u:
+            return jsonify({"error": "not found"}), 404
+        if "role" in data:
+            if data["role"] not in ROLES:
+                return jsonify({"error": "invalid role"}), 400
+            if u.role == "admin" and data["role"] != "admin":
+                admins = s.scalar(select(func.count(QualityUser.id)).where(QualityUser.role == "admin"))
+                if admins <= 1:
+                    return jsonify({"error": "cannot demote the last admin"}), 400
+            u.role = data["role"]
+        if data.get("password"):
+            u.pw_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt()).decode()
+        s.commit()
+        return jsonify(u.to_dict())
+
+
+@app.delete("/api/quality/users/<int:uid>")
+@require("admin")
+def delete_quality_user(uid):
+    with Session() as s:
+        u = s.get(QualityUser, uid)
+        if not u:
+            return jsonify({"error": "not found"}), 404
+        if u.email == request.user["email"]:
+            return jsonify({"error": "you cannot delete your own account"}), 400
+        if u.role == "admin":
+            admins = s.scalar(select(func.count(QualityUser.id)).where(QualityUser.role == "admin"))
+            if admins <= 1:
+                return jsonify({"error": "cannot delete the last admin"}), 400
+        s.delete(u); s.commit()
+        return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # Frontend
 # ---------------------------------------------------------------------------
 @app.get("/")
@@ -800,6 +1020,11 @@ def people_login():
 @app.get("/quality")
 def quality():
     return send_from_directory(FRONTEND_DIR, "quality.html")
+
+
+@app.get("/quality/login")
+def quality_login():
+    return send_from_directory(FRONTEND_DIR, "quality-login.html")
 
 
 @app.get("/<path:path>")

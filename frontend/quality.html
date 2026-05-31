@@ -3,105 +3,661 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Service Quality — Projects Studio Use-Case</title>
+<title>Service Quality — Dashboard</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    background: #f0f4f8; min-height: 100vh;
-    display: flex; flex-direction: column; color: #1e2329;
-  }
-  .site-header {
-    background: #1a3c6b; color: #fff;
-    padding: 14px 40px;
-    display: flex; align-items: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,.2);
-  }
-  .header-brand { display: flex; align-items: center; gap: 10px; }
-  .header-brand-bar { width: 4px; height: 28px; background: #e8a020; border-radius: 2px; }
-  .header-brand-text .top { font-size: 15px; font-weight: 700; }
-  .header-brand-text .bot { font-size: 10px; letter-spacing: 1.5px; color: rgba(255,255,255,.5); text-transform: uppercase; }
-  @media (max-width: 600px) {
-    .site-header { padding: 12px 20px; }
-    .coming-soon-box { padding: 40px 24px; }
-    .cs-title { font-size: 22px; }
-  }
-  .main {
-    flex: 1; display: flex; align-items: center; justify-content: center;
-    padding: 40px 20px;
-  }
-  .coming-soon-box {
-    background: #fff; border-radius: 20px;
-    padding: 60px 50px; text-align: center;
-    box-shadow: 0 8px 40px rgba(0,0,0,.1);
-    max-width: 480px; width: 100%;
-    border-top: 6px solid #7c3aed;
-  }
-  .cs-icon { font-size: 64px; margin-bottom: 20px; }
-  .cs-module {
-    font-size: 11px; font-weight: 700; letter-spacing: 2px;
-    text-transform: uppercase; color: #7c3aed; margin-bottom: 10px;
-  }
-  .cs-title {
-    font-size: 28px; font-weight: 800; color: #1a3c6b;
-    margin-bottom: 14px;
-  }
-  .cs-desc {
-    font-size: 14px; color: #6b7280; line-height: 1.7;
-    margin-bottom: 32px;
-  }
-  .cs-badge {
-    display: inline-block; background: #faf5ff;
-    color: #7c3aed; border: 1px solid #ddd6fe;
-    padding: 8px 20px; border-radius: 20px;
-    font-size: 13px; font-weight: 700; margin-bottom: 32px;
-    letter-spacing: .5px;
-  }
-  .cs-back {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: #1a3c6b; font-size: 13px; font-weight: 600;
-    text-decoration: none; padding: 10px 22px;
-    border: 1px solid #dde1e7; border-radius: 8px;
-    transition: background .15s;
-  }
-  .cs-back:hover { background: #f0f4f8; }
-  .site-footer {
-    text-align: center; padding: 16px;
-    font-size: 11px; color: #9ca3af;
-    border-top: 1px solid #e5e7eb; background: #fff;
-  }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary:   #1a3c6b;
+  --accent:    #7c3aed;   /* Service Quality purple */
+  --green:     #1a7a4a;
+  --red:       #c0392b;
+  --orange:    #e67e22;
+  --blue:      #2980b9;
+  --gray-bg:   #f4f6f9;
+  --gray-line: #dde1e7;
+  --text:      #1e2329;
+  --muted:     #6b7280;
+  --white:     #ffffff;
+  --sidebar-w: 220px;
+  --header-h:  56px;
+}
+body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--gray-bg); color: var(--text); font-size: 13px; }
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; font-size: 13px; }
+
+/* App shell */
+#app { display: none; min-height: 100vh; }
+.app-header {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--header-h);
+  background: var(--primary); color: #fff; display: flex; align-items: center;
+  padding: 0 20px; box-shadow: 0 2px 8px rgba(0,0,0,.2); z-index: 100;
+}
+.header-brand { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+.header-brand span { color: var(--accent); }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.header-user { font-size: 12px; opacity: .85; }
+.header-role-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px;
+  background: rgba(255,255,255,.18); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.btn-logout { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3);
+  border-radius: 5px; padding: 5px 12px; font-size: 12px; transition: background .15s; }
+.btn-logout:hover { background: rgba(255,255,255,.28); }
+
+.app-sidebar { position: fixed; top: var(--header-h); left: 0; bottom: 0; width: var(--sidebar-w);
+  background: var(--primary); padding: 18px 0; overflow-y: auto; z-index: 90; }
+.sidebar-section { font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: rgba(255,255,255,.4); padding: 14px 20px 6px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px;
+  color: rgba(255,255,255,.75); transition: background .12s, color .12s;
+  font-size: 13px; border-left: 3px solid transparent; }
+.nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+.nav-item.active { background: rgba(255,255,255,.12); color: #fff; border-left-color: var(--accent); }
+.nav-icon { font-size: 15px; width: 18px; text-align: center; }
+
+.app-main { margin-left: var(--sidebar-w); margin-top: var(--header-h); padding: 24px; min-height: calc(100vh - var(--header-h)); }
+.page-title { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
+.page-title small { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+/* Tabs */
+.tabs-bar { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 2px solid var(--gray-line); }
+.tab-btn { padding: 9px 20px; background: none; border: none; font-size: 13px; font-weight: 600;
+  color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s, border-color .15s; }
+.tab-btn:hover { color: var(--primary); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* KPI cards */
+.cards { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+.card { background: var(--white); border-radius: 8px; padding: 16px 20px; flex: 1 1 160px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.07); border-left: 4px solid var(--gray-line); }
+.card-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+.card-value { font-size: 26px; font-weight: 700; color: var(--primary); }
+.card-sub   { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.card.purple { border-left-color: var(--accent); }
+.card.blue   { border-left-color: var(--blue); }
+.card.green  { border-left-color: var(--green); }
+.card.orange { border-left-color: var(--orange); }
+
+.section-heading { font-size: 14px; font-weight: 700; color: var(--primary); margin: 4px 0 12px; }
+.method-note { background: #faf5ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 12px 16px;
+  font-size: 12px; color: #5b21b6; line-height: 1.6; margin-bottom: 22px; }
+.method-note strong { color: #4c1d95; }
+
+/* Ranking cards */
+.rank-grid { display: flex; flex-direction: column; gap: 8px; }
+.rank-card { padding: 11px 16px; border-radius: 8px; border-left: 4px solid; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; align-items: center; gap: 16px; }
+.rank-card.excellent { border-left-color: var(--green);  background: #f0fdf4; }
+.rank-card.good      { border-left-color: var(--blue);   background: #f0f7ff; }
+.rank-card.needs     { border-left-color: var(--orange); background: #fffbf5; }
+.rank-info { flex: 1; min-width: 0; }
+.rank-name { font-weight: 600; font-size: 13px; }
+.rank-sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.rank-score { font-size: 17px; font-weight: 700; white-space: nowrap; }
+.no-data { color: var(--muted); font-size: 13px; padding: 28px 0; text-align: center; font-style: italic; }
+
+/* Toolbar */
+.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.toolbar input[type=text] { padding: 7px 12px; border: 1px solid var(--gray-line); border-radius: 6px; font-size: 13px; width: 220px; outline: none; }
+.toolbar input[type=text]:focus { border-color: var(--accent); }
+.toolbar select { padding: 7px 10px; border: 1px solid var(--gray-line); border-radius: 6px; font-size: 13px; outline: none; background: var(--white); }
+.btn-add { padding: 7px 16px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-weight: 600; transition: background .15s; margin-left: auto; }
+.btn-add:hover { background: #8b4ff0; }
+
+/* Table */
+.table-wrap { overflow-x: auto; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+table { width: 100%; border-collapse: collapse; background: var(--white); font-size: 12px; }
+thead th { background: var(--primary); color: #fff; padding: 9px 10px; text-align: left; font-size: 11px; font-weight: 600; white-space: nowrap; letter-spacing: .3px; }
+thead th:first-child { border-radius: 8px 0 0 0; }
+thead th:last-child  { border-radius: 0 8px 0 0; }
+tbody tr { border-bottom: 1px solid var(--gray-line); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #f6f2fe; }
+tbody td { padding: 8px 10px; vertical-align: middle; }
+.empty-row td { text-align: center; color: var(--muted); padding: 30px; font-style: italic; }
+.score-cell { font-weight: 600; text-align: right; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; }
+.badge-excellent { background: #dcfce7; color: #166534; }
+.badge-good      { background: #dbeafe; color: #1e40af; }
+.badge-needs     { background: #ffedd5; color: #9a3412; }
+.badge-role      { background: #ede9fe; color: #5b21b6; }
+
+.btn-edit { padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #ede9fe; color: var(--accent); border: 1px solid #c4b5fd; margin-right: 4px; transition: background .12s; }
+.btn-edit:hover { background: #c4b5fd; }
+.btn-del { padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #fee2e2; color: var(--red); border: 1px solid #fca5a5; transition: background .12s; }
+.btn-del:hover { background: #fca5a5; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--white); border-radius: 10px; width: 100%; max-width: 640px; padding: 28px; box-shadow: 0 12px 40px rgba(0,0,0,.25); position: relative; }
+.modal-title { font-size: 16px; font-weight: 700; color: var(--primary); margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--gray-line); }
+.modal-close { position: absolute; top: 16px; right: 18px; background: none; border: none; font-size: 22px; color: var(--muted); line-height: 1; padding: 4px 8px; }
+.modal-close:hover { color: var(--red); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid .full { grid-column: 1 / -1; }
+.form-field label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+.form-field input, .form-field select, .form-field textarea { width: 100%; padding: 7px 10px; border: 1px solid var(--gray-line); border-radius: 5px; font-size: 13px; font-family: inherit; outline: none; transition: border-color .15s; }
+.form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--accent); }
+.form-field textarea { resize: vertical; min-height: 56px; }
+.form-field small { color: var(--muted); font-size: 11px; margin-top: 3px; display: block; }
+.modal-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 16px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--gray-line); }
+.btn-cancel { padding: 8px 18px; background: var(--white); border: 1px solid var(--gray-line); border-radius: 6px; color: var(--text); transition: background .12s; }
+.btn-cancel:hover { background: var(--gray-bg); }
+.btn-save { padding: 8px 22px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-weight: 600; transition: background .15s; }
+.btn-save:hover { background: #8b4ff0; }
+
+.confirm-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 300; align-items: center; justify-content: center; }
+.confirm-overlay.open { display: flex; }
+.confirm-box { background: var(--white); border-radius: 10px; padding: 28px 32px; max-width: 380px; width: 90%; box-shadow: 0 12px 40px rgba(0,0,0,.3); text-align: center; }
+.confirm-box h3 { font-size: 16px; color: var(--primary); margin-bottom: 10px; }
+.confirm-box p  { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+.confirm-btns   { display: flex; gap: 10px; justify-content: center; }
+.btn-confirm-del { padding: 8px 22px; background: var(--red); color: #fff; border: none; border-radius: 6px; font-weight: 600; }
+.btn-confirm-del:hover { background: #a93226; }
+
+/* Mobile */
+@media (max-width: 700px) {
+  .app-sidebar { top: var(--header-h); left: 0; right: 0; bottom: auto; width: 100%; height: 46px;
+    padding: 0; display: flex; flex-direction: row; align-items: stretch; overflow-x: auto; overflow-y: hidden; }
+  .sidebar-section { display: none; }
+  .nav-item { border-left: none; border-bottom: 3px solid transparent; padding: 0 16px; white-space: nowrap; }
+  .nav-item.active { border-left: none; border-bottom-color: var(--accent); }
+  .app-main { margin-left: 0; margin-top: calc(var(--header-h) + 46px); padding: 16px; }
+  .header-brand { font-size: 14px; }
+  .header-user { display: none; }
+  .btn-logout { padding: 5px 8px; font-size: 11px; }
+  .page-title { flex-wrap: wrap; font-size: 16px; }
+  .tabs-bar { overflow-x: auto; overflow-y: hidden; }
+  .tab-btn { white-space: nowrap; padding: 9px 14px; }
+  .cards { gap: 10px; }
+  .card { flex: 1 1 100%; padding: 12px 14px; }
+  .card-value { font-size: 22px; }
+  .toolbar { gap: 8px; }
+  .toolbar input[type=text], .toolbar select { width: 100%; flex: 1 1 100%; }
+  .btn-add { margin-left: 0; width: 100%; }
+  .modal-overlay { padding: 16px; }
+  .modal { padding: 20px; }
+  .form-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
 
-<header class="site-header">
-  <div class="header-brand">
-    <div class="header-brand-bar"></div>
-    <div class="header-brand-text">
-      <div class="top">Alfath Latuconsina</div>
-      <div class="bot">Projects Studio</div>
+<div id="app">
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-brand">Service Quality <span>Dashboard</span></div>
+    <div class="header-right">
+      <span class="header-user" id="hdr-email"></span>
+      <span class="header-role-badge" id="hdr-role"></span>
+      <button class="btn-logout" id="btn-logout">Sign out</button>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <nav class="app-sidebar">
+    <div class="sidebar-section">Modules</div>
+    <a href="/quality" class="nav-item active">
+      <span class="nav-icon">⭐</span> Service Quality
+    </a>
+  </nav>
+
+  <!-- Main -->
+  <main class="app-main">
+    <div class="page-title">
+      ⭐ Service Quality
+      <small>Survei Layanan · Branch Service Performance</small>
+    </div>
+
+    <div class="tabs-bar">
+      <button class="tab-btn active" data-tab="overview">Overview</button>
+      <button class="tab-btn" data-tab="branches">Branch Scores</button>
+      <button class="tab-btn admin-only" data-tab="users" style="display:none">Users</button>
+    </div>
+
+    <!-- ── TAB: Overview ── -->
+    <div id="tab-overview" class="tab-content active">
+      <div class="cards">
+        <div class="card purple">
+          <div class="card-label">Overall Branch Score</div>
+          <div class="card-value" id="kpi-overall">—</div>
+          <div class="card-sub" id="kpi-period">national average</div>
+        </div>
+        <div class="card blue">
+          <div class="card-label">Customer Service</div>
+          <div class="card-value" id="kpi-cs">—</div>
+          <div class="card-sub">avg score (weight 49%)</div>
+        </div>
+        <div class="card green">
+          <div class="card-label">Teller</div>
+          <div class="card-value" id="kpi-teller">—</div>
+          <div class="card-sub">avg score (weight 24%)</div>
+        </div>
+        <div class="card orange">
+          <div class="card-label">Facilities (Tangible)</div>
+          <div class="card-value" id="kpi-tangible">—</div>
+          <div class="card-sub">avg score (weight 15%)</div>
+        </div>
+      </div>
+
+      <div class="method-note">
+        <strong>Methodology — Survei Layanan (Branch Service Survey).</strong>
+        Branch score = <strong>Intangible 85%</strong> (Customer Service 49% · Teller 24% · Security 12%)
+        + <strong>Tangible 15%</strong> (facilities: lobby, exterior, promo media, toilet, ATM).
+        Survey runs 3× per year. Status: <strong>Excellent ≥ 90</strong>, <strong>Good 80–89</strong>, <strong>Needs Improvement &lt; 80</strong>.
+      </div>
+
+      <div class="section-heading">🏆 Branch Ranking</div>
+      <div class="rank-grid" id="rank-grid"><div class="no-data">Loading…</div></div>
+    </div>
+
+    <!-- ── TAB: Branch Scores ── -->
+    <div id="tab-branches" class="tab-content">
+      <div class="toolbar">
+        <input type="text" id="b-search" placeholder="Search branch…" oninput="renderBranches()">
+        <select id="b-region" onchange="renderBranches()"><option value="">All Regions</option></select>
+        <select id="b-status" onchange="renderBranches()">
+          <option value="">All Statuses</option>
+          <option>Excellent</option>
+          <option>Good</option>
+          <option>Needs Improvement</option>
+        </select>
+        <button class="btn-add editor-only" id="btn-add-branch">+ Add Branch Result</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Branch</th>
+              <th>Region</th>
+              <th>CS</th>
+              <th>Teller</th>
+              <th>Security</th>
+              <th>Intangible</th>
+              <th>Facilities</th>
+              <th>Overall</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="b-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── TAB: Users (admin) ── -->
+    <div id="tab-users" class="tab-content">
+      <div class="toolbar">
+        <button class="btn-add" id="btn-add-user" style="margin-left:0">+ Add User</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Email</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="user-tbody"></tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;font-size:11px;color:var(--muted)">
+        These accounts are <strong>separate</strong> from PMO and People — they only grant access to Service Quality.
+      </p>
+    </div>
+
+    <footer style="text-align:center; padding:20px 0 4px; margin-top:28px;
+      font-size:12px; color:var(--muted); border-top:1px solid var(--gray-line);">
+      @ 2026 Alfath Latuconsina · UseCase-Studio.XYZ
+    </footer>
+  </main>
+</div>
+
+<!-- MODAL: Branch -->
+<div class="modal-overlay" id="modal-branch">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-branch')">×</button>
+    <div class="modal-title" id="branch-modal-title">Add Branch Result</div>
+    <div class="form-grid">
+      <div class="form-field full">
+        <label>Branch *</label>
+        <input type="text" id="b-name">
+      </div>
+      <div class="form-field">
+        <label>Region</label>
+        <input type="text" id="b-region-in" placeholder="e.g. Jabodetabek">
+      </div>
+      <div class="form-field">
+        <label>Period</label>
+        <input type="text" id="b-period" placeholder="e.g. Period 35">
+      </div>
+      <div class="form-field">
+        <label>Period Label</label>
+        <input type="text" id="b-period-label" placeholder="e.g. Mar–Apr 2026">
+      </div>
+      <div class="form-field">
+        <label>Customer Service (0–100)</label>
+        <input type="number" id="b-cs" min="0" max="100" step="0.1" oninput="recalc()">
+      </div>
+      <div class="form-field">
+        <label>Teller (0–100)</label>
+        <input type="number" id="b-teller" min="0" max="100" step="0.1" oninput="recalc()">
+      </div>
+      <div class="form-field">
+        <label>Security (0–100)</label>
+        <input type="number" id="b-security" min="0" max="100" step="0.1" oninput="recalc()">
+      </div>
+      <div class="form-field">
+        <label>Facilities / Tangible (0–100)</label>
+        <input type="number" id="b-tangible" min="0" max="100" step="0.1" oninput="recalc()">
+      </div>
+      <div class="form-field">
+        <label>Intangible (auto)</label>
+        <input type="number" id="b-intangible" readonly style="background:#f4f6f9">
+      </div>
+      <div class="form-field">
+        <label>Overall (auto)</label>
+        <input type="number" id="b-overall" readonly style="background:#f4f6f9">
+        <small id="b-status-hint"></small>
+      </div>
+      <div class="form-field full">
+        <label>Notes</label>
+        <textarea id="b-notes"></textarea>
+      </div>
+    </div>
+    <div class="modal-error" id="branch-modal-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-branch')">Cancel</button>
+      <button class="btn-save" id="branch-save-btn">Save</button>
     </div>
   </div>
-</header>
+</div>
 
-<main class="main">
-  <div class="coming-soon-box">
-    <div class="cs-icon">⭐</div>
-    <div class="cs-module">Module 3</div>
-    <div class="cs-title">Service Quality</div>
-    <div class="cs-desc">
-      This module is currently under development. It will allow you to review service performance,
-      customer experience, service standards, and improvement actions.
+<!-- MODAL: User -->
+<div class="modal-overlay" id="modal-user">
+  <div class="modal" style="max-width:460px">
+    <button class="modal-close" onclick="closeModal('modal-user')">×</button>
+    <div class="modal-title" id="user-modal-title">Add User</div>
+    <div class="form-grid">
+      <div class="form-field full"><label>Email *</label><input type="email" id="user-email" autocomplete="off"></div>
+      <div class="form-field full"><label>Password <span id="user-pw-hint" style="text-transform:none;color:var(--muted)"></span></label><input type="password" id="user-pw" autocomplete="new-password"></div>
+      <div class="form-field full"><label>Role</label>
+        <select id="user-role">
+          <option value="viewer">viewer — read only</option>
+          <option value="editor">editor — add/edit/delete</option>
+          <option value="admin">admin — full access + users</option>
+        </select>
+      </div>
     </div>
-    <div class="cs-badge">🚧 &nbsp; Coming Soon</div>
-    <br>
-    <a href="/" class="cs-back">← Back to Home</a>
+    <div class="modal-error" id="user-modal-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-user')">Cancel</button>
+      <button class="btn-save" id="user-save-btn">Save</button>
+    </div>
   </div>
-</main>
+</div>
 
-<footer class="site-footer">
-  © 2026 Alfath Latuconsina &nbsp;·&nbsp; Projects Studio Use-Case &nbsp;·&nbsp; Confidential — Internal Use Only
-</footer>
+<!-- CONFIRM -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <h3 id="confirm-title">Delete item?</h3>
+    <p>This action cannot be undone.</p>
+    <div class="confirm-btns">
+      <button class="btn-cancel" onclick="closeConfirm()">Cancel</button>
+      <button class="btn-confirm-del" id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
 
+<script>
+'use strict';
+const LOGIN_URL = '/quality/login';
+const S = { token: localStorage.getItem('quality_token') || '', role: '', email: '', branches: [], users: [] };
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function numOrNull(id){ const v=document.getElementById(id).value; if(v==='')return null; const n=parseFloat(v); return isNaN(n)?null:n; }
+function authHdr(){ return { 'Authorization':'Bearer '+S.token, 'Content-Type':'application/json' }; }
+function canEdit(){ return S.role==='admin' || S.role==='editor'; }
+function fmtScore(v){ return v==null ? '—' : Number(v).toFixed(1); }
+
+function doLogout(){ localStorage.removeItem('quality_token'); location.href = LOGIN_URL; }
+
+async function init(){
+  if(!S.token){ location.href = LOGIN_URL; return; }
+  try {
+    const r = await fetch('/api/quality/me', { headers: authHdr() });
+    if(r.ok){ const d = await r.json(); S.role=d.role; S.email=d.email; }
+    else { localStorage.removeItem('quality_token'); location.href = LOGIN_URL; return; }
+  } catch { /* offline */ }
+  showApp();
+}
+
+async function showApp(){
+  document.getElementById('app').style.display='block';
+  document.getElementById('hdr-email').textContent = S.email;
+  document.getElementById('hdr-role').textContent  = S.role;
+  document.querySelectorAll('.editor-only').forEach(el => el.style.display = canEdit() ? '' : 'none');
+  document.querySelectorAll('.admin-only').forEach(el => el.style.display = (S.role==='admin') ? '' : 'none');
+  await loadAll();
+}
+
+async function loadAll(){
+  try {
+    const [bR, sR] = await Promise.all([
+      fetch('/api/quality/branches', { headers: authHdr() }),
+      fetch('/api/quality/summary',  { headers: authHdr() }),
+    ]);
+    S.branches = await bR.json();
+    renderKPIs(await sR.json());
+    populateRegionFilter();
+    renderRanking();
+    renderBranches();
+    if (S.role === 'admin') await loadUsers();
+  } catch(e){ console.error('loadAll error', e); }
+}
+
+function renderKPIs(sum){
+  document.getElementById('kpi-overall').textContent  = fmtScore(sum.overall_avg);
+  document.getElementById('kpi-cs').textContent       = fmtScore(sum.cs_avg);
+  document.getElementById('kpi-teller').textContent   = fmtScore(sum.teller_avg);
+  document.getElementById('kpi-tangible').textContent = fmtScore(sum.tangible_avg);
+  const p = S.branches[0];
+  document.getElementById('kpi-period').textContent =
+    (p && p.period_label) ? `${p.period} · ${p.period_label}` : `${sum.branches_count} branches surveyed`;
+}
+
+function statusClass(st){ return st==='Excellent'?'excellent':st==='Good'?'good':'needs'; }
+function statusBadge(st){ return `<span class="badge badge-${statusClass(st)}">${esc(st||'—')}</span>`; }
+
+function renderRanking(){
+  const grid = document.getElementById('rank-grid');
+  const rows = [...S.branches].filter(b=>b.overall_score!=null).sort((a,b)=>b.overall_score-a.overall_score);
+  if(!rows.length){ grid.innerHTML='<div class="no-data">No branch survey data yet.</div>'; return; }
+  grid.innerHTML = rows.map((b,i)=>`
+    <div class="rank-card ${statusClass(b.status)}">
+      <div class="rank-info">
+        <div class="rank-name">${i+1}. ${esc(b.branch)}</div>
+        <div class="rank-sub">${esc(b.region||'—')} · CS ${fmtScore(b.cs_score)} · Teller ${fmtScore(b.teller_score)} · Facilities ${fmtScore(b.tangible_score)}</div>
+      </div>
+      <div class="rank-score" style="color:${b.status==='Excellent'?'var(--green)':b.status==='Good'?'var(--blue)':'var(--orange)'}">${fmtScore(b.overall_score)}</div>
+    </div>`).join('');
+}
+
+function populateRegionFilter(){
+  const sel = document.getElementById('b-region');
+  const cur = sel.value;
+  const regions = [...new Set(S.branches.map(b=>b.region).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All Regions</option>' + regions.map(r=>`<option>${esc(r)}</option>`).join('');
+  sel.value = cur;
+}
+
+function renderBranches(){
+  const q = (document.getElementById('b-search').value||'').toLowerCase();
+  const region = document.getElementById('b-region').value;
+  const st = document.getElementById('b-status').value;
+  const rows = S.branches.filter(b =>
+    (!q || b.branch.toLowerCase().includes(q)) &&
+    (!region || b.region===region) &&
+    (!st || b.status===st));
+  const tbody = document.getElementById('b-tbody');
+  if(!rows.length){ tbody.innerHTML='<tr class="empty-row"><td colspan="11">No branches match the filter.</td></tr>'; return; }
+  tbody.innerHTML = rows.map((b,i)=>{
+    const actions = canEdit()
+      ? `<button class="btn-edit" onclick="openBranchModal(${b.id})">Edit</button><button class="btn-del" onclick="askDel(${b.id},${JSON.stringify(b.branch)})">Del</button>`
+      : '—';
+    return `<tr>
+      <td>${i+1}</td>
+      <td><strong>${esc(b.branch)}</strong></td>
+      <td>${esc(b.region||'—')}</td>
+      <td class="score-cell">${fmtScore(b.cs_score)}</td>
+      <td class="score-cell">${fmtScore(b.teller_score)}</td>
+      <td class="score-cell">${fmtScore(b.security_score)}</td>
+      <td class="score-cell">${fmtScore(b.intangible_score)}</td>
+      <td class="score-cell">${fmtScore(b.tangible_score)}</td>
+      <td class="score-cell" style="color:var(--accent)">${fmtScore(b.overall_score)}</td>
+      <td>${statusBadge(b.status)}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Modal
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
+
+function recalc(){
+  const cs=numOrNull('b-cs'), te=numOrNull('b-teller'), se=numOrNull('b-security'), ta=numOrNull('b-tangible');
+  let intangible=null, overall=null, status='';
+  if(cs!=null && te!=null && se!=null){
+    intangible = Math.round(((cs*0.49+te*0.24+se*0.12)/0.85)*10)/10;
+  }
+  if(intangible!=null && ta!=null){
+    overall = Math.round((intangible*0.85 + ta*0.15)*10)/10;
+    status = overall>=90?'Excellent':overall>=80?'Good':'Needs Improvement';
+  }
+  document.getElementById('b-intangible').value = intangible==null?'':intangible;
+  document.getElementById('b-overall').value = overall==null?'':overall;
+  document.getElementById('b-status-hint').textContent = status ? ('Status: '+status) : '';
+}
+
+let editBranchId = null;
+function openBranchModal(id=null){
+  editBranchId = id;
+  const b = id ? S.branches.find(x=>x.id===id) : null;
+  document.getElementById('branch-modal-title').textContent = id?'Edit Branch Result':'Add Branch Result';
+  document.getElementById('branch-modal-err').textContent='';
+  document.getElementById('b-name').value        = b?b.branch:'';
+  document.getElementById('b-region-in').value   = b?(b.region||''):'';
+  document.getElementById('b-period').value       = b?(b.period||''):'Period 35';
+  document.getElementById('b-period-label').value = b?(b.period_label||''):'Mar–Apr 2026';
+  document.getElementById('b-cs').value        = b&&b.cs_score!=null?b.cs_score:'';
+  document.getElementById('b-teller').value    = b&&b.teller_score!=null?b.teller_score:'';
+  document.getElementById('b-security').value  = b&&b.security_score!=null?b.security_score:'';
+  document.getElementById('b-tangible').value  = b&&b.tangible_score!=null?b.tangible_score:'';
+  document.getElementById('b-notes').value     = b?(b.notes||''):'';
+  recalc();
+  openModal('modal-branch');
+}
+
+async function saveBranch(){
+  const err = document.getElementById('branch-modal-err'); err.textContent='';
+  const branch = document.getElementById('b-name').value.trim();
+  if(!branch){ err.textContent='Branch name is required.'; return; }
+  recalc();
+  const body = {
+    branch, region: document.getElementById('b-region-in').value.trim(),
+    period: document.getElementById('b-period').value.trim(),
+    period_label: document.getElementById('b-period-label').value.trim(),
+    cs_score: numOrNull('b-cs'), teller_score: numOrNull('b-teller'),
+    security_score: numOrNull('b-security'), tangible_score: numOrNull('b-tangible'),
+    intangible_score: numOrNull('b-intangible'), overall_score: numOrNull('b-overall'),
+    status: (document.getElementById('b-status-hint').textContent||'').replace('Status: ',''),
+    notes: document.getElementById('b-notes').value.trim(),
+  };
+  const r = await fetch(editBranchId?`/api/quality/branches/${editBranchId}`:'/api/quality/branches',
+    { method: editBranchId?'PUT':'POST', headers: authHdr(), body: JSON.stringify(body) });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ err.textContent = d.error||'Save failed.'; return; }
+  closeModal('modal-branch');
+  await loadAll();
+}
+
+// Users
+async function loadUsers(){
+  const r = await fetch('/api/quality/users', { headers: authHdr() });
+  if(!r.ok) return;
+  S.users = await r.json();
+  renderUsers();
+}
+function renderUsers(){
+  const tbody = document.getElementById('user-tbody');
+  if(!S.users.length){ tbody.innerHTML='<tr class="empty-row"><td colspan="4">No users yet.</td></tr>'; return; }
+  tbody.innerHTML = S.users.map(u=>{
+    const isSelf = u.email===S.email;
+    const created = u.created_at ? new Date(u.created_at).toLocaleDateString('id-ID') : '—';
+    const del = isSelf ? '<span style="font-size:11px;color:var(--muted)">(you)</span>'
+      : `<button class="btn-del" onclick="askDelUser(${u.id},${JSON.stringify(u.email)})">Del</button>`;
+    return `<tr><td><strong>${esc(u.email)}</strong></td><td><span class="badge badge-role">${esc(u.role)}</span></td><td>${created}</td><td><button class="btn-edit" onclick="openUserModal(${u.id})">Edit</button>${del}</td></tr>`;
+  }).join('');
+}
+let editUserId = null;
+function openUserModal(id=null){
+  editUserId = id;
+  const u = id ? S.users.find(x=>x.id===id) : null;
+  document.getElementById('user-modal-title').textContent = id?'Edit User':'Add User';
+  document.getElementById('user-modal-err').textContent='';
+  document.getElementById('user-email').value = u?u.email:'';
+  document.getElementById('user-email').disabled = !!id;
+  document.getElementById('user-pw').value = '';
+  document.getElementById('user-pw-hint').textContent = id?'(leave blank to keep current)':'(required)';
+  document.getElementById('user-role').value = u?u.role:'viewer';
+  openModal('modal-user');
+}
+async function saveUser(){
+  const err = document.getElementById('user-modal-err'); err.textContent='';
+  const email = document.getElementById('user-email').value.trim();
+  const pw = document.getElementById('user-pw').value;
+  const role = document.getElementById('user-role').value;
+  if(!editUserId && (!email||!pw)){ err.textContent='Email and password are required.'; return; }
+  const body = { role };
+  if(!editUserId){ body.email=email; body.password=pw; } else if(pw){ body.password=pw; }
+  const r = await fetch(editUserId?`/api/quality/users/${editUserId}`:'/api/quality/users',
+    { method: editUserId?'PUT':'POST', headers: authHdr(), body: JSON.stringify(body) });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ err.textContent = d.error||'Save failed.'; return; }
+  closeModal('modal-user');
+  await loadUsers();
+}
+
+// Delete (branches + users)
+let pendingDel = null;
+function askDel(id,label){ pendingDel={type:'branch',id}; document.getElementById('confirm-title').textContent=`Delete "${label}"?`; document.getElementById('confirm-overlay').classList.add('open'); }
+function askDelUser(id,label){ pendingDel={type:'user',id}; document.getElementById('confirm-title').textContent=`Delete "${label}"?`; document.getElementById('confirm-overlay').classList.add('open'); }
+function closeConfirm(){ pendingDel=null; document.getElementById('confirm-overlay').classList.remove('open'); }
+document.getElementById('confirm-ok').addEventListener('click', async ()=>{
+  if(!pendingDel) return;
+  const path = pendingDel.type==='user' ? 'users' : 'branches';
+  const r = await fetch(`/api/quality/${path}/${pendingDel.id}`, { method:'DELETE', headers: authHdr() });
+  const t = pendingDel.type;
+  closeConfirm();
+  if(r.ok){ if(t==='user') await loadUsers(); else await loadAll(); }
+});
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', ()=>{
+  const tab = btn.dataset.tab;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b===btn));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active', c.id==='tab-'+tab));
+}));
+
+// Wire up
+document.getElementById('btn-logout').addEventListener('click', doLogout);
+document.getElementById('btn-add-branch').addEventListener('click', ()=>openBranchModal());
+document.getElementById('branch-save-btn').addEventListener('click', saveBranch);
+document.getElementById('btn-add-user').addEventListener('click', ()=>openUserModal());
+document.getElementById('user-save-btn').addEventListener('click', saveUser);
+
+init();
+</script>
 </body>
 </html>

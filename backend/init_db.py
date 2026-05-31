@@ -14,7 +14,8 @@ import sys
 import bcrypt
 from sqlalchemy import select, func
 from app import (Base, engine, Session, User, Project,
-                 PeopleTraining, PeopleEvaluation, PeopleCertification, PeopleUser)
+                 PeopleTraining, PeopleEvaluation, PeopleCertification, PeopleUser,
+                 QualityUser, QualityBranch)
 
 DEFAULT_EMAIL = "admin@mncbank.co.id"
 DEFAULT_PASSWORD = "pmo2026"   # change this — or pass args
@@ -95,6 +96,35 @@ PEOPLE_CERTS = [
          status="Active", notes="Expiry Nov 2026; renewal reminder set for Aug 2026."),
 ]
 
+QUALITY_PERIOD = "Period 35"
+QUALITY_PERIOD_LABEL = "Mar–Apr 2026"
+
+def _q(branch, region, cs, teller, sec, tang, notes=""):
+    # intangible = weighted CS 49% + Teller 24% + Security 12% (of the 85% intangible block)
+    intangible = round((cs*0.49 + teller*0.24 + sec*0.12) / (0.49+0.24+0.12), 1)
+    overall = round(intangible*0.85 + tang*0.15, 1)
+    status = "Excellent" if overall >= 90 else "Good" if overall >= 80 else "Needs Improvement"
+    return dict(period=QUALITY_PERIOD, period_label=QUALITY_PERIOD_LABEL,
+                branch=branch, region=region, cs_score=cs, teller_score=teller,
+                security_score=sec, intangible_score=intangible, tangible_score=tang,
+                overall_score=overall, status=status, notes=notes)
+
+# Sample / anonymised branch survey results (NOT real bank data)
+QUALITY_BRANCHES = [
+    _q("KC Sample Jakarta Pusat",  "Jabodetabek", 94, 92, 90, 91, "Strong cross-selling; lobby well maintained."),
+    _q("KC Sample Jakarta Selatan","Jabodetabek", 90, 88, 86, 89, "Good attitude; ATM area needs minor upkeep."),
+    _q("KCP Sample Bekasi",        "Jabodetabek", 87, 85, 88, 82, "Teller skill solid; promo media outdated."),
+    _q("KCP Sample Depok",         "Jabodetabek", 83, 80, 84, 78, "Toilet facility flagged for improvement."),
+    _q("KC Sample Bandung",        "Jawa Barat",  91, 89, 87, 90, "Consistent service standards."),
+    _q("KC Sample Surabaya",       "Jawa Timur",  88, 86, 85, 84, "Appearance excellent; FX underlying knowledge to improve."),
+    _q("KC Sample Medan",          "Sumatera",    79, 77, 82, 75, "Below target; coaching on cross-selling scheduled."),
+    _q("KC Sample Palembang",      "Sumatera",    85, 83, 86, 81, "Security courteous; lobby layout improved."),
+    _q("KC Sample Pekanbaru",      "Sumatera",    82, 84, 80, 79, "Treasury product knowledge gap noted."),
+    _q("KCP Sample Jambi",         "Sumatera",    76, 74, 78, 72, "Needs improvement across tangible facilities."),
+    _q("KC Sample Makassar",       "Indonesia Timur", 89, 87, 88, 86, "Digital onboarding explained clearly."),
+    _q("KC Sample Denpasar",       "Bali Nusra",  92, 90, 91, 93, "Top-tier facilities; strong frontliner attitude."),
+]
+
 SEED = [
     dict(sort=1, name="QRIS Acquiring", group="Business", status="In-Progress", nature="Technology Dev.", real=91, tl=100, bo=100, br=66, target="02 Jun 2026", orig="02 Mar'26", owner="Digital Business / Digital Technology", pm="Aditya Fatur / Naufal / Lilia", phase="Submit dokumen & surat pernyataan ke Bank Indonesia; workshop FDS dengan tim MTN.", next="Workshop Technical FDS 03 Jun; set-up 04-05 Jun 2026.", risk="Keterlambatan pemenuhan dokumen di beberapa kesempatan.", stop="Kesalahan UAT (2025); assessment (Mar'26); kekurangan dokumen (Mei'26).", reco="Telah dilakukan arrangement untuk percepatan set-up FDS."),
     dict(sort=2, name="API Management", group="Business", status="In-Progress", nature="API Management", real=60, tl=66.7, bo=100, br=66, target="31 Jul 2026", orig="", owner="Digital Business / Technology / Credit Card", pm="Yudi Y / Bowie / David B / Donny A", phase="UAT API On-Boarding; instalasi & assessment API Savings (22 API).", next="Pentest; tuning server; daftar SNAP BI.", risk="Penjadwalan Pentest menyebabkan delivery mundur 1 pekan.", stop="Kesalahan UAT (Des'25); assessment (Mar'26); dokumen (Mei'26).", reco="Percepatan rekomendasi ASPI & izin paralel."),
@@ -152,6 +182,17 @@ def main():
             print(f"Created People admin {email} (role: admin)")
         s.commit()
 
+        # Service Quality admin (separate credential table; seed copies PMO creds)
+        quser = s.scalar(select(QualityUser).where(QualityUser.email == email.lower()))
+        if quser:
+            quser.pw_hash = pw_hash
+            quser.role = "admin"
+            print(f"Updated Quality admin {email} (role: admin)")
+        else:
+            s.add(QualityUser(email=email.lower(), pw_hash=pw_hash, role="admin"))
+            print(f"Created Quality admin {email} (role: admin)")
+        s.commit()
+
         # seed projects only if empty
         count = s.scalar(select(func.count(Project.id)))
         if count == 0:
@@ -182,6 +223,16 @@ def main():
                   f"{len(PEOPLE_CERTS)} certifications.")
         else:
             print(f"People tables already have {tr_count} training rows — not seeding.")
+
+        # seed quality branches only if empty
+        q_count = s.scalar(select(func.count(QualityBranch.id)))
+        if q_count == 0:
+            for row in QUALITY_BRANCHES:
+                s.add(QualityBranch(**row))
+            s.commit()
+            print(f"Seeded {len(QUALITY_BRANCHES)} quality branch survey rows.")
+        else:
+            print(f"Quality table already has {q_count} rows — not seeding.")
 
     print("\nDone. Start the server with:  python app.py")
     print(f"Login with: {email} / {password}")

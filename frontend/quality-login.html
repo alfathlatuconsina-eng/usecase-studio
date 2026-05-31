@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — Service Quality</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --accent: #7c3aed; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; }
+
+  #login-page {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; background: #0d0d0d;
+  }
+  .login-box {
+    background: #1a1a1a; border: 1px solid #2e2e2e;
+    border-radius: 14px; padding: 44px 40px 36px;
+    width: 420px; box-shadow: 0 24px 64px rgba(0,0,0,.6);
+  }
+  .login-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+  .login-logo-bar { width: 4px; height: 36px; background: var(--accent); border-radius: 2px; flex-shrink: 0; }
+  .login-logo-text .brand { font-size: 18px; font-weight: 700; color: #fff; line-height: 1.1; }
+  .login-logo-text .sub { font-size: 10px; letter-spacing: 2px; color: #7a7a7a; text-transform: uppercase; margin-top: 2px; }
+  .login-heading { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  .login-sub { font-size: 13px; color: #6b6b6b; margin-bottom: 28px; }
+  .login-box label { display: block; font-size: 10px; font-weight: 700; color: #6b6b6b;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; margin-top: 18px; }
+  .login-box input { width: 100%; padding: 11px 14px; background: #111; border: 1px solid #2e2e2e;
+    border-radius: 7px; font-size: 14px; color: #fff; outline: none; transition: border-color .15s; }
+  .login-box input::placeholder { color: #444; }
+  .login-box input:focus { border-color: var(--accent); }
+  #login-error { color: #e05252; font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .btn-primary { width: 100%; padding: 13px; margin-top: 24px; background: var(--accent);
+    color: #fff; border: none; border-radius: 7px; font-size: 15px; font-weight: 700;
+    letter-spacing: .2px; cursor: pointer; transition: background .15s, transform .1s; }
+  .btn-primary:hover  { background: #8b4ff0; }
+  .btn-primary:active { transform: scale(.98); }
+  .login-footer { text-align: center; margin-top: 22px; font-size: 11px; color: #b0b0b0; line-height: 1.5; }
+  .login-home-link { display: block; text-align: center; margin-top: 18px; font-size: 12px;
+    color: #6b6b6b; letter-spacing: .3px; text-decoration: none; transition: color .15s; }
+  .login-home-link:hover { color: var(--accent); }
+  .pw-wrap { position: relative; }
+  .pw-wrap input { padding-right: 44px; }
+  .pw-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; font-size: 16px; color: #8a8a8a;
+    padding: 4px 6px; line-height: 1; }
+  .pw-toggle:hover { color: var(--accent); }
+  .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="login-page">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-bar"></div>
+      <div class="login-logo-text">
+        <div class="brand">Service Quality Dashboard</div>
+        <div class="sub">Service Quality</div>
+      </div>
+    </div>
+    <div class="login-heading">Sign In</div>
+    <div class="login-sub">Enter your credentials to access this module.</div>
+    <label for="login-email">Email</label>
+    <input type="email" id="login-email" placeholder="you@bank.co.id" autocomplete="username">
+    <label for="login-pw">Password</label>
+    <div class="pw-wrap">
+      <input type="password" id="login-pw" placeholder="••••••••" autocomplete="current-password">
+      <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Show password">👁</button>
+    </div>
+    <div id="login-error"></div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
+    <a href="https://usecase-studio.xyz/" class="login-home-link">← Back to Home</a>
+    <div class="login-footer">@ 2026 Alfath Latuconsina · UseCase-Studio.XYZ</div>
+  </div>
+</div>
+
+<script>
+  const REDIRECT_TO = '/quality';
+
+  const existing = localStorage.getItem('quality_token');
+  if (existing) {
+    fetch('/api/quality/me', { headers: { 'Authorization': 'Bearer ' + existing } })
+      .then(r => { if (r.ok) location.href = REDIRECT_TO; })
+      .catch(() => {});
+  }
+
+  async function doLogin() {
+    const btn = document.getElementById('login-btn');
+    const err = document.getElementById('login-error');
+    const email = document.getElementById('login-email').value.trim();
+    const pw    = document.getElementById('login-pw').value;
+    err.textContent = '';
+    if (!email || !pw) { err.textContent = 'Please enter email and password.'; return; }
+
+    btn.innerHTML = '<span class="spinner"></span>';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/quality/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pw }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Login failed.');
+      localStorage.setItem('quality_token', data.token);
+      location.href = REDIRECT_TO;
+    } catch (e) {
+      err.textContent = e.message || 'Login failed.';
+      btn.innerHTML = 'Sign In';
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('login-pw').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  document.getElementById('pw-toggle').addEventListener('click', () => {
+    const inp = document.getElementById('login-pw');
+    const btn = document.getElementById('pw-toggle');
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    btn.textContent = show ? '🙈' : '👁';
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  });
+</script>
+</body>
+</html>
