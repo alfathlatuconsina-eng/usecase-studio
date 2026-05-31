@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($env:PGPASSWORD = \"password\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -l 2>&1)",
+      "PowerShell(Start-Process powershell -ArgumentList '-NoExit', '-Command', 'cd \"D:\\\\Claude Projects\\\\PMO_Web_Dashboard-Dynamic\\\\PMO_OptionB_VPS\\\\PMO_OptionB_VPS\\\\backend\"; Write-Host \"Starting PMO backend at http://localhost:8000\"; python app.py')",
+      "PowerShell(Start-Sleep -Seconds 3; try { $r = Invoke-WebRequest -Uri \"http://localhost:8000\" -UseBasicParsing -TimeoutSec 5; \"HTTP $\\($r.StatusCode\\) — server is up\" } catch { \"Error: $_\" })"
+    ]
+  }
+}

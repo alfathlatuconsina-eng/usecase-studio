@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PMO Dashboard</title>
+<style>
+  /* ── Reset & base ──────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --primary:   #1a3c6b;
+    --accent:    #e8a020;
+    --green:     #1a7a4a;
+    --red:       #c0392b;
+    --orange:    #e67e22;
+    --blue:      #2980b9;
+    --gray-bg:   #f4f6f9;
+    --gray-line: #dde1e7;
+    --text:      #1e2329;
+    --muted:     #6b7280;
+    --white:     #ffffff;
+    --sidebar-w: 220px;
+    --header-h:  56px;
+  }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--gray-bg);
+         color: var(--text); font-size: 13px; }
+  a { color: inherit; text-decoration: none; }
+  button { cursor: pointer; font-family: inherit; font-size: 13px; }
+
+  /* ── Login page ────────────────────────────────── */
+  #login-page {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; background: #0d0d0d;
+  }
+  .login-box {
+    background: #1a1a1a; border: 1px solid #2e2e2e;
+    border-radius: 14px; padding: 44px 40px 36px;
+    width: 420px; box-shadow: 0 24px 64px rgba(0,0,0,.6);
+  }
+  .login-logo {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 28px;
+  }
+  .login-logo-bar {
+    width: 4px; height: 36px; background: var(--accent);
+    border-radius: 2px; flex-shrink: 0;
+  }
+  .login-logo-text .brand {
+    font-size: 18px; font-weight: 700; color: #fff; line-height: 1.1;
+  }
+  .login-logo-text .sub {
+    font-size: 10px; letter-spacing: 2px; color: #7a7a7a;
+    text-transform: uppercase; margin-top: 2px;
+  }
+  .login-heading {
+    font-size: 26px; font-weight: 700; color: #fff;
+    margin-bottom: 6px;
+  }
+  .login-sub {
+    font-size: 13px; color: #6b6b6b; margin-bottom: 28px;
+  }
+  .login-box label {
+    display: block; font-size: 10px; font-weight: 700;
+    color: #6b6b6b; text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 6px; margin-top: 18px;
+  }
+  .login-box input {
+    width: 100%; padding: 11px 14px;
+    background: #111; border: 1px solid #2e2e2e;
+    border-radius: 7px; font-size: 14px; color: #fff;
+    outline: none; transition: border-color .15s;
+  }
+  .login-box input::placeholder { color: #444; }
+  .login-box input:focus { border-color: var(--accent); }
+  #login-error { color: #e05252; font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .btn-primary {
+    width: 100%; padding: 13px; margin-top: 24px;
+    background: var(--accent); color: #1a0f00; border: none;
+    border-radius: 7px; font-size: 15px; font-weight: 700;
+    letter-spacing: .2px; transition: background .15s, transform .1s;
+  }
+  .btn-primary:hover  { background: #f0b030; }
+  .btn-primary:active { transform: scale(.98); }
+  .login-footer {
+    text-align: center; margin-top: 22px;
+    font-size: 11px; color: #3a3a3a; line-height: 1.5;
+  }
+
+  /* ── App shell ─────────────────────────────────── */
+  #app { display: none; min-height: 100vh; }
+
+  /* Header */
+  .app-header {
+    position: fixed; top: 0; left: 0; right: 0; height: var(--header-h);
+    background: var(--primary); color: #fff;
+    display: flex; align-items: center; padding: 0 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2); z-index: 100;
+  }
+  .header-brand { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+  .header-brand span { color: var(--accent); }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .header-user { font-size: 12px; opacity: .85; }
+  .header-role-badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 10px;
+    background: rgba(255,255,255,.18); font-weight: 600; letter-spacing: .5px;
+    text-transform: uppercase;
+  }
+  .btn-logout {
+    background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3);
+    border-radius: 5px; padding: 5px 12px; font-size: 12px; transition: background .15s;
+  }
+  .btn-logout:hover { background: rgba(255,255,255,.28); }
+
+  /* Sidebar */
+  .app-sidebar {
+    position: fixed; top: var(--header-h); left: 0; bottom: 0;
+    width: var(--sidebar-w); background: var(--primary);
+    padding: 18px 0; overflow-y: auto; z-index: 90;
+  }
+  .sidebar-section {
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    color: rgba(255,255,255,.4); padding: 14px 20px 6px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 20px; color: rgba(255,255,255,.75);
+    cursor: pointer; transition: background .12s, color .12s;
+    font-size: 13px; border-left: 3px solid transparent;
+  }
+  .nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .nav-item.active {
+    background: rgba(255,255,255,.12); color: #fff;
+    border-left-color: var(--accent);
+  }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+
+  /* Main content */
+  .app-main {
+    margin-left: var(--sidebar-w);
+    margin-top: var(--header-h);
+    padding: 24px;
+    min-height: calc(100vh - var(--header-h));
+  }
+
+  /* ── Views ─────────────────────────────────────── */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Page title */
+  .page-title {
+    font-size: 18px; font-weight: 700; color: var(--primary);
+    margin-bottom: 18px; display: flex; align-items: center; gap: 10px;
+  }
+  .page-title small { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+  /* ── Summary cards ──────────────────────────────── */
+  .cards { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+  .card {
+    background: var(--white); border-radius: 8px; padding: 16px 20px;
+    flex: 1 1 160px; box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    border-left: 4px solid var(--gray-line);
+  }
+  .card-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
+                letter-spacing: .5px; margin-bottom: 6px; }
+  .card-value { font-size: 26px; font-weight: 700; color: var(--primary); }
+  .card-sub   { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .card.blue  { border-left-color: var(--blue); }
+  .card.green { border-left-color: var(--green); }
+  .card.orange{ border-left-color: var(--orange); }
+  .card.red   { border-left-color: var(--red); }
+
+  /* ── Toolbar ────────────────────────────────────── */
+  .toolbar {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .toolbar input[type=text] {
+    padding: 7px 12px; border: 1px solid var(--gray-line);
+    border-radius: 6px; font-size: 13px; width: 220px; outline: none;
+  }
+  .toolbar input[type=text]:focus { border-color: var(--primary); }
+  .toolbar select {
+    padding: 7px 10px; border: 1px solid var(--gray-line);
+    border-radius: 6px; font-size: 13px; outline: none; background: var(--white);
+  }
+  .btn-add {
+    padding: 7px 16px; background: var(--primary); color: #fff;
+    border: none; border-radius: 6px; font-weight: 600;
+    transition: background .15s; margin-left: auto;
+  }
+  .btn-add:hover { background: #254e8c; }
+
+  /* ── Table ──────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; border-radius: 8px;
+                box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+  table { width: 100%; border-collapse: collapse; background: var(--white);
+          font-size: 12px; }
+  thead th {
+    background: var(--primary); color: #fff; padding: 9px 10px;
+    text-align: left; font-size: 11px; font-weight: 600;
+    white-space: nowrap; letter-spacing: .3px;
+  }
+  thead th:first-child { border-radius: 8px 0 0 0; }
+  thead th:last-child  { border-radius: 0 8px 0 0; }
+  tbody tr { border-bottom: 1px solid var(--gray-line); }
+  tbody tr:last-child  { border-bottom: none; }
+  tbody tr:hover { background: #f0f4fa; }
+  tbody td { padding: 8px 10px; vertical-align: top; }
+
+  /* Progress bar */
+  .prog-wrap { display: flex; align-items: center; gap: 6px; min-width: 90px; }
+  .prog-bar  {
+    flex: 1; height: 7px; background: #e0e4ea; border-radius: 4px; overflow: hidden;
+  }
+  .prog-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+  .prog-label { font-size: 11px; color: var(--muted); min-width: 28px; text-align: right; }
+
+  /* Status badge */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+  }
+  .badge-ip     { background: #dbeafe; color: #1e40af; }
+  .badge-done   { background: #dcfce7; color: #166534; }
+  .badge-cancel { background: #fee2e2; color: #991b1b; }
+  .badge-hold   { background: #fef9c3; color: #92400e; }
+
+  /* Group badge */
+  .grp-badge { font-size: 10px; padding: 2px 7px; border-radius: 4px;
+               font-weight: 600; background: #f0f4fa; color: var(--primary); }
+
+  /* Action buttons */
+  .btn-edit {
+    padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+    background: #e8f0fe; color: var(--primary); border: 1px solid #c7d7fd;
+    margin-right: 4px; transition: background .12s;
+  }
+  .btn-edit:hover { background: #c7d7fd; }
+  .btn-del {
+    padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+    background: #fee2e2; color: var(--red); border: 1px solid #fca5a5;
+    transition: background .12s;
+  }
+  .btn-del:hover { background: #fca5a5; }
+
+  /* ── Modal ──────────────────────────────────────── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 200;
+    align-items: flex-start; justify-content: center;
+    padding: 40px 20px; overflow-y: auto;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--white); border-radius: 10px; width: 100%;
+    max-width: 780px; padding: 28px; box-shadow: 0 12px 40px rgba(0,0,0,.25);
+    position: relative;
+  }
+  .modal-title {
+    font-size: 16px; font-weight: 700; color: var(--primary);
+    margin-bottom: 20px; padding-bottom: 12px;
+    border-bottom: 2px solid var(--gray-line);
+  }
+  .modal-close {
+    position: absolute; top: 16px; right: 18px;
+    background: none; border: none; font-size: 22px; color: var(--muted);
+    line-height: 1; padding: 4px 8px;
+  }
+  .modal-close:hover { color: var(--red); }
+
+  /* Form grid */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .form-field label {
+    display: block; font-size: 11px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .4px;
+    margin-bottom: 4px;
+  }
+  .form-field input, .form-field select, .form-field textarea {
+    width: 100%; padding: 7px 10px;
+    border: 1px solid var(--gray-line); border-radius: 5px;
+    font-size: 13px; font-family: inherit; outline: none;
+    transition: border-color .15s;
+  }
+  .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+    border-color: var(--primary);
+  }
+  .form-field textarea { resize: vertical; min-height: 56px; }
+  .form-field textarea.tall { min-height: 90px; }
+  .form-field small { color: var(--muted); font-size: 11px; margin-top: 2px; display: block; }
+
+  .modal-footer {
+    display: flex; justify-content: flex-end; gap: 10px;
+    margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--gray-line);
+  }
+  .btn-cancel {
+    padding: 8px 18px; background: var(--white); border: 1px solid var(--gray-line);
+    border-radius: 6px; color: var(--text); transition: background .12s;
+  }
+  .btn-cancel:hover { background: var(--gray-bg); }
+  .btn-save {
+    padding: 8px 22px; background: var(--primary); color: #fff;
+    border: none; border-radius: 6px; font-weight: 600; transition: background .15s;
+  }
+  .btn-save:hover { background: #254e8c; }
+
+  .form-error { color: var(--red); font-size: 12px; margin-top: 6px; }
+
+  /* ── Users view ──────────────────────────────────── */
+  .role-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+  }
+  .role-admin  { background: #fde8d4; color: #9a3412; }
+  .role-editor { background: #dbeafe; color: #1e40af; }
+  .role-viewer { background: #f0fdf4; color: #166534; }
+
+  /* ── Audit view ──────────────────────────────────── */
+  .audit-action { font-weight: 700; }
+  .action-create { color: var(--green); }
+  .action-update { color: var(--blue); }
+  .action-delete { color: var(--red); }
+  .changes-list  { font-size: 11px; color: var(--muted); }
+  .changes-list .chg-field { font-weight: 600; color: var(--text); }
+
+  /* ── Toast ───────────────────────────────────────── */
+  #toast {
+    position: fixed; bottom: 28px; right: 28px;
+    background: #1e2329; color: #fff; padding: 11px 20px;
+    border-radius: 7px; font-size: 13px; font-weight: 500;
+    box-shadow: 0 4px 16px rgba(0,0,0,.3); z-index: 999;
+    opacity: 0; transform: translateY(10px);
+    transition: opacity .25s, transform .25s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.ok  { background: var(--green); }
+  #toast.err { background: var(--red); }
+
+  /* ── Confirm dialog ─────────────────────────────── */
+  #confirm-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 300;
+    align-items: center; justify-content: center;
+  }
+  #confirm-overlay.open { display: flex; }
+  .confirm-box {
+    background: var(--white); border-radius: 10px;
+    padding: 28px 28px 22px; max-width: 380px; width: 100%;
+    box-shadow: 0 8px 32px rgba(0,0,0,.25); text-align: center;
+  }
+  .confirm-icon { font-size: 36px; margin-bottom: 10px; }
+  .confirm-msg  { font-size: 14px; line-height: 1.5; margin-bottom: 20px; }
+  .confirm-btns { display: flex; justify-content: center; gap: 12px; }
+  .btn-confirm-cancel {
+    padding: 8px 22px; background: var(--white);
+    border: 1px solid var(--gray-line); border-radius: 6px;
+  }
+  .btn-confirm-ok {
+    padding: 8px 22px; background: var(--red); color: #fff;
+    border: none; border-radius: 6px; font-weight: 600;
+  }
+
+  /* ── Empty state ──────────────────────────────────── */
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; }
+
+  /* ── Loading spinner ─────────────────────────────── */
+  .spinner {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin .6s linear infinite; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Detail drawer ───────────────────────────────── */
+  #detail-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.35); z-index: 200;
+  }
+  #detail-overlay.open { display: block; }
+  #detail-drawer {
+    position: fixed; top: 0; right: -620px; bottom: 0; width: 600px;
+    background: var(--white); box-shadow: -4px 0 24px rgba(0,0,0,.18);
+    overflow-y: auto; transition: right .28s cubic-bezier(.4,0,.2,1);
+    z-index: 201; display: flex; flex-direction: column;
+  }
+  #detail-overlay.open #detail-drawer { right: 0; }
+
+  .drawer-header {
+    background: var(--primary); color: #fff;
+    padding: 20px 24px 16px; flex-shrink: 0;
+  }
+  .drawer-header-top {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  }
+  .drawer-title { font-size: 17px; font-weight: 700; line-height: 1.3; flex: 1; }
+  .drawer-close {
+    background: rgba(255,255,255,.15); border: none; color: #fff;
+    font-size: 18px; border-radius: 5px; padding: 3px 9px; flex-shrink: 0;
+    transition: background .12s;
+  }
+  .drawer-close:hover { background: rgba(255,255,255,.3); }
+  .drawer-meta {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap;
+  }
+
+  .drawer-body { padding: 20px 24px; flex: 1; }
+
+  /* Two pie chart row */
+  .pie-row {
+    display: flex; gap: 16px; margin-bottom: 22px; justify-content: center;
+  }
+  .pie-chart-card {
+    background: var(--gray-bg); border-radius: 10px; padding: 14px 18px;
+    text-align: center; border: 1px solid var(--gray-line); flex: 1;
+  }
+  .pie-title {
+    font-size: 11px; font-weight: 700; color: var(--primary);
+    text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px;
+  }
+  .pie-legend {
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    margin-top: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap;
+  }
+  .pie-leg-item { display: flex; align-items: center; gap: 5px; }
+  .pie-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .pie-na { font-size: 13px; color: var(--muted); padding: 20px 0; }
+
+  /* Detail sections */
+  .detail-section { margin-bottom: 18px; }
+  .detail-section-title {
+    font-size: 10px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .6px;
+    border-bottom: 1px solid var(--gray-line); padding-bottom: 5px; margin-bottom: 10px;
+  }
+  .detail-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .detail-field { }
+  .detail-field.full { grid-column: 1 / -1; }
+  .detail-key {
+    font-size: 10px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .4px; margin-bottom: 2px;
+  }
+  .detail-val {
+    font-size: 13px; color: var(--text); line-height: 1.5; white-space: pre-wrap;
+  }
+  .detail-val.empty { color: var(--muted); font-style: italic; }
+
+  .drawer-footer {
+    padding: 14px 24px; border-top: 1px solid var(--gray-line);
+    display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0;
+  }
+
+  /* btn-view in table */
+  .btn-view {
+    padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+    background: #f0f4fa; color: var(--primary); border: 1px solid var(--gray-line);
+    margin-right: 4px; transition: background .12s;
+  }
+  .btn-view:hover { background: #dbe4f5; }
+
+  /* ── Mobile card list ────────────────────────────── */
+  .proj-card-list { display: none; flex-direction: column; gap: 10px; }
+  .proj-card {
+    background: var(--white); border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    padding: 14px 16px; cursor: pointer;
+    border-left: 4px solid var(--gray-line);
+    transition: box-shadow .15s;
+  }
+  .proj-card:active { box-shadow: 0 2px 10px rgba(0,0,0,.14); }
+  .proj-card.ip     { border-left-color: #2980b9; }
+  .proj-card.done   { border-left-color: var(--green); }
+  .proj-card.hold   { border-left-color: var(--orange); }
+  .proj-card.cancel { border-left-color: var(--red); }
+  .proj-card-top {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 10px; margin-bottom: 8px;
+  }
+  .proj-card-name { font-weight: 700; font-size: 14px; flex: 1; }
+  .proj-card-meta {
+    display: flex; gap: 6px; align-items: center;
+    flex-wrap: wrap; margin-bottom: 10px;
+  }
+  .proj-card-bars { display: flex; flex-direction: column; gap: 6px; }
+  .proj-card-bar-row {
+    display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted);
+  }
+  .proj-card-bar-label { width: 80px; flex-shrink: 0; }
+  .proj-card-bar-wrap  { flex: 1; height: 6px; background: #e0e4ea; border-radius: 3px; overflow: hidden; }
+  .proj-card-bar-fill  { height: 100%; border-radius: 3px; }
+  .proj-card-pct       { width: 32px; text-align: right; }
+  .proj-card-tap-hint  {
+    text-align: right; font-size: 10px; color: var(--muted);
+    margin-top: 8px; letter-spacing: .3px;
+  }
+
+  /* ── Responsive tweak ────────────────────────────── */
+  @media (max-width: 700px) {
+    .app-sidebar { display: none; }
+    .app-main { margin-left: 0; padding: 16px; }
+    .form-grid { grid-template-columns: 1fr; }
+    #detail-drawer { width: 100%; }
+
+    /* header: tighten up */
+    .header-brand { font-size: 13px; }
+    .header-user  { display: none; }
+    .btn-logout   { padding: 5px 8px; font-size: 11px; }
+
+    /* cards: 2-column on mobile */
+    .cards { gap: 10px; }
+    .card  { flex: 1 1 140px; padding: 12px 14px; }
+    .card-value { font-size: 22px; }
+
+    /* hide table, show card list */
+    .table-wrap     { display: none; }
+    .proj-card-list { display: flex; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════ LOGIN PAGE ══════════════════════ -->
+<div id="login-page">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-bar"></div>
+      <div class="login-logo-text">
+        <div class="brand">MNC Bank</div>
+        <div class="sub">Project Management Office</div>
+      </div>
+    </div>
+    <div class="login-heading">Sign in</div>
+    <div class="login-sub">Private dashboard — authorised personnel only.</div>
+    <label for="login-email">Email</label>
+    <input type="email" id="login-email" placeholder="you@mncbank.co.id" autocomplete="username">
+    <label for="login-pw">Password</label>
+    <input type="password" id="login-pw" placeholder="••••••••" autocomplete="current-password">
+    <div id="login-error"></div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Enter Dashboard</button>
+    <div class="login-footer">Access is restricted to authorised MNC Bank personnel.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════ MAIN APP ════════════════════════ -->
+<div id="app">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-brand">MNC Bank &nbsp;<span>PMO</span></div>
+    <div class="header-right">
+      <span class="header-user" id="hdr-email"></span>
+      <span class="header-role-badge" id="hdr-role"></span>
+      <button class="btn-logout" onclick="doLogout()">Sign Out</button>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <nav class="app-sidebar">
+    <div class="sidebar-section">Dashboard</div>
+    <div class="nav-item active" id="nav-projects" onclick="showView('projects')">
+      <span class="nav-icon">📋</span> Projects
+    </div>
+    <div class="nav-item" id="nav-audit" onclick="showView('audit')" style="display:none">
+      <span class="nav-icon">📜</span> Audit Log
+    </div>
+    <div class="nav-item" id="nav-users" onclick="showView('users')" style="display:none">
+      <span class="nav-icon">👥</span> Users
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="app-main">
+
+    <!-- ── Projects view ── -->
+    <div class="view active" id="view-projects">
+      <div class="page-title">
+        Project Tracker
+        <small id="proj-subtitle"></small>
+      </div>
+
+      <div class="cards" id="summary-cards"></div>
+
+      <div class="toolbar">
+        <input type="text" id="search-box" placeholder="Search project name…" oninput="renderTable()">
+        <select id="filter-group" onchange="renderTable()">
+          <option value="">All Groups</option>
+          <option value="Business">Business</option>
+          <option value="Non-Business">Non-Business</option>
+        </select>
+        <select id="filter-status" onchange="renderTable()">
+          <option value="">All Statuses</option>
+          <option value="In-Progress">In Progress</option>
+          <option value="Completed">Completed</option>
+          <option value="On-Hold">On Hold</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+        <button class="btn-add" id="btn-add-proj" onclick="openProjectModal()" style="display:none">
+          + Add Project
+        </button>
+      </div>
+
+      <div class="table-wrap">
+        <table id="proj-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Project Name</th>
+              <th>Group</th>
+              <th>Status</th>
+              <th>Nature</th>
+              <th>Timeline Realization</th>
+              <th>Timeline Target</th>
+              <th>Target</th>
+              <th>Owner / PM</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="proj-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Mobile card list (shown instead of table on small screens) -->
+      <div class="proj-card-list" id="proj-card-list"></div>
+    </div>
+
+    <!-- ── Audit view ── -->
+    <div class="view" id="view-audit">
+      <div class="page-title">Audit Log <small>last 200 changes</small></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Who</th>
+              <th>Action</th>
+              <th>Project</th>
+              <th>Changes</th>
+            </tr>
+          </thead>
+          <tbody id="audit-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Users view ── -->
+    <div class="view" id="view-users">
+      <div class="page-title">User Management</div>
+      <div class="toolbar">
+        <button class="btn-add" onclick="openUserModal()">+ Add User</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ══════════════════════ DETAIL DRAWER ═══════════════════ -->
+<div id="detail-overlay" onclick="closeDetail(event)">
+  <div id="detail-drawer">
+    <div class="drawer-header">
+      <div class="drawer-header-top">
+        <div class="drawer-title" id="dd-name"></div>
+        <button class="drawer-close" onclick="closeDetailDirect()">✕</button>
+      </div>
+      <div class="drawer-meta">
+        <span id="dd-status-badge"></span>
+        <span id="dd-group-badge"></span>
+        <span id="dd-nature" style="font-size:12px;opacity:.8"></span>
+      </div>
+    </div>
+
+    <div class="drawer-body">
+      <!-- Two comparison pie charts -->
+      <div class="pie-row" id="dd-pie-row"></div>
+
+      <!-- Dates & people -->
+      <div class="detail-section">
+        <div class="detail-section-title">Timeline &amp; Ownership</div>
+        <div class="detail-grid">
+          <div class="detail-field">
+            <div class="detail-key">Target Date</div>
+            <div class="detail-val" id="dd-target"></div>
+          </div>
+          <div class="detail-field">
+            <div class="detail-key">Original Target</div>
+            <div class="detail-val" id="dd-orig"></div>
+          </div>
+          <div class="detail-field full">
+            <div class="detail-key">Owner</div>
+            <div class="detail-val" id="dd-owner"></div>
+          </div>
+          <div class="detail-field full">
+            <div class="detail-key">Project Manager</div>
+            <div class="detail-val" id="dd-pm"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Narrative fields -->
+      <div class="detail-section">
+        <div class="detail-section-title">Progress &amp; Next Steps</div>
+        <div class="detail-grid">
+          <div class="detail-field full">
+            <div class="detail-key">Current Phase / Progress</div>
+            <div class="detail-val" id="dd-phase"></div>
+          </div>
+          <div class="detail-field full">
+            <div class="detail-key">Next Actions</div>
+            <div class="detail-val" id="dd-next"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-section-title">Risks &amp; Issues</div>
+        <div class="detail-grid">
+          <div class="detail-field full">
+            <div class="detail-key">Risks</div>
+            <div class="detail-val" id="dd-risk"></div>
+          </div>
+          <div class="detail-field full">
+            <div class="detail-key">Stoppers / Issues</div>
+            <div class="detail-val" id="dd-stop"></div>
+          </div>
+          <div class="detail-field full">
+            <div class="detail-key">Recommendations</div>
+            <div class="detail-val" id="dd-reco"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn-cancel" onclick="closeDetailDirect()">Close</button>
+      <button class="btn-save" id="dd-edit-btn" style="display:none"
+              onclick="editFromDetail()">Edit Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ PROJECT MODAL ═══════════════════ -->
+<div class="modal-overlay" id="proj-modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="proj-modal-title">Add Project</div>
+    <button class="modal-close" onclick="closeProjectModal()">✕</button>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>Sort Order</label>
+        <input type="number" id="f-sort" placeholder="1">
+      </div>
+      <div class="form-field">
+        <label>Status</label>
+        <select id="f-status">
+          <option value="In-Progress">In Progress</option>
+          <option value="Completed">Completed</option>
+          <option value="On-Hold">On Hold</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="form-field full">
+        <label>Project Name *</label>
+        <input type="text" id="f-name" placeholder="e.g. QRIS Acquiring">
+      </div>
+      <div class="form-field">
+        <label>Group</label>
+        <select id="f-group">
+          <option value="Business">Business</option>
+          <option value="Non-Business">Non-Business</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Nature</label>
+        <input type="text" id="f-nature" placeholder="e.g. Technology Dev.">
+      </div>
+
+      <div class="form-field">
+        <label>Timeline Realization (%)</label>
+        <input type="number" id="f-real" min="0" max="100" placeholder="0–100">
+      </div>
+      <div class="form-field">
+        <label>Timeline Target (%)</label>
+        <input type="number" id="f-tl" min="0" max="100" placeholder="0–100">
+      </div>
+      <div class="form-field">
+        <label>Budget Realization (%)</label>
+        <input type="number" id="f-bo" min="0" max="100" placeholder="0–100">
+      </div>
+      <div class="form-field">
+        <label>Budget Target (%)</label>
+        <input type="number" id="f-br" min="0" max="100" placeholder="0–100">
+      </div>
+
+      <div class="form-field">
+        <label>Target Date</label>
+        <input type="text" id="f-target" placeholder="e.g. 30 Jun 2026">
+      </div>
+      <div class="form-field">
+        <label>Original Target</label>
+        <input type="text" id="f-orig" placeholder="e.g. 31 Mar'26">
+      </div>
+
+      <div class="form-field full">
+        <label>Owner</label>
+        <input type="text" id="f-owner" placeholder="Department / Group">
+      </div>
+      <div class="form-field full">
+        <label>Project Manager</label>
+        <input type="text" id="f-pm" placeholder="Name / Name / Name">
+      </div>
+
+      <div class="form-field full">
+        <label>Current Phase / Progress</label>
+        <textarea id="f-phase" class="tall"></textarea>
+      </div>
+      <div class="form-field full">
+        <label>Next Actions</label>
+        <textarea id="f-next" class="tall"></textarea>
+      </div>
+      <div class="form-field full">
+        <label>Risks</label>
+        <textarea id="f-risk" class="tall"></textarea>
+      </div>
+      <div class="form-field full">
+        <label>Stoppers / Issues</label>
+        <textarea id="f-stop" class="tall"></textarea>
+      </div>
+      <div class="form-field full">
+        <label>Recommendations</label>
+        <textarea id="f-reco" class="tall"></textarea>
+      </div>
+    </div>
+    <div class="form-error" id="proj-form-error"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeProjectModal()">Cancel</button>
+      <button class="btn-save" onclick="saveProject()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ USER MODAL ══════════════════════ -->
+<div class="modal-overlay" id="user-modal-overlay">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title" id="user-modal-title">Add User</div>
+    <button class="modal-close" onclick="closeUserModal()">✕</button>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-field">
+        <label>Email *</label>
+        <input type="email" id="uf-email" placeholder="user@mncbank.co.id">
+      </div>
+      <div class="form-field">
+        <label>Password <span id="uf-pw-hint" style="text-transform:none;font-weight:400">(required for new user)</span></label>
+        <input type="password" id="uf-pw" placeholder="Leave blank to keep current password">
+      </div>
+      <div class="form-field">
+        <label>Role</label>
+        <select id="uf-role">
+          <option value="viewer">Viewer — read only</option>
+          <option value="editor">Editor — add/edit/delete projects</option>
+          <option value="admin">Admin — full access</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-error" id="user-form-error"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeUserModal()">Cancel</button>
+      <button class="btn-save" onclick="saveUser()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ CONFIRM DIALOG ══════════════════ -->
+<div id="confirm-overlay">
+  <div class="confirm-box">
+    <div class="confirm-icon">⚠️</div>
+    <div class="confirm-msg" id="confirm-msg">Are you sure?</div>
+    <div class="confirm-btns">
+      <button class="btn-confirm-cancel" onclick="confirmResolve(false)">Cancel</button>
+      <button class="btn-confirm-ok"     onclick="confirmResolve(true)">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════ TOAST ════════════════════════════ -->
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────
+const API = '';          // same origin
+let token = localStorage.getItem('pmo_token') || '';
+let userRole = '';
+let userEmail = '';
+let projects = [];
+let editingProjectId = null;
+let editingUserId = null;
+let confirmResolve = () => {};
+
+// ── Boot ──────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (token) {
+    verifyAndBoot();
+  }
+  document.getElementById('login-pw').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+});
+
+async function verifyAndBoot() {
+  try {
+    const me = await apiFetch('GET', '/api/me');
+    bootApp(me.email, me.role);
+  } catch {
+    token = '';
+    localStorage.removeItem('pmo_token');
+  }
+}
+
+function bootApp(email, role) {
+  userEmail = email;
+  userRole  = role;
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('hdr-email').textContent = email;
+  document.getElementById('hdr-role').textContent  = role;
+
+  // Show admin-only nav items
+  if (role === 'admin') {
+    document.getElementById('nav-audit').style.display = 'flex';
+    document.getElementById('nav-users').style.display = 'flex';
+  }
+  // Show add-project button for editor/admin
+  if (role !== 'viewer') {
+    document.getElementById('btn-add-proj').style.display = 'inline-block';
+  }
+
+  loadProjects();
+}
+
+// ── Login ─────────────────────────────────────────────────
+async function doLogin() {
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('login-error');
+  const email = document.getElementById('login-email').value.trim();
+  const pw    = document.getElementById('login-pw').value;
+  err.textContent = '';
+  if (!email || !pw) { err.textContent = 'Please enter email and password.'; return; }
+
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+  try {
+    const data = await apiFetch('POST', '/api/login', { email, password: pw });
+    token = data.token;
+    localStorage.setItem('pmo_token', token);
+    bootApp(data.email, data.role);
+  } catch (e) {
+    err.textContent = e.message || 'Login failed.';
+  } finally {
+    btn.innerHTML = 'Sign In';
+    btn.disabled = false;
+  }
+}
+
+function doLogout() {
+  token = '';
+  localStorage.removeItem('pmo_token');
+  location.reload();
+}
+
+// ── Navigation ────────────────────────────────────────────
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+
+  if (name === 'audit') loadAudit();
+  if (name === 'users') loadUsers();
+}
+
+// ── Projects ──────────────────────────────────────────────
+async function loadProjects() {
+  try {
+    projects = await apiFetch('GET', '/api/projects');
+    renderSummary();
+    renderTable();
+    const d = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+    document.getElementById('proj-subtitle').textContent = 'as of ' + d;
+  } catch (e) {
+    showToast('Failed to load projects: ' + e.message, 'err');
+  }
+}
+
+function renderSummary() {
+  const total  = projects.length;
+  const done   = projects.filter(p => p.status === 'Completed').length;
+  const ip     = projects.filter(p => p.status === 'In-Progress').length;
+  const biz    = projects.filter(p => p.group === 'Business').length;
+  const nonbiz = projects.filter(p => p.group === 'Non-Business').length;
+
+  const avgReal = projects.filter(p => p.real !== null).length
+    ? Math.round(projects.filter(p => p.real !== null).reduce((s, p) => s + p.real, 0)
+        / projects.filter(p => p.real !== null).length)
+    : 0;
+
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="card blue">
+      <div class="card-label">Total Projects</div>
+      <div class="card-value">${total}</div>
+      <div class="card-sub">${biz} Business · ${nonbiz} Non-Business</div>
+    </div>
+    <div class="card orange">
+      <div class="card-label">In Progress</div>
+      <div class="card-value">${ip}</div>
+      <div class="card-sub">active projects</div>
+    </div>
+    <div class="card green">
+      <div class="card-label">Completed</div>
+      <div class="card-value">${done}</div>
+      <div class="card-sub">finished projects</div>
+    </div>
+    <div class="card blue">
+      <div class="card-label">Avg. Progress</div>
+      <div class="card-value">${avgReal}%</div>
+      <div class="card-sub">actual across all projects</div>
+    </div>
+  `;
+}
+
+function renderTable() {
+  const search = document.getElementById('search-box').value.toLowerCase();
+  const grp    = document.getElementById('filter-group').value;
+  const stat   = document.getElementById('filter-status').value;
+
+  let rows = projects.filter(p => {
+    if (search && !p.name.toLowerCase().includes(search)) return false;
+    if (grp  && p.group  !== grp)  return false;
+    if (stat && p.status !== stat) return false;
+    return true;
+  });
+
+  const canEdit = userRole !== 'viewer';
+  const tbody   = document.getElementById('proj-tbody');
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">
+      <div class="icon">📭</div><p>No projects match your filter.</p></div></td></tr>`;
+    return;
+  }
+
+  renderCards(rows);
+
+  tbody.innerHTML = rows.map((p, i) => `
+    <tr>
+      <td style="color:var(--muted);font-size:11px">${p.sort || i + 1}</td>
+      <td style="font-weight:600;max-width:180px">${esc(p.name)}</td>
+      <td><span class="grp-badge">${esc(p.group)}</span></td>
+      <td>${statusBadge(p.status)}</td>
+      <td style="color:var(--muted)">${esc(p.nature)}</td>
+      <td>${progressBar(p.real, p.tl)}</td>
+      <td>${singleProg(p.tl, '#6366f1')}</td>
+      <td style="white-space:nowrap;font-size:11px">
+        ${p.target ? `<b>${esc(p.target)}</b>` : '—'}
+        ${p.orig ? `<br><span style="color:var(--muted)">orig: ${esc(p.orig)}</span>` : ''}
+      </td>
+      <td style="font-size:11px;max-width:160px">
+        ${p.owner ? `<div>${esc(p.owner)}</div>` : ''}
+        ${p.pm ? `<div style="color:var(--muted)">${esc(p.pm)}</div>` : ''}
+      </td>
+      <td>
+        <button class="btn-view" onclick="openDetail(${p.id})">View</button>
+        ${canEdit ? `
+          <button class="btn-edit" onclick="openProjectModal(${p.id})">Edit</button>
+          <button class="btn-del"  onclick="deleteProject(${p.id}, '${esc(p.name)}')">Del</button>
+        ` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderCards(rows) {
+  const container = document.getElementById('proj-card-list');
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>No projects match your filter.</p></div>`;
+    return;
+  }
+  const statusClass = { 'In-Progress': 'ip', 'Completed': 'done', 'On-Hold': 'hold', 'Cancelled': 'cancel' };
+  container.innerHTML = rows.map(p => {
+    const r = p.real ?? 0;
+    const t = p.tl  ?? 0;
+    const rColor = r >= t ? 'var(--green)' : r >= t * 0.85 ? 'var(--orange)' : 'var(--red)';
+    const canEdit = userRole !== 'viewer';
+    return `
+    <div class="proj-card ${statusClass[p.status] || 'ip'}" onclick="openDetail(${p.id})">
+      <div class="proj-card-top">
+        <div class="proj-card-name">${esc(p.name)}</div>
+        ${statusBadge(p.status)}
+      </div>
+      <div class="proj-card-meta">
+        <span class="grp-badge">${esc(p.group)}</span>
+        ${p.nature ? `<span style="font-size:11px;color:var(--muted)">${esc(p.nature)}</span>` : ''}
+      </div>
+      <div class="proj-card-bars">
+        <div class="proj-card-bar-row">
+          <span class="proj-card-bar-label">Realization</span>
+          <div class="proj-card-bar-wrap">
+            <div class="proj-card-bar-fill" style="width:${r}%;background:${rColor}"></div>
+          </div>
+          <span class="proj-card-pct">${r}%</span>
+        </div>
+        <div class="proj-card-bar-row">
+          <span class="proj-card-bar-label">Target</span>
+          <div class="proj-card-bar-wrap">
+            <div class="proj-card-bar-fill" style="width:${t}%;background:#6366f1"></div>
+          </div>
+          <span class="proj-card-pct">${t}%</span>
+        </div>
+      </div>
+      ${p.target ? `<div style="font-size:11px;color:var(--muted);margin-top:8px">📅 ${esc(p.target)}</div>` : ''}
+      <div class="proj-card-tap-hint">Tap for details ${canEdit ? '· <span onclick="event.stopPropagation();openProjectModal('+p.id+')" style="color:var(--primary);font-weight:700">Edit</span>' : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+function statusBadge(s) {
+  const map = {
+    'In-Progress': ['badge-ip', 'In Progress'],
+    'Completed':   ['badge-done', 'Completed'],
+    'On-Hold':     ['badge-hold', 'On Hold'],
+    'Cancelled':   ['badge-cancel', 'Cancelled'],
+  };
+  const [cls, label] = map[s] || ['badge-ip', s];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function progressBar(real, tl) {
+  const r = real ?? 0;
+  const color = r >= (tl ?? 0) ? 'var(--green)' : r >= (tl ?? 0) * 0.85 ? 'var(--orange)' : 'var(--red)';
+  return `<div class="prog-wrap">
+    <div class="prog-bar"><div class="prog-fill" style="width:${r}%;background:${color}"></div></div>
+    <span class="prog-label">${r}%</span>
+  </div>`;
+}
+
+function singleProg(val, color) {
+  if (val === null || val === undefined) return '<span style="color:var(--muted)">—</span>';
+  return `<div class="prog-wrap">
+    <div class="prog-bar"><div class="prog-fill" style="width:${val}%;background:${color}"></div></div>
+    <span class="prog-label">${val}%</span>
+  </div>`;
+}
+
+// ── Project modal ─────────────────────────────────────────
+function openProjectModal(id) {
+  editingProjectId = id || null;
+  document.getElementById('proj-form-error').textContent = '';
+  document.getElementById('proj-modal-title').textContent = id ? 'Edit Project' : 'Add Project';
+
+  const fields = ['sort','name','group','status','nature','real','tl','bo','br',
+                  'target','orig','owner','pm','phase','next','risk','stop','reco'];
+
+  if (id) {
+    const p = projects.find(x => x.id === id);
+    fields.forEach(f => {
+      const el = document.getElementById('f-' + f);
+      if (el) el.value = (p[f] === null || p[f] === undefined) ? '' : p[f];
+    });
+  } else {
+    fields.forEach(f => {
+      const el = document.getElementById('f-' + f);
+      if (el) el.value = '';
+    });
+    document.getElementById('f-group').value  = 'Business';
+    document.getElementById('f-status').value = 'In-Progress';
+  }
+
+  document.getElementById('proj-modal-overlay').classList.add('open');
+}
+
+function closeProjectModal() {
+  document.getElementById('proj-modal-overlay').classList.remove('open');
+}
+
+async function saveProject() {
+  const err = document.getElementById('proj-form-error');
+  err.textContent = '';
+
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { err.textContent = 'Project name is required.'; return; }
+
+  const numOrNull = id => {
+    const v = document.getElementById(id).value;
+    return v === '' ? null : parseFloat(v);
+  };
+
+  const payload = {
+    sort:   parseInt(document.getElementById('f-sort').value) || 0,
+    name,
+    group:  document.getElementById('f-group').value,
+    status: document.getElementById('f-status').value,
+    nature: document.getElementById('f-nature').value.trim(),
+    real: numOrNull('f-real'), tl: numOrNull('f-tl'),
+    bo:   numOrNull('f-bo'),   br: numOrNull('f-br'),
+    target: document.getElementById('f-target').value.trim(),
+    orig:   document.getElementById('f-orig').value.trim(),
+    owner:  document.getElementById('f-owner').value.trim(),
+    pm:     document.getElementById('f-pm').value.trim(),
+    phase:  document.getElementById('f-phase').value.trim(),
+    next:   document.getElementById('f-next').value.trim(),
+    risk:   document.getElementById('f-risk').value.trim(),
+    stop:   document.getElementById('f-stop').value.trim(),
+    reco:   document.getElementById('f-reco').value.trim(),
+  };
+
+  try {
+    if (editingProjectId) {
+      await apiFetch('PUT', `/api/projects/${editingProjectId}`, payload);
+      showToast('Project updated.', 'ok');
+    } else {
+      await apiFetch('POST', '/api/projects', payload);
+      showToast('Project created.', 'ok');
+    }
+    closeProjectModal();
+    await loadProjects();
+  } catch (e) {
+    err.textContent = e.message || 'Save failed.';
+  }
+}
+
+async function deleteProject(id, name) {
+  const ok = await confirm(`Delete project "${name}"?\n\nThis cannot be undone.`);
+  if (!ok) return;
+  try {
+    await apiFetch('DELETE', `/api/projects/${id}`);
+    showToast('Project deleted.', 'ok');
+    await loadProjects();
+  } catch (e) {
+    showToast('Delete failed: ' + e.message, 'err');
+  }
+}
+
+// ── Audit ─────────────────────────────────────────────────
+async function loadAudit() {
+  const tbody = document.getElementById('audit-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">Loading…</td></tr>';
+  try {
+    const rows = await apiFetch('GET', '/api/audit');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="icon">📭</div><p>No audit entries yet.</p></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(a => {
+      const ts = a.ts ? new Date(a.ts).toLocaleString('id-ID') : '—';
+      const changes = renderChanges(a.changes);
+      return `<tr>
+        <td style="white-space:nowrap;font-size:11px;color:var(--muted)">${ts}</td>
+        <td>${esc(a.user)}</td>
+        <td><span class="audit-action action-${a.action}">${a.action.toUpperCase()}</span></td>
+        <td>${esc(a.project_name)}</td>
+        <td class="changes-list">${changes}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--red);padding:16px">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function renderChanges(ch) {
+  if (!ch || !Object.keys(ch).length) return '—';
+  return Object.entries(ch).map(([k, v]) => {
+    if (Array.isArray(v)) {
+      const [old, nw] = v;
+      if (old === null) return `<span class="chg-field">${k}</span>: → ${esc(String(nw ?? ''))}`;
+      if (nw  === null) return `<span class="chg-field">${k}</span>: ${esc(String(old ?? ''))} → deleted`;
+      return `<span class="chg-field">${k}</span>: ${esc(String(old))} → ${esc(String(nw))}`;
+    }
+    return `<span class="chg-field">${k}</span>: ${esc(String(v))}`;
+  }).join('<br>');
+}
+
+// ── Users ─────────────────────────────────────────────────
+async function loadUsers() {
+  const tbody = document.getElementById('users-tbody');
+  tbody.innerHTML = '';
+  try {
+    const users = await apiFetch('GET', '/api/users');
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td>${esc(u.email)}</td>
+        <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+        <td style="font-size:11px;color:var(--muted)">${u.created_at ? new Date(u.created_at).toLocaleDateString('id-ID') : '—'}</td>
+        <td>
+          <button class="btn-edit" onclick="openUserModal(${u.id})">Edit</button>
+          ${u.email !== userEmail
+            ? `<button class="btn-del" onclick="deleteUser(${u.id}, '${esc(u.email)}')">Del</button>`
+            : '<span style="font-size:11px;color:var(--muted)">(you)</span>'}
+        </td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    showToast('Failed to load users: ' + e.message, 'err');
+  }
+}
+
+function openUserModal(id) {
+  editingUserId = id || null;
+  document.getElementById('user-form-error').textContent = '';
+  document.getElementById('uf-email').value = '';
+  document.getElementById('uf-pw').value    = '';
+  document.getElementById('uf-role').value  = 'viewer';
+  document.getElementById('user-modal-title').textContent = id ? 'Edit User' : 'Add User';
+  document.getElementById('uf-email').disabled = !!id;
+  document.getElementById('uf-pw-hint').textContent = id
+    ? '(leave blank to keep current password)' : '(required for new user)';
+
+  if (id) {
+    const tbody = document.getElementById('users-tbody');
+    // find role from table (already loaded)
+    const rows = [...tbody.querySelectorAll('tr')];
+    // we store the user id in the edit button onclick
+    // re-fetch to get current role
+    apiFetch('GET', '/api/users').then(users => {
+      const u = users.find(x => x.id === id);
+      if (u) document.getElementById('uf-role').value = u.role;
+    }).catch(() => {});
+  }
+
+  document.getElementById('user-modal-overlay').classList.add('open');
+}
+
+function closeUserModal() {
+  document.getElementById('user-modal-overlay').classList.remove('open');
+}
+
+async function saveUser() {
+  const err = document.getElementById('user-form-error');
+  err.textContent = '';
+  const email = document.getElementById('uf-email').value.trim();
+  const pw    = document.getElementById('uf-pw').value;
+  const role  = document.getElementById('uf-role').value;
+
+  if (!editingUserId && (!email || !pw)) {
+    err.textContent = 'Email and password are required for new users.'; return;
+  }
+
+  const payload = { role };
+  if (!editingUserId) { payload.email = email; payload.password = pw; }
+  if (editingUserId && pw) payload.password = pw;
+
+  try {
+    if (editingUserId) {
+      await apiFetch('PUT', `/api/users/${editingUserId}`, payload);
+      showToast('User updated.', 'ok');
+    } else {
+      await apiFetch('POST', '/api/users', payload);
+      showToast('User created.', 'ok');
+    }
+    closeUserModal();
+    loadUsers();
+  } catch (e) {
+    err.textContent = e.message || 'Save failed.';
+  }
+}
+
+async function deleteUser(id, email) {
+  const ok = await confirm(`Delete user "${email}"?`);
+  if (!ok) return;
+  try {
+    await apiFetch('DELETE', `/api/users/${id}`);
+    showToast('User deleted.', 'ok');
+    loadUsers();
+  } catch (e) {
+    showToast('Delete failed: ' + e.message, 'err');
+  }
+}
+
+// ── Confirm dialog ────────────────────────────────────────
+function confirm(msg) {
+  return new Promise(resolve => {
+    document.getElementById('confirm-msg').textContent = msg;
+    document.getElementById('confirm-overlay').classList.add('open');
+    confirmResolve = (val) => {
+      document.getElementById('confirm-overlay').classList.remove('open');
+      resolve(val);
+    };
+  });
+}
+
+// ── Toast ─────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 3000);
+}
+
+// ── API helper ────────────────────────────────────────────
+async function apiFetch(method, url, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+  };
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (body)  opts.body = JSON.stringify(body);
+
+  const res = await fetch(API + url, opts);
+
+  if (res.status === 401) {
+    token = '';
+    localStorage.removeItem('pmo_token');
+    location.reload();
+    throw new Error('Session expired');
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+// ── Detail drawer ─────────────────────────────────────────
+let detailProjectId = null;
+
+function openDetail(id) {
+  const p = projects.find(x => x.id === id);
+  if (!p) return;
+  detailProjectId = id;
+
+  document.getElementById('dd-name').textContent = p.name;
+  document.getElementById('dd-status-badge').innerHTML = statusBadge(p.status);
+  document.getElementById('dd-group-badge').innerHTML =
+    `<span class="grp-badge">${esc(p.group)}</span>`;
+  document.getElementById('dd-nature').textContent = p.nature || '';
+
+  // Pie charts
+  document.getElementById('dd-pie-row').innerHTML =
+    makePieChart('Timeline Realization vs Target', p.real, p.tl, 'timeline') +
+    makePieChart('Budget Realization vs Target',   p.bo,   p.br, 'budget');
+
+  // Text fields
+  setDetail('dd-target', p.target);
+  setDetail('dd-orig',   p.orig);
+  setDetail('dd-owner',  p.owner);
+  setDetail('dd-pm',     p.pm);
+  setDetail('dd-phase',  p.phase);
+  setDetail('dd-next',   p.next);
+  setDetail('dd-risk',   p.risk);
+  setDetail('dd-stop',   p.stop);
+  setDetail('dd-reco',   p.reco);
+
+  // Edit button only for editor/admin
+  document.getElementById('dd-edit-btn').style.display =
+    userRole !== 'viewer' ? 'inline-block' : 'none';
+
+  document.getElementById('detail-overlay').classList.add('open');
+}
+
+function makePieChart(title, realVal, targetVal, type) {
+  const R = 46, CX = 60, CY = 60;
+  const C = 2 * Math.PI * R;
+
+  const hasData = realVal !== null && realVal !== undefined
+                && targetVal !== null && targetVal !== undefined;
+
+  if (!hasData) {
+    return `<div class="pie-chart-card">
+      <div class="pie-title">${title}</div>
+      <div class="pie-na">No data available</div>
+    </div>`;
+  }
+
+  const r = Math.min(parseFloat(realVal)   || 0, 100);
+  const t = Math.min(parseFloat(targetVal) || 0, 100);
+  const rDash = (r / 100) * C;
+  const tDash = (t / 100) * C;
+  const rotate = 'rotate(-90 60 60)';
+
+  // Realization arc: green = on/ahead, orange = within 15% below, red = far behind
+  const rColor = r >= t ? '#16a34a' : r >= t * 0.85 ? '#ea580c' : '#dc2626';
+  // Target arc: always a solid slate-blue so it's clearly distinct from realization
+  const tColor = '#6366f1';
+
+  const diff = Math.abs(r - t).toFixed(0);
+
+  // Gap label — different wording per chart type
+  let diffLabel, diffColor;
+  if (type === 'budget') {
+    if (r === t)      { diffLabel = 'On budget';              diffColor = '#16a34a'; }
+    else if (r < t)   { diffLabel = `${diff}% below budget`;  diffColor = '#ea580c'; }
+    else              { diffLabel = `${diff}% over budget`;   diffColor = '#dc2626'; }
+  } else {
+    // timeline
+    if (r === t)      { diffLabel = 'On track';               diffColor = '#16a34a'; }
+    else if (r >= t)  { diffLabel = `${diff}% ahead`;         diffColor = '#16a34a'; }
+    else              { diffLabel = `${diff}% behind`;        diffColor = r >= t * 0.85 ? '#ea580c' : '#dc2626'; }
+  }
+
+  return `<div class="pie-chart-card">
+    <div class="pie-title">${title}</div>
+    <svg viewBox="0 0 120 120" width="140" height="140" style="overflow:visible">
+      <!-- full track -->
+      <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="#e5e7eb" stroke-width="14"/>
+      <!-- target arc — thick, slate-indigo, behind realization -->
+      <circle cx="${CX}" cy="${CY}" r="${R}" fill="none"
+        stroke="${tColor}" stroke-width="13" stroke-linecap="butt"
+        stroke-dasharray="${tDash} ${C - tDash}"
+        transform="${rotate}"/>
+      <!-- realization arc — slightly thinner, on top -->
+      <circle cx="${CX}" cy="${CY}" r="${R}" fill="none"
+        stroke="${rColor}" stroke-width="8" stroke-linecap="round"
+        stroke-dasharray="${rDash} ${C - rDash}"
+        transform="${rotate}"/>
+      <!-- center text -->
+      <text x="60" y="56" text-anchor="middle" fill="${rColor}"
+        font-size="17" font-weight="700" font-family="Segoe UI,sans-serif">${r}%</text>
+      <text x="60" y="70" text-anchor="middle" fill="#9ca3af"
+        font-size="10" font-family="Segoe UI,sans-serif">of ${t}% target</text>
+    </svg>
+    <div style="font-size:11px;font-weight:700;color:${diffColor};margin-top:2px">${diffLabel}</div>
+    <div class="pie-legend">
+      <div class="pie-leg-item"><span class="pie-dot" style="background:${rColor}"></span> Realization</div>
+      <div class="pie-leg-item"><span class="pie-dot" style="background:${tColor}"></span> Target</div>
+    </div>
+  </div>`;
+}
+
+function setDetail(id, val) {
+  const el = document.getElementById(id);
+  if (val && String(val).trim()) {
+    el.textContent = val;
+    el.className = 'detail-val';
+  } else {
+    el.textContent = '—';
+    el.className = 'detail-val empty';
+  }
+}
+
+function closeDetail(e) {
+  // close only when clicking the backdrop, not the drawer itself
+  if (e.target === document.getElementById('detail-overlay')) {
+    closeDetailDirect();
+  }
+}
+
+function closeDetailDirect() {
+  document.getElementById('detail-overlay').classList.remove('open');
+}
+
+function editFromDetail() {
+  closeDetailDirect();
+  openProjectModal(detailProjectId);
+}
+
+// ── Utility ───────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

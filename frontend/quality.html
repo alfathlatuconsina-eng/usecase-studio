@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Service Quality — Projects Studio Use-Case</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #f0f4f8; min-height: 100vh;
+    display: flex; flex-direction: column; color: #1e2329;
+  }
+  .site-header {
+    background: #1a3c6b; color: #fff;
+    padding: 14px 40px;
+    display: flex; align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.2);
+  }
+  .header-brand { display: flex; align-items: center; gap: 10px; }
+  .header-brand-bar { width: 4px; height: 28px; background: #e8a020; border-radius: 2px; }
+  .header-brand-text .top { font-size: 15px; font-weight: 700; }
+  .header-brand-text .bot { font-size: 10px; letter-spacing: 1.5px; color: rgba(255,255,255,.5); text-transform: uppercase; }
+  @media (max-width: 600px) {
+    .site-header { padding: 12px 20px; }
+    .coming-soon-box { padding: 40px 24px; }
+    .cs-title { font-size: 22px; }
+  }
+  .main {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 40px 20px;
+  }
+  .coming-soon-box {
+    background: #fff; border-radius: 20px;
+    padding: 60px 50px; text-align: center;
+    box-shadow: 0 8px 40px rgba(0,0,0,.1);
+    max-width: 480px; width: 100%;
+    border-top: 6px solid #7c3aed;
+  }
+  .cs-icon { font-size: 64px; margin-bottom: 20px; }
+  .cs-module {
+    font-size: 11px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: #7c3aed; margin-bottom: 10px;
+  }
+  .cs-title {
+    font-size: 28px; font-weight: 800; color: #1a3c6b;
+    margin-bottom: 14px;
+  }
+  .cs-desc {
+    font-size: 14px; color: #6b7280; line-height: 1.7;
+    margin-bottom: 32px;
+  }
+  .cs-badge {
+    display: inline-block; background: #faf5ff;
+    color: #7c3aed; border: 1px solid #ddd6fe;
+    padding: 8px 20px; border-radius: 20px;
+    font-size: 13px; font-weight: 700; margin-bottom: 32px;
+    letter-spacing: .5px;
+  }
+  .cs-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #1a3c6b; font-size: 13px; font-weight: 600;
+    text-decoration: none; padding: 10px 22px;
+    border: 1px solid #dde1e7; border-radius: 8px;
+    transition: background .15s;
+  }
+  .cs-back:hover { background: #f0f4f8; }
+  .site-footer {
+    text-align: center; padding: 16px;
+    font-size: 11px; color: #9ca3af;
+    border-top: 1px solid #e5e7eb; background: #fff;
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-brand">
+    <div class="header-brand-bar"></div>
+    <div class="header-brand-text">
+      <div class="top">Alfath Latuconsina</div>
+      <div class="bot">Projects Studio</div>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+  <div class="coming-soon-box">
+    <div class="cs-icon">⭐</div>
+    <div class="cs-module">Module 3</div>
+    <div class="cs-title">Service Quality</div>
+    <div class="cs-desc">
+      This module is currently under development. It will allow you to review service performance,
+      customer experience, service standards, and improvement actions.
+    </div>
+    <div class="cs-badge">🚧 &nbsp; Coming Soon</div>
+    <br>
+    <a href="/" class="cs-back">← Back to Home</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  © 2026 Alfath Latuconsina &nbsp;·&nbsp; Projects Studio Use-Case &nbsp;·&nbsp; Confidential — Internal Use Only
+</footer>
+
+</body>
+</html>
