@@ -3,105 +3,1117 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>People Development — Projects Studio Use-Case</title>
+<title>People Development — PMO Dashboard</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    background: #f0f4f8; min-height: 100vh;
-    display: flex; flex-direction: column; color: #1e2329;
-  }
-  .site-header {
-    background: #1a3c6b; color: #fff;
-    padding: 14px 40px;
-    display: flex; align-items: center;
-    box-shadow: 0 2px 8px rgba(0,0,0,.2);
-  }
-  .header-brand { display: flex; align-items: center; gap: 10px; }
-  .header-brand-bar { width: 4px; height: 28px; background: #e8a020; border-radius: 2px; }
-  .header-brand-text .top { font-size: 15px; font-weight: 700; }
-  .header-brand-text .bot { font-size: 10px; letter-spacing: 1.5px; color: rgba(255,255,255,.5); text-transform: uppercase; }
-  @media (max-width: 600px) {
-    .site-header { padding: 12px 20px; }
-    .coming-soon-box { padding: 40px 24px; }
-    .cs-title { font-size: 22px; }
-  }
-  .main {
-    flex: 1; display: flex; align-items: center; justify-content: center;
-    padding: 40px 20px;
-  }
-  .coming-soon-box {
-    background: #fff; border-radius: 20px;
-    padding: 60px 50px; text-align: center;
-    box-shadow: 0 8px 40px rgba(0,0,0,.1);
-    max-width: 480px; width: 100%;
-    border-top: 6px solid #0d9488;
-  }
-  .cs-icon { font-size: 64px; margin-bottom: 20px; }
-  .cs-module {
-    font-size: 11px; font-weight: 700; letter-spacing: 2px;
-    text-transform: uppercase; color: #0d9488; margin-bottom: 10px;
-  }
-  .cs-title {
-    font-size: 28px; font-weight: 800; color: #1a3c6b;
-    margin-bottom: 14px;
-  }
-  .cs-desc {
-    font-size: 14px; color: #6b7280; line-height: 1.7;
-    margin-bottom: 32px;
-  }
-  .cs-badge {
-    display: inline-block; background: #f0fdf4;
-    color: #0d9488; border: 1px solid #a7f3d0;
-    padding: 8px 20px; border-radius: 20px;
-    font-size: 13px; font-weight: 700; margin-bottom: 32px;
-    letter-spacing: .5px;
-  }
-  .cs-back {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: #1a3c6b; font-size: 13px; font-weight: 600;
-    text-decoration: none; padding: 10px 22px;
-    border: 1px solid #dde1e7; border-radius: 8px;
-    transition: background .15s;
-  }
-  .cs-back:hover { background: #f0f4f8; }
-  .site-footer {
-    text-align: center; padding: 16px;
-    font-size: 11px; color: #9ca3af;
-    border-top: 1px solid #e5e7eb; background: #fff;
-  }
+/* ── Reset & CSS vars ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary:   #1a3c6b;
+  --accent:    #e8a020;
+  --teal:      #0d9488;
+  --green:     #1a7a4a;
+  --red:       #c0392b;
+  --orange:    #e67e22;
+  --blue:      #2980b9;
+  --gray-bg:   #f4f6f9;
+  --gray-line: #dde1e7;
+  --text:      #1e2329;
+  --muted:     #6b7280;
+  --white:     #ffffff;
+  --sidebar-w: 220px;
+  --header-h:  56px;
+}
+body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--gray-bg);
+       color: var(--text); font-size: 13px; }
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; font-size: 13px; }
+
+/* ── Login page ─────────────────────────────────────────────────────────── */
+#login-page {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; background: #0d0d0d;
+}
+.login-box {
+  background: #1a1a1a; border: 1px solid #2e2e2e;
+  border-radius: 14px; padding: 44px 40px 36px;
+  width: 420px; box-shadow: 0 24px 64px rgba(0,0,0,.6);
+}
+.login-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+.login-logo-bar { width: 4px; height: 36px; background: var(--accent); border-radius: 2px; flex-shrink: 0; }
+.login-logo-text .brand { font-size: 18px; font-weight: 700; color: #fff; line-height: 1.1; }
+.login-logo-text .sub { font-size: 10px; letter-spacing: 2px; color: #7a7a7a; text-transform: uppercase; margin-top: 2px; }
+.login-heading { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.login-sub { font-size: 13px; color: #6b6b6b; margin-bottom: 28px; }
+.login-box label { display: block; font-size: 10px; font-weight: 700; color: #6b6b6b;
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; margin-top: 18px; }
+.login-box input { width: 100%; padding: 11px 14px; background: #111; border: 1px solid #2e2e2e;
+  border-radius: 7px; font-size: 14px; color: #fff; outline: none; transition: border-color .15s; }
+.login-box input::placeholder { color: #444; }
+.login-box input:focus { border-color: var(--accent); }
+#login-error { color: #e05252; font-size: 12px; margin-top: 10px; min-height: 16px; }
+.btn-primary { width: 100%; padding: 13px; margin-top: 24px; background: var(--accent);
+  color: #1a0f00; border: none; border-radius: 7px; font-size: 15px; font-weight: 700;
+  letter-spacing: .2px; transition: background .15s, transform .1s; }
+.btn-primary:hover  { background: #f0b030; }
+.btn-primary:active { transform: scale(.98); }
+.login-footer { text-align: center; margin-top: 22px; font-size: 11px; color: #3a3a3a; line-height: 1.5; }
+
+/* ── App shell ──────────────────────────────────────────────────────────── */
+#app { display: none; min-height: 100vh; }
+
+/* Header */
+.app-header {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--header-h);
+  background: var(--primary); color: #fff;
+  display: flex; align-items: center; padding: 0 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.2); z-index: 100;
+}
+.header-brand { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+.header-brand span { color: var(--accent); }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.header-user { font-size: 12px; opacity: .85; }
+.header-role-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px;
+  background: rgba(255,255,255,.18); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.btn-logout { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3);
+  border-radius: 5px; padding: 5px 12px; font-size: 12px; transition: background .15s; }
+.btn-logout:hover { background: rgba(255,255,255,.28); }
+
+/* Sidebar */
+.app-sidebar {
+  position: fixed; top: var(--header-h); left: 0; bottom: 0;
+  width: var(--sidebar-w); background: var(--primary);
+  padding: 18px 0; overflow-y: auto; z-index: 90;
+}
+.sidebar-section { font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: rgba(255,255,255,.4); padding: 14px 20px 6px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px;
+  color: rgba(255,255,255,.75); transition: background .12s, color .12s;
+  font-size: 13px; border-left: 3px solid transparent; }
+.nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+.nav-item.active { background: rgba(255,255,255,.12); color: #fff; border-left-color: var(--accent); }
+.nav-item.disabled { opacity: .45; pointer-events: none; }
+.nav-icon { font-size: 15px; width: 18px; text-align: center; }
+
+/* Main */
+.app-main { margin-left: var(--sidebar-w); margin-top: var(--header-h);
+  padding: 24px; min-height: calc(100vh - var(--header-h)); }
+
+/* Page title */
+.page-title { font-size: 18px; font-weight: 700; color: var(--primary);
+  margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
+.page-title small { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+/* ── Tabs ───────────────────────────────────────────────────────────────── */
+.tabs-bar { display: flex; gap: 2px; margin-bottom: 20px;
+  border-bottom: 2px solid var(--gray-line); }
+.tab-btn { padding: 9px 20px; background: none; border: none; font-size: 13px; font-weight: 600;
+  color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -2px;
+  transition: color .15s, border-color .15s; }
+.tab-btn:hover { color: var(--primary); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── KPI Cards ──────────────────────────────────────────────────────────── */
+.cards { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+.card { background: var(--white); border-radius: 8px; padding: 16px 20px;
+  flex: 1 1 160px; box-shadow: 0 1px 4px rgba(0,0,0,.07); border-left: 4px solid var(--gray-line); }
+.card-label { font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .5px; margin-bottom: 6px; }
+.card-value { font-size: 26px; font-weight: 700; color: var(--primary); }
+.card-sub   { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.card.blue  { border-left-color: var(--blue); }
+.card.green { border-left-color: var(--green); }
+.card.orange{ border-left-color: var(--orange); }
+.card.red   { border-left-color: var(--red); }
+.card.teal  { border-left-color: var(--teal); }
+
+/* ── Reminders ──────────────────────────────────────────────────────────── */
+.section-heading { font-size: 14px; font-weight: 700; color: var(--primary); margin-bottom: 12px; }
+.reminders-grid { display: flex; flex-direction: column; gap: 8px; }
+.reminder-card { padding: 12px 16px; border-radius: 8px; border-left: 4px solid;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  display: flex; align-items: center; gap: 16px; }
+.reminder-card.urgent   { border-left-color: var(--red);    background: #fff5f5; }
+.reminder-card.warning  { border-left-color: var(--orange); background: #fffbf5; }
+.reminder-card.caution  { border-left-color: #c9a500;       background: #fffef0; }
+.reminder-card.expired  { border-left-color: #9ca3af;       background: #f9fafb; }
+.reminder-info { flex: 1; min-width: 0; }
+.reminder-name { font-weight: 600; font-size: 13px; }
+.reminder-sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.reminder-days { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.reminder-days.red    { color: var(--red); }
+.reminder-days.orange { color: var(--orange); }
+.reminder-days.yellow { color: #b45309; }
+.reminder-days.gray   { color: #6b7280; }
+.no-data { color: var(--muted); font-size: 13px; padding: 28px 0; text-align: center;
+           font-style: italic; }
+
+/* ── Toolbar ────────────────────────────────────────────────────────────── */
+.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.toolbar input[type=text] { padding: 7px 12px; border: 1px solid var(--gray-line);
+  border-radius: 6px; font-size: 13px; width: 220px; outline: none; }
+.toolbar input[type=text]:focus { border-color: var(--primary); }
+.toolbar select { padding: 7px 10px; border: 1px solid var(--gray-line);
+  border-radius: 6px; font-size: 13px; outline: none; background: var(--white); }
+.btn-add { padding: 7px 16px; background: var(--primary); color: #fff; border: none;
+  border-radius: 6px; font-weight: 600; transition: background .15s; margin-left: auto; }
+.btn-add:hover { background: #254e8c; }
+
+/* ── Table ──────────────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+table { width: 100%; border-collapse: collapse; background: var(--white); font-size: 12px; }
+thead th { background: var(--primary); color: #fff; padding: 9px 10px; text-align: left;
+  font-size: 11px; font-weight: 600; white-space: nowrap; letter-spacing: .3px; }
+thead th:first-child { border-radius: 8px 0 0 0; }
+thead th:last-child  { border-radius: 0 8px 0 0; }
+tbody tr { border-bottom: 1px solid var(--gray-line); }
+tbody tr:last-child  { border-bottom: none; }
+tbody tr:hover { background: #f0f4fa; }
+tbody td { padding: 8px 10px; vertical-align: middle; }
+.empty-row td { text-align: center; color: var(--muted); padding: 30px; font-style: italic; }
+
+/* Row urgency for certs */
+tr.row-expired  { opacity: .8; }
+tr.row-expiring { background: #fffbf5; }
+
+/* Progress bar */
+.prog-wrap  { display: flex; align-items: center; gap: 6px; }
+.prog-bar   { flex: 1; min-width: 50px; height: 7px; background: #e0e4ea; border-radius: 4px; overflow: hidden; }
+.prog-fill  { height: 100%; border-radius: 4px; }
+.prog-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; }
+.badge-planned    { background: #e0f2fe; color: #075985; }
+.badge-inprogress { background: #dbeafe; color: #1e40af; }
+.badge-completed  { background: #dcfce7; color: #166534; }
+.badge-cancelled  { background: #fee2e2; color: #991b1b; }
+.badge-active     { background: #dcfce7; color: #166534; }
+.badge-expiring   { background: #ffedd5; color: #9a3412; }
+.badge-expired    { background: #f3f4f6; color: #374151; }
+.badge-renewed    { background: #e0e7ff; color: #3730a3; }
+
+/* Stars */
+.stars { color: #f59e0b; letter-spacing: 1px; }
+
+/* Action buttons */
+.btn-edit { padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  background: #e8f0fe; color: var(--primary); border: 1px solid #c7d7fd;
+  margin-right: 4px; transition: background .12s; }
+.btn-edit:hover { background: #c7d7fd; }
+.btn-del { padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  background: #fee2e2; color: var(--red); border: 1px solid #fca5a5; transition: background .12s; }
+.btn-del:hover { background: #fca5a5; }
+
+/* ── Modal ──────────────────────────────────────────────────────────────── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200;
+  align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--white); border-radius: 10px; width: 100%; max-width: 640px;
+  padding: 28px; box-shadow: 0 12px 40px rgba(0,0,0,.25); position: relative; }
+.modal-title { font-size: 16px; font-weight: 700; color: var(--primary);
+  margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--gray-line); }
+.modal-close { position: absolute; top: 16px; right: 18px; background: none; border: none;
+  font-size: 22px; color: var(--muted); line-height: 1; padding: 4px 8px; }
+.modal-close:hover { color: var(--red); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-grid .full { grid-column: 1 / -1; }
+.form-field label { display: block; font-size: 11px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+.form-field input, .form-field select, .form-field textarea {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--gray-line);
+  border-radius: 5px; font-size: 13px; font-family: inherit; outline: none; transition: border-color .15s; }
+.form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--primary); }
+.form-field textarea { resize: vertical; min-height: 56px; }
+.form-field small { color: var(--muted); font-size: 11px; margin-top: 3px; display: block; }
+.modal-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 16px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px;
+  margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--gray-line); }
+.btn-cancel { padding: 8px 18px; background: var(--white); border: 1px solid var(--gray-line);
+  border-radius: 6px; color: var(--text); transition: background .12s; }
+.btn-cancel:hover { background: var(--gray-bg); }
+.btn-save { padding: 8px 22px; background: var(--primary); color: #fff; border: none;
+  border-radius: 6px; font-weight: 600; transition: background .15s; }
+.btn-save:hover { background: #254e8c; }
+
+/* ── Confirm dialog ─────────────────────────────────────────────────────── */
+.confirm-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  z-index: 300; align-items: center; justify-content: center; }
+.confirm-overlay.open { display: flex; }
+.confirm-box { background: var(--white); border-radius: 10px; padding: 28px 32px;
+  max-width: 380px; width: 90%; box-shadow: 0 12px 40px rgba(0,0,0,.3); text-align: center; }
+.confirm-box h3 { font-size: 16px; color: var(--primary); margin-bottom: 10px; }
+.confirm-box p  { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+.confirm-btns   { display: flex; gap: 10px; justify-content: center; }
+.btn-confirm-del { padding: 8px 22px; background: var(--red); color: #fff; border: none;
+  border-radius: 6px; font-weight: 600; }
+.btn-confirm-del:hover { background: #a93226; }
 </style>
 </head>
 <body>
 
-<header class="site-header">
-  <div class="header-brand">
-    <div class="header-brand-bar"></div>
-    <div class="header-brand-text">
-      <div class="top">Alfath Latuconsina</div>
-      <div class="bot">Projects Studio</div>
+<!-- ═══════════════════════════ LOGIN PAGE ═══════════════════════════════ -->
+<div id="login-page">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-bar"></div>
+      <div class="login-logo-text">
+        <div class="brand">PMO Dashboard</div>
+        <div class="sub">People Development</div>
+      </div>
+    </div>
+    <div class="login-heading">Sign In</div>
+    <div class="login-sub">Enter your credentials to access this module.</div>
+    <label for="li-email">Email</label>
+    <input type="email" id="li-email" placeholder="you@bank.co.id" autocomplete="username">
+    <label for="li-pw">Password</label>
+    <input type="password" id="li-pw" placeholder="••••••••" autocomplete="current-password">
+    <div id="login-error"></div>
+    <button class="btn-primary" id="li-btn">Sign In</button>
+    <div class="login-footer">People Development · PMO Dashboard<br>Internal Use Only</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ APP SHELL ════════════════════════════════ -->
+<div id="app">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-brand">PMO <span>Dashboard</span></div>
+    <div class="header-right">
+      <span class="header-user" id="hdr-email"></span>
+      <span class="header-role-badge" id="hdr-role"></span>
+      <button class="btn-logout" id="btn-logout">Sign out</button>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <nav class="app-sidebar">
+    <div class="sidebar-section">Modules</div>
+    <a href="/pmo" class="nav-item">
+      <span class="nav-icon">📋</span> PMO Dashboard
+    </a>
+    <a href="/people" class="nav-item active">
+      <span class="nav-icon">👥</span> People Development
+    </a>
+    <a href="/quality" class="nav-item disabled">
+      <span class="nav-icon">✅</span> Quality
+      <small style="margin-left:4px;font-size:9px;opacity:.6">(soon)</small>
+    </a>
+  </nav>
+
+  <!-- Main content -->
+  <main class="app-main">
+
+    <div class="page-title">
+      👥 People Development
+      <small>Training · Evaluation · Certifications</small>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="tabs-bar">
+      <button class="tab-btn active" data-tab="overview">Overview</button>
+      <button class="tab-btn" data-tab="training">Training Database</button>
+      <button class="tab-btn" data-tab="evaluation">Evaluation Results</button>
+      <button class="tab-btn" data-tab="certs">Certifications &amp; Deadlines</button>
+    </div>
+
+    <!-- ── TAB: Overview ── -->
+    <div id="tab-overview" class="tab-content active">
+      <div class="cards">
+        <div class="card blue">
+          <div class="card-label">Trainings This Year</div>
+          <div class="card-value" id="kpi-total">—</div>
+          <div class="card-sub">programs recorded</div>
+        </div>
+        <div class="card green">
+          <div class="card-label">Completion Rate</div>
+          <div class="card-value" id="kpi-rate">—</div>
+          <div class="card-sub">of this year's trainings</div>
+        </div>
+        <div class="card teal">
+          <div class="card-label">Avg Reaction Score</div>
+          <div class="card-value" id="kpi-score">—</div>
+          <div class="card-sub">out of 5.0 (Kirkpatrick L1)</div>
+        </div>
+        <div class="card red">
+          <div class="card-label">Expiring ≤ 30 Days</div>
+          <div class="card-value" id="kpi-expiring">—</div>
+          <div class="card-sub">certifications / deadlines</div>
+        </div>
+      </div>
+
+      <div class="section-heading">⏰ Upcoming Deadlines &amp; Expiry Reminders</div>
+      <div class="reminders-grid" id="reminders-grid">
+        <div class="no-data">Loading…</div>
+      </div>
+    </div>
+
+    <!-- ── TAB: Training Database ── -->
+    <div id="tab-training" class="tab-content">
+      <div class="toolbar">
+        <input type="text" id="tr-search" placeholder="Search training name…" oninput="renderTraining()">
+        <select id="tr-cat" onchange="renderTraining()">
+          <option value="">All Categories</option>
+          <option>Technical</option>
+          <option>Soft Skills</option>
+          <option>Compliance</option>
+          <option>Leadership</option>
+          <option>Regulatory</option>
+        </select>
+        <select id="tr-status" onchange="renderTraining()">
+          <option value="">All Statuses</option>
+          <option>Planned</option>
+          <option>In-Progress</option>
+          <option>Completed</option>
+          <option>Cancelled</option>
+        </select>
+        <button class="btn-add editor-only" id="btn-add-tr">+ Add Training</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Training Name</th>
+              <th>Category</th>
+              <th>Method</th>
+              <th>Date</th>
+              <th>Target Pax</th>
+              <th>Actual Pax</th>
+              <th>Status</th>
+              <th>Budget / Real (Jt)</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tr-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── TAB: Evaluation Results ── -->
+    <div id="tab-evaluation" class="tab-content">
+      <div class="toolbar">
+        <button class="btn-add editor-only" id="btn-add-ev" style="margin-left:0">+ Add Evaluation</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Training Name</th>
+              <th>Reaction Score (L1, /5)</th>
+              <th>Learning Score (L2, /100)</th>
+              <th>Respondents</th>
+              <th>Notes</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ev-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── TAB: Certifications & Deadlines ── -->
+    <div id="tab-certs" class="tab-content">
+      <div class="toolbar">
+        <input type="text" id="cert-search" placeholder="Search name or holder…" oninput="renderCerts()">
+        <select id="cert-type-f" onchange="renderCerts()">
+          <option value="">All Types</option>
+          <option>Certification</option>
+          <option>Reporting</option>
+          <option>License</option>
+        </select>
+        <select id="cert-status-f" onchange="renderCerts()">
+          <option value="">All Statuses</option>
+          <option>Active</option>
+          <option>Expiring</option>
+          <option>Expired</option>
+          <option>Renewed</option>
+        </select>
+        <button class="btn-add editor-only" id="btn-add-cert">+ Add Cert / Deadline</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Holder / Team</th>
+              <th>Type</th>
+              <th>Issue Date</th>
+              <th>Expiry Date</th>
+              <th>Days Left</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="cert-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div><!-- /app -->
+
+<!-- ═══════════════════════ MODAL: Training ═══════════════════════════════ -->
+<div class="modal-overlay" id="modal-tr">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-tr')">×</button>
+    <div class="modal-title" id="tr-modal-title">Add Training</div>
+    <div class="form-grid">
+      <div class="form-field full">
+        <label>Training Name *</label>
+        <input type="text" id="tr-name">
+      </div>
+      <div class="form-field">
+        <label>Category</label>
+        <select id="tr-m-cat">
+          <option value="">— Select —</option>
+          <option>Technical</option>
+          <option>Soft Skills</option>
+          <option>Compliance</option>
+          <option>Leadership</option>
+          <option>Regulatory</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Method</label>
+        <select id="tr-m-method">
+          <option value="">— Select —</option>
+          <option>Classroom</option>
+          <option>E-Learning</option>
+          <option>Virtual</option>
+          <option>On-the-Job</option>
+          <option>Hybrid</option>
+        </select>
+      </div>
+      <div class="form-field full">
+        <label>Organizer / Provider</label>
+        <input type="text" id="tr-organizer">
+      </div>
+      <div class="form-field">
+        <label>Start Date</label>
+        <input type="date" id="tr-date-start">
+      </div>
+      <div class="form-field">
+        <label>End Date</label>
+        <input type="date" id="tr-date-end">
+      </div>
+      <div class="form-field">
+        <label>Target Participants</label>
+        <input type="number" id="tr-target-pax" min="0">
+      </div>
+      <div class="form-field">
+        <label>Actual Participants</label>
+        <input type="number" id="tr-actual-pax" min="0">
+      </div>
+      <div class="form-field">
+        <label>Budget (Juta IDR)</label>
+        <input type="number" id="tr-budget" min="0" step="0.1">
+      </div>
+      <div class="form-field">
+        <label>Realization (Juta IDR)</label>
+        <input type="number" id="tr-realization" min="0" step="0.1">
+      </div>
+      <div class="form-field">
+        <label>Status</label>
+        <select id="tr-m-status">
+          <option>Planned</option>
+          <option>In-Progress</option>
+          <option>Completed</option>
+          <option>Cancelled</option>
+        </select>
+      </div>
+      <div class="form-field full">
+        <label>Notes</label>
+        <textarea id="tr-notes"></textarea>
+      </div>
+    </div>
+    <div class="modal-error" id="tr-modal-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-tr')">Cancel</button>
+      <button class="btn-save" id="tr-save-btn">Save</button>
     </div>
   </div>
-</header>
+</div>
 
-<main class="main">
-  <div class="coming-soon-box">
-    <div class="cs-icon">👥</div>
-    <div class="cs-module">Module 2</div>
-    <div class="cs-title">People Development</div>
-    <div class="cs-desc">
-      This module is currently under development. It will provide access to learning programs,
-      talent development, competency frameworks, and capability initiatives.
+<!-- ═══════════════════════ MODAL: Evaluation ══════════════════════════════ -->
+<div class="modal-overlay" id="modal-ev">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-ev')">×</button>
+    <div class="modal-title" id="ev-modal-title">Add Evaluation Result</div>
+    <div class="form-grid">
+      <div class="form-field full">
+        <label>Training *</label>
+        <select id="ev-training-id"></select>
+      </div>
+      <div class="form-field">
+        <label>Reaction Score (1 – 5)</label>
+        <input type="number" id="ev-reaction" min="1" max="5" step="0.1" placeholder="e.g. 4.2">
+        <small>Kirkpatrick Level 1 — participant satisfaction</small>
+      </div>
+      <div class="form-field">
+        <label>Learning Score (0 – 100)</label>
+        <input type="number" id="ev-learning" min="0" max="100" step="0.5" placeholder="e.g. 78.5">
+        <small>Kirkpatrick Level 2 — knowledge test average</small>
+      </div>
+      <div class="form-field">
+        <label>Respondents</label>
+        <input type="number" id="ev-respondents" min="0">
+      </div>
+      <div class="form-field full">
+        <label>Notes</label>
+        <textarea id="ev-notes"></textarea>
+      </div>
     </div>
-    <div class="cs-badge">🚧 &nbsp; Coming Soon</div>
-    <br>
-    <a href="/" class="cs-back">← Back to Home</a>
+    <div class="modal-error" id="ev-modal-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-ev')">Cancel</button>
+      <button class="btn-save" id="ev-save-btn">Save</button>
+    </div>
   </div>
-</main>
+</div>
 
-<footer class="site-footer">
-  © 2026 Alfath Latuconsina &nbsp;·&nbsp; Projects Studio Use-Case &nbsp;·&nbsp; Confidential — Internal Use Only
-</footer>
+<!-- ═══════════════════════ MODAL: Certification ═══════════════════════════ -->
+<div class="modal-overlay" id="modal-cert">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-cert')">×</button>
+    <div class="modal-title" id="cert-modal-title">Add Certification / Deadline</div>
+    <div class="form-grid">
+      <div class="form-field full">
+        <label>Name *</label>
+        <input type="text" id="cert-name">
+      </div>
+      <div class="form-field">
+        <label>Holder / Team</label>
+        <input type="text" id="cert-holder">
+      </div>
+      <div class="form-field">
+        <label>Type</label>
+        <select id="cert-m-type">
+          <option>Certification</option>
+          <option>Reporting</option>
+          <option>License</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label>Issue Date</label>
+        <input type="date" id="cert-issue">
+      </div>
+      <div class="form-field">
+        <label>Expiry Date *</label>
+        <input type="date" id="cert-expiry">
+      </div>
+      <div class="form-field">
+        <label>Status</label>
+        <select id="cert-m-status">
+          <option>Active</option>
+          <option>Expiring</option>
+          <option>Expired</option>
+          <option>Renewed</option>
+        </select>
+      </div>
+      <div class="form-field full">
+        <label>Notes</label>
+        <textarea id="cert-notes"></textarea>
+      </div>
+    </div>
+    <div class="modal-error" id="cert-modal-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-cert')">Cancel</button>
+      <button class="btn-save" id="cert-save-btn">Save</button>
+    </div>
+  </div>
+</div>
 
+<!-- ═══════════════════════ CONFIRM DIALOG ════════════════════════════════ -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <h3 id="confirm-title">Delete item?</h3>
+    <p id="confirm-msg">This action cannot be undone.</p>
+    <div class="confirm-btns">
+      <button class="btn-cancel" onclick="closeConfirm()">Cancel</button>
+      <button class="btn-confirm-del" id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ JAVASCRIPT ═══════════════════════════════ -->
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
+const S = {
+  token:          localStorage.getItem('pmo_token') || '',
+  role:           localStorage.getItem('pmo_role')  || '',
+  email:          localStorage.getItem('pmo_email') || '',
+  trainings:      [],
+  evaluations:    [],
+  certifications: [],
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtDate(s) {
+  if (!s) return '—';
+  try {
+    return new Date(s + 'T00:00:00').toLocaleDateString('id-ID', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    });
+  } catch { return s; }
+}
+
+function numOrNull(id) {
+  const v = document.getElementById(id).value;
+  if (v === '') return null;
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+function authHdr() {
+  return { 'Authorization': 'Bearer ' + S.token, 'Content-Type': 'application/json' };
+}
+
+function canEdit() { return S.role === 'admin' || S.role === 'editor'; }
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  const btn = document.getElementById('li-btn');
+  btn.textContent = 'Signing in…';
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email:    document.getElementById('li-email').value.trim(),
+        password: document.getElementById('li-pw').value,
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) { errEl.textContent = d.error || 'Login failed.'; return; }
+    S.token = d.token; S.role = d.role; S.email = d.email;
+    localStorage.setItem('pmo_token', d.token);
+    localStorage.setItem('pmo_role',  d.role);
+    localStorage.setItem('pmo_email', d.email);
+    showApp();
+  } catch(e) {
+    errEl.textContent = 'Connection error — is the server running?';
+  } finally {
+    btn.textContent = 'Sign In';
+  }
+}
+
+function doLogout() {
+  ['pmo_token','pmo_role','pmo_email'].forEach(k => localStorage.removeItem(k));
+  location.reload();
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function init() {
+  if (S.token) {
+    try {
+      const r = await fetch('/api/me', { headers: authHdr() });
+      if (r.ok) { const d = await r.json(); S.role = d.role; S.email = d.email; }
+      else { S.token = ''; localStorage.removeItem('pmo_token'); }
+    } catch { /* offline — will fail later at loadAll */ }
+  }
+  if (S.token) showApp(); else showLogin();
+}
+
+function showLogin() {
+  document.getElementById('login-page').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+async function showApp() {
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('hdr-email').textContent = S.email;
+  document.getElementById('hdr-role').textContent  = S.role;
+  document.querySelectorAll('.editor-only').forEach(el => {
+    el.style.display = canEdit() ? '' : 'none';
+  });
+  await loadAll();
+}
+
+async function loadAll() {
+  try {
+    const [trR, evR, ceR, sumR, remR] = await Promise.all([
+      fetch('/api/people/trainings',      { headers: authHdr() }),
+      fetch('/api/people/evaluations',    { headers: authHdr() }),
+      fetch('/api/people/certifications', { headers: authHdr() }),
+      fetch('/api/people/summary',        { headers: authHdr() }),
+      fetch('/api/people/reminders',      { headers: authHdr() }),
+    ]);
+    S.trainings      = await trR.json();
+    S.evaluations    = await evR.json();
+    S.certifications = await ceR.json();
+    renderKPIs(await sumR.json());
+    renderReminders(await remR.json());
+    renderTraining();
+    renderEvaluation();
+    renderCerts();
+  } catch(e) {
+    console.error('loadAll error:', e);
+  }
+}
+
+// ── KPIs ───────────────────────────────────────────────────────────────────
+function renderKPIs(sum) {
+  document.getElementById('kpi-total').textContent    = sum.total_trainings_year ?? '—';
+  document.getElementById('kpi-rate').textContent     = sum.completion_rate != null ? sum.completion_rate + '%' : '—';
+  document.getElementById('kpi-score').textContent    = sum.avg_reaction_score != null ? sum.avg_reaction_score.toFixed(2) : '—';
+  document.getElementById('kpi-expiring').textContent = sum.expiring_certs_30d ?? '—';
+}
+
+// ── Reminders ──────────────────────────────────────────────────────────────
+function renderReminders(items) {
+  const grid = document.getElementById('reminders-grid');
+  if (!items.length) {
+    grid.innerHTML = '<div class="no-data">✅ No deadlines or expiries within the next 60 days.</div>';
+    return;
+  }
+  grid.innerHTML = items.map(c => {
+    const days = c.days_left;
+    let cardCls, badgeCls, label;
+    if (days == null)   { cardCls = 'expired';  badgeCls = 'gray';   label = 'Unknown date'; }
+    else if (days < 0)  { cardCls = 'expired';  badgeCls = 'gray';   label = 'Expired ' + Math.abs(days) + 'd ago'; }
+    else if (days === 0){ cardCls = 'urgent';   badgeCls = 'red';    label = 'Due TODAY'; }
+    else if (days <= 7) { cardCls = 'urgent';   badgeCls = 'red';    label = days + ' days left'; }
+    else if (days <= 30){ cardCls = 'warning';  badgeCls = 'orange'; label = days + ' days left'; }
+    else                { cardCls = 'caution';  badgeCls = 'yellow'; label = days + ' days left'; }
+    return `<div class="reminder-card ${cardCls}">
+      <div class="reminder-info">
+        <div class="reminder-name">${esc(c.name)}</div>
+        <div class="reminder-sub">${esc(c.holder || '—')} &middot; ${esc(c.cert_type)} &middot; Expiry: ${fmtDate(c.expiry_date)}</div>
+      </div>
+      <div class="reminder-days ${badgeCls}">${label}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Training table ─────────────────────────────────────────────────────────
+function renderTraining() {
+  const q  = (document.getElementById('tr-search').value || '').toLowerCase();
+  const cat = document.getElementById('tr-cat').value;
+  const st  = document.getElementById('tr-status').value;
+  const rows = S.trainings.filter(t =>
+    (!q   || t.name.toLowerCase().includes(q) || (t.organizer||'').toLowerCase().includes(q)) &&
+    (!cat || t.category === cat) &&
+    (!st  || t.status === st)
+  );
+  const tbody = document.getElementById('tr-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="10">No trainings match the current filter.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map((t, i) => {
+    const pct = t.target_pax ? Math.min(Math.round((t.actual_pax || 0) / t.target_pax * 100), 100) : null;
+    const budStr = t.budget != null
+      ? `${t.realization != null ? t.realization : '—'} / ${t.budget}`
+      : '—';
+    const paxCell = t.actual_pax != null
+      ? (pct != null
+          ? `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--green)"></div></div><span class="prog-label">${t.actual_pax}</span></div>`
+          : t.actual_pax)
+      : '—';
+    const dateCell = t.date_start
+      ? (t.date_end && t.date_end !== t.date_start
+          ? `${fmtDate(t.date_start)}<br><span style="color:var(--muted);font-size:10px">→ ${fmtDate(t.date_end)}</span>`
+          : fmtDate(t.date_start))
+      : '—';
+    const actions = canEdit()
+      ? `<button class="btn-edit" onclick="openTrModal(${t.id})">Edit</button><button class="btn-del" onclick="askDel('tr',${t.id},${JSON.stringify(t.name)})">Del</button>`
+      : '—';
+    return `<tr>
+      <td>${i+1}</td>
+      <td><strong>${esc(t.name)}</strong>${t.organizer ? `<br><span style="color:var(--muted);font-size:11px">${esc(t.organizer)}</span>` : ''}</td>
+      <td>${esc(t.category || '—')}</td>
+      <td>${esc(t.method || '—')}</td>
+      <td style="white-space:nowrap">${dateCell}</td>
+      <td style="text-align:right">${t.target_pax ?? '—'}</td>
+      <td>${paxCell}</td>
+      <td>${trBadge(t.status)}</td>
+      <td style="text-align:right;white-space:nowrap">${budStr}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Evaluation table ───────────────────────────────────────────────────────
+function renderEvaluation() {
+  const tbody = document.getElementById('ev-tbody');
+  if (!S.evaluations.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No evaluation records yet.</td></tr>';
+    return;
+  }
+  const trMap = Object.fromEntries(S.trainings.map(t => [t.id, t.name]));
+  tbody.innerHTML = S.evaluations.map((e, i) => {
+    const reactionCell = e.reaction_score != null
+      ? `<span class="stars">${stars(e.reaction_score)}</span> <span style="color:var(--muted);font-size:11px">(${e.reaction_score.toFixed(2)})</span>`
+      : '—';
+    const learningCell = e.learning_score != null
+      ? `<div class="prog-wrap"><div class="prog-bar"><div class="prog-fill" style="width:${e.learning_score}%;background:var(--teal)"></div></div><span class="prog-label">${e.learning_score.toFixed(1)}</span></div>`
+      : '—';
+    const actions = canEdit()
+      ? `<button class="btn-edit" onclick="openEvModal(${e.id})">Edit</button><button class="btn-del" onclick="askDel('ev',${e.id},'evaluation record')">Del</button>`
+      : '—';
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${esc(trMap[e.training_id] || '(unknown training)')}</td>
+      <td>${reactionCell}</td>
+      <td>${learningCell}</td>
+      <td style="text-align:right">${e.respondents ?? '—'}</td>
+      <td style="max-width:220px;color:var(--muted)">${esc(e.notes)}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Certs table ────────────────────────────────────────────────────────────
+function renderCerts() {
+  const q   = (document.getElementById('cert-search').value || '').toLowerCase();
+  const typ = document.getElementById('cert-type-f').value;
+  const st  = document.getElementById('cert-status-f').value;
+  const rows = S.certifications.filter(c =>
+    (!q   || c.name.toLowerCase().includes(q) || (c.holder||'').toLowerCase().includes(q)) &&
+    (!typ || c.cert_type === typ) &&
+    (!st  || c.status === st)
+  );
+  const tbody = document.getElementById('cert-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No records match the current filter.</td></tr>';
+    return;
+  }
+  const today = new Date(); today.setHours(0,0,0,0);
+  tbody.innerHTML = rows.map((c, i) => {
+    let daysCell = '—', rowCls = '';
+    if (c.expiry_date) {
+      const diff = Math.round((new Date(c.expiry_date + 'T00:00:00') - today) / 86400000);
+      if (diff < 0)       { daysCell = `<span style="color:#9ca3af">Exp. ${Math.abs(diff)}d ago</span>`; rowCls = 'row-expired'; }
+      else if (diff <= 7) { daysCell = `<strong style="color:var(--red)">${diff}d</strong>`;             rowCls = 'row-expiring'; }
+      else if (diff <= 30){ daysCell = `<strong style="color:var(--orange)">${diff}d</strong>`;          rowCls = 'row-expiring'; }
+      else if (diff <= 60){ daysCell = `<span style="color:#b45309">${diff}d</span>`; }
+      else                { daysCell = `${diff}d`; }
+    }
+    const actions = canEdit()
+      ? `<button class="btn-edit" onclick="openCertModal(${c.id})">Edit</button><button class="btn-del" onclick="askDel('cert',${c.id},${JSON.stringify(c.name)})">Del</button>`
+      : '—';
+    return `<tr class="${rowCls}">
+      <td>${i+1}</td>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${esc(c.holder || '—')}</td>
+      <td><span style="font-size:11px;color:var(--muted)">${esc(c.cert_type)}</span></td>
+      <td>${fmtDate(c.issue_date)}</td>
+      <td>${fmtDate(c.expiry_date)}</td>
+      <td style="text-align:center">${daysCell}</td>
+      <td>${certBadge(c.status)}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Badge & star helpers ───────────────────────────────────────────────────
+function trBadge(s) {
+  const m = { Planned:'badge-planned', 'In-Progress':'badge-inprogress', Completed:'badge-completed', Cancelled:'badge-cancelled' };
+  return `<span class="badge ${m[s]||''}">${esc(s)}</span>`;
+}
+function certBadge(s) {
+  const m = { Active:'badge-active', Expiring:'badge-expiring', Expired:'badge-expired', Renewed:'badge-renewed' };
+  return `<span class="badge ${m[s]||''}">${esc(s)}</span>`;
+}
+function stars(score) {
+  const full = Math.floor(score);
+  const half = (score - full) >= 0.5 ? 1 : 0;
+  return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(5 - full - half);
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tab));
+  });
+});
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+// ── Training modal ─────────────────────────────────────────────────────────
+let editTrId = null;
+function openTrModal(id = null) {
+  editTrId = id;
+  document.getElementById('tr-modal-title').textContent = id ? 'Edit Training' : 'Add Training';
+  document.getElementById('tr-modal-err').textContent = '';
+  const t = id ? S.trainings.find(x => x.id === id) : null;
+  document.getElementById('tr-name').value       = t?.name || '';
+  document.getElementById('tr-m-cat').value      = t?.category || '';
+  document.getElementById('tr-m-method').value   = t?.method || '';
+  document.getElementById('tr-organizer').value  = t?.organizer || '';
+  document.getElementById('tr-date-start').value = t?.date_start || '';
+  document.getElementById('tr-date-end').value   = t?.date_end || '';
+  document.getElementById('tr-target-pax').value = t?.target_pax ?? '';
+  document.getElementById('tr-actual-pax').value = t?.actual_pax ?? '';
+  document.getElementById('tr-budget').value     = t?.budget ?? '';
+  document.getElementById('tr-realization').value= t?.realization ?? '';
+  document.getElementById('tr-m-status').value   = t?.status || 'Planned';
+  document.getElementById('tr-notes').value      = t?.notes || '';
+  openModal('modal-tr');
+}
+async function saveTr() {
+  const errEl = document.getElementById('tr-modal-err');
+  errEl.textContent = '';
+  const body = {
+    name:        document.getElementById('tr-name').value.trim(),
+    category:    document.getElementById('tr-m-cat').value,
+    method:      document.getElementById('tr-m-method').value,
+    organizer:   document.getElementById('tr-organizer').value.trim(),
+    date_start:  document.getElementById('tr-date-start').value,
+    date_end:    document.getElementById('tr-date-end').value,
+    target_pax:  numOrNull('tr-target-pax'),
+    actual_pax:  numOrNull('tr-actual-pax'),
+    budget:      numOrNull('tr-budget'),
+    realization: numOrNull('tr-realization'),
+    status:      document.getElementById('tr-m-status').value,
+    notes:       document.getElementById('tr-notes').value.trim(),
+  };
+  if (!body.name) { errEl.textContent = 'Training name is required.'; return; }
+  const r = await fetch(
+    editTrId ? `/api/people/trainings/${editTrId}` : '/api/people/trainings',
+    { method: editTrId ? 'PUT' : 'POST', headers: authHdr(), body: JSON.stringify(body) }
+  );
+  const d = await r.json();
+  if (!r.ok) { errEl.textContent = d.error || 'Save failed.'; return; }
+  closeModal('modal-tr');
+  await loadAll();
+}
+
+// ── Evaluation modal ───────────────────────────────────────────────────────
+let editEvId = null;
+function openEvModal(id = null) {
+  editEvId = id;
+  document.getElementById('ev-modal-title').textContent = id ? 'Edit Evaluation' : 'Add Evaluation Result';
+  document.getElementById('ev-modal-err').textContent = '';
+  const sel = document.getElementById('ev-training-id');
+  sel.innerHTML = S.trainings.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  const e = id ? S.evaluations.find(x => x.id === id) : null;
+  if (e) sel.value = e.training_id;
+  document.getElementById('ev-reaction').value    = e?.reaction_score ?? '';
+  document.getElementById('ev-learning').value    = e?.learning_score ?? '';
+  document.getElementById('ev-respondents').value = e?.respondents ?? '';
+  document.getElementById('ev-notes').value       = e?.notes || '';
+  openModal('modal-ev');
+}
+async function saveEv() {
+  const errEl = document.getElementById('ev-modal-err');
+  errEl.textContent = '';
+  const tid = parseInt(document.getElementById('ev-training-id').value);
+  if (!tid) { errEl.textContent = 'Please select a training.'; return; }
+  const body = {
+    training_id:    tid,
+    reaction_score: numOrNull('ev-reaction'),
+    learning_score: numOrNull('ev-learning'),
+    respondents:    numOrNull('ev-respondents'),
+    notes:          document.getElementById('ev-notes').value.trim(),
+  };
+  const r = await fetch(
+    editEvId ? `/api/people/evaluations/${editEvId}` : '/api/people/evaluations',
+    { method: editEvId ? 'PUT' : 'POST', headers: authHdr(), body: JSON.stringify(body) }
+  );
+  const d = await r.json();
+  if (!r.ok) { errEl.textContent = d.error || 'Save failed.'; return; }
+  closeModal('modal-ev');
+  await loadAll();
+}
+
+// ── Certification modal ────────────────────────────────────────────────────
+let editCertId = null;
+function openCertModal(id = null) {
+  editCertId = id;
+  document.getElementById('cert-modal-title').textContent = id ? 'Edit Certification' : 'Add Certification / Deadline';
+  document.getElementById('cert-modal-err').textContent = '';
+  const c = id ? S.certifications.find(x => x.id === id) : null;
+  document.getElementById('cert-name').value     = c?.name || '';
+  document.getElementById('cert-holder').value   = c?.holder || '';
+  document.getElementById('cert-m-type').value   = c?.cert_type || 'Certification';
+  document.getElementById('cert-issue').value    = c?.issue_date || '';
+  document.getElementById('cert-expiry').value   = c?.expiry_date || '';
+  document.getElementById('cert-m-status').value = c?.status || 'Active';
+  document.getElementById('cert-notes').value    = c?.notes || '';
+  openModal('modal-cert');
+}
+async function saveCert() {
+  const errEl = document.getElementById('cert-modal-err');
+  errEl.textContent = '';
+  const body = {
+    name:        document.getElementById('cert-name').value.trim(),
+    holder:      document.getElementById('cert-holder').value.trim(),
+    cert_type:   document.getElementById('cert-m-type').value,
+    issue_date:  document.getElementById('cert-issue').value,
+    expiry_date: document.getElementById('cert-expiry').value,
+    status:      document.getElementById('cert-m-status').value,
+    notes:       document.getElementById('cert-notes').value.trim(),
+  };
+  if (!body.name)        { errEl.textContent = 'Name is required.';         return; }
+  if (!body.expiry_date) { errEl.textContent = 'Expiry date is required.';  return; }
+  const r = await fetch(
+    editCertId ? `/api/people/certifications/${editCertId}` : '/api/people/certifications',
+    { method: editCertId ? 'PUT' : 'POST', headers: authHdr(), body: JSON.stringify(body) }
+  );
+  const d = await r.json();
+  if (!r.ok) { errEl.textContent = d.error || 'Save failed.'; return; }
+  closeModal('modal-cert');
+  await loadAll();
+}
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+let pendingDel = null;
+function askDel(type, id, label) {
+  pendingDel = { type, id };
+  document.getElementById('confirm-title').textContent = `Delete "${label}"?`;
+  document.getElementById('confirm-msg').textContent   = 'This action cannot be undone.';
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+function closeConfirm() {
+  pendingDel = null;
+  document.getElementById('confirm-overlay').classList.remove('open');
+}
+document.getElementById('confirm-ok').addEventListener('click', async () => {
+  if (!pendingDel) return;
+  const urlMap = { tr: 'trainings', ev: 'evaluations', cert: 'certifications' };
+  const r = await fetch(`/api/people/${urlMap[pendingDel.type]}/${pendingDel.id}`,
+    { method: 'DELETE', headers: authHdr() });
+  closeConfirm();
+  if (r.ok) await loadAll();
+});
+
+// ── Wire up buttons ────────────────────────────────────────────────────────
+document.getElementById('li-btn').addEventListener('click', doLogin);
+document.getElementById('li-pw').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('btn-logout').addEventListener('click', doLogout);
+document.getElementById('btn-add-tr').addEventListener('click', () => openTrModal());
+document.getElementById('btn-add-ev').addEventListener('click', () => openEvModal());
+document.getElementById('btn-add-cert').addEventListener('click', () => openCertModal());
+document.getElementById('tr-save-btn').addEventListener('click', saveTr);
+document.getElementById('ev-save-btn').addEventListener('click', saveEv);
+document.getElementById('cert-save-btn').addEventListener('click', saveCert);
+
+// ── Start ──────────────────────────────────────────────────────────────────
+init();
+</script>
 </body>
 </html>

@@ -118,6 +118,80 @@ class Audit(Base):
                 "changes": ch}
 
 
+# ---------------------------------------------------------------------------
+# People Development — DB models
+# ---------------------------------------------------------------------------
+class PeopleTraining(Base):
+    __tablename__ = "people_training"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), default="")
+    method: Mapped[str] = mapped_column(String(80), default="")
+    organizer: Mapped[str] = mapped_column(String(255), default="")
+    date_start: Mapped[str] = mapped_column(String(20), default="")
+    date_end: Mapped[str] = mapped_column(String(20), default="")
+    target_pax: Mapped[int] = mapped_column(Integer, nullable=True)
+    actual_pax: Mapped[int] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="Planned")
+    budget: Mapped[float] = mapped_column(Numeric, nullable=True)
+    realization: Mapped[float] = mapped_column(Numeric, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "name": self.name, "category": self.category,
+            "method": self.method, "organizer": self.organizer,
+            "date_start": self.date_start, "date_end": self.date_end,
+            "target_pax": self.target_pax, "actual_pax": self.actual_pax,
+            "status": self.status,
+            "budget": None if self.budget is None else float(self.budget),
+            "realization": None if self.realization is None else float(self.realization),
+            "notes": self.notes,
+        }
+
+
+class PeopleEvaluation(Base):
+    __tablename__ = "people_evaluation"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    training_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("people_training.id", ondelete="CASCADE"), nullable=False)
+    reaction_score: Mapped[float] = mapped_column(Numeric, nullable=True)  # 1–5 Kirkpatrick L1
+    learning_score: Mapped[float] = mapped_column(Numeric, nullable=True)  # 0–100 Kirkpatrick L2
+    respondents: Mapped[int] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "training_id": self.training_id,
+            "reaction_score": None if self.reaction_score is None else float(self.reaction_score),
+            "learning_score": None if self.learning_score is None else float(self.learning_score),
+            "respondents": self.respondents, "notes": self.notes,
+        }
+
+
+class PeopleCertification(Base):
+    __tablename__ = "people_certifications"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    holder: Mapped[str] = mapped_column(String(255), default="")
+    cert_type: Mapped[str] = mapped_column(String(80), default="Certification")
+    issue_date: Mapped[str] = mapped_column(String(20), default="")
+    expiry_date: Mapped[str] = mapped_column(String(20), default="")
+    status: Mapped[str] = mapped_column(String(50), default="Active")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "name": self.name, "holder": self.holder,
+            "cert_type": self.cert_type, "issue_date": self.issue_date,
+            "expiry_date": self.expiry_date, "status": self.status,
+            "notes": self.notes,
+        }
+
+
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
@@ -359,6 +433,224 @@ def health():
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"status": "db-error", "detail": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# People Development — API
+# ---------------------------------------------------------------------------
+PEOPLE_TR_FIELDS = ["name", "category", "method", "organizer", "date_start",
+                    "date_end", "target_pax", "actual_pax", "status",
+                    "budget", "realization", "notes"]
+PEOPLE_EV_FIELDS = ["training_id", "reaction_score", "learning_score", "respondents", "notes"]
+PEOPLE_CE_FIELDS = ["name", "holder", "cert_type", "issue_date", "expiry_date", "status", "notes"]
+
+
+@app.get("/api/people/summary")
+@require()
+def people_summary():
+    today = dt.date.today()
+    soon30 = (today + dt.timedelta(days=30)).isoformat()
+    today_s = today.isoformat()
+    this_year = str(today.year)
+    with Session() as s:
+        trainings = s.scalars(select(PeopleTraining)).all()
+        year_tr = [t for t in trainings if (t.date_start or "").startswith(this_year)]
+        completed = [t for t in year_tr if t.status == "Completed"]
+        rate = round(len(completed) / len(year_tr) * 100) if year_tr else 0
+
+        evals = s.scalars(select(PeopleEvaluation)).all()
+        scores = [float(e.reaction_score) for e in evals if e.reaction_score is not None]
+        avg_score = round(sum(scores) / len(scores), 2) if scores else None
+
+        certs = s.scalars(select(PeopleCertification)).all()
+        exp_soon = [c for c in certs
+                    if c.expiry_date and today_s <= c.expiry_date <= soon30
+                    and c.status != "Renewed"]
+
+        return jsonify({
+            "total_trainings_year": len(year_tr),
+            "completion_rate": rate,
+            "avg_reaction_score": avg_score,
+            "expiring_certs_30d": len(exp_soon),
+        })
+
+
+@app.get("/api/people/reminders")
+@require()
+def people_reminders():
+    today = dt.date.today()
+    cutoff = (today + dt.timedelta(days=60)).isoformat()
+    today_s = today.isoformat()
+    with Session() as s:
+        certs = s.scalars(
+            select(PeopleCertification)
+            .where(PeopleCertification.expiry_date != "")
+            .order_by(PeopleCertification.expiry_date)
+        ).all()
+        result = []
+        for c in certs:
+            if c.expiry_date <= cutoff or c.status in ("Expiring", "Expired"):
+                try:
+                    days_left = (dt.date.fromisoformat(c.expiry_date) - today).days
+                except ValueError:
+                    days_left = None
+                row = c.to_dict()
+                row["days_left"] = days_left
+                result.append(row)
+        return jsonify(result)
+
+
+@app.get("/api/people/trainings")
+@require()
+def list_people_trainings():
+    with Session() as s:
+        rows = s.scalars(
+            select(PeopleTraining).order_by(PeopleTraining.date_start.desc(), PeopleTraining.id.desc())
+        ).all()
+        return jsonify([r.to_dict() for r in rows])
+
+
+@app.post("/api/people/trainings")
+@require("admin", "editor")
+def create_people_training():
+    data = request.get_json(force=True) or {}
+    if not (data.get("name") or "").strip():
+        return jsonify({"error": "name is required"}), 400
+    with Session() as s:
+        t = PeopleTraining()
+        for f in PEOPLE_TR_FIELDS:
+            if f in data:
+                setattr(t, f, data[f])
+        s.add(t); s.commit()
+        return jsonify(t.to_dict()), 201
+
+
+@app.put("/api/people/trainings/<int:tid>")
+@require("admin", "editor")
+def update_people_training(tid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        t = s.get(PeopleTraining, tid)
+        if not t:
+            return jsonify({"error": "not found"}), 404
+        for f in PEOPLE_TR_FIELDS:
+            if f in data:
+                setattr(t, f, data[f])
+        s.commit()
+        return jsonify(t.to_dict())
+
+
+@app.delete("/api/people/trainings/<int:tid>")
+@require("admin", "editor")
+def delete_people_training(tid):
+    with Session() as s:
+        t = s.get(PeopleTraining, tid)
+        if not t:
+            return jsonify({"error": "not found"}), 404
+        s.delete(t); s.commit()
+        return jsonify({"ok": True})
+
+
+@app.get("/api/people/evaluations")
+@require()
+def list_people_evaluations():
+    with Session() as s:
+        rows = s.scalars(select(PeopleEvaluation).order_by(PeopleEvaluation.id)).all()
+        return jsonify([r.to_dict() for r in rows])
+
+
+@app.post("/api/people/evaluations")
+@require("admin", "editor")
+def create_people_evaluation():
+    data = request.get_json(force=True) or {}
+    if not data.get("training_id"):
+        return jsonify({"error": "training_id is required"}), 400
+    with Session() as s:
+        e = PeopleEvaluation()
+        for f in PEOPLE_EV_FIELDS:
+            if f in data:
+                setattr(e, f, data[f])
+        s.add(e); s.commit()
+        return jsonify(e.to_dict()), 201
+
+
+@app.put("/api/people/evaluations/<int:eid>")
+@require("admin", "editor")
+def update_people_evaluation(eid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        e = s.get(PeopleEvaluation, eid)
+        if not e:
+            return jsonify({"error": "not found"}), 404
+        for f in PEOPLE_EV_FIELDS:
+            if f in data:
+                setattr(e, f, data[f])
+        s.commit()
+        return jsonify(e.to_dict())
+
+
+@app.delete("/api/people/evaluations/<int:eid>")
+@require("admin", "editor")
+def delete_people_evaluation(eid):
+    with Session() as s:
+        e = s.get(PeopleEvaluation, eid)
+        if not e:
+            return jsonify({"error": "not found"}), 404
+        s.delete(e); s.commit()
+        return jsonify({"ok": True})
+
+
+@app.get("/api/people/certifications")
+@require()
+def list_people_certifications():
+    with Session() as s:
+        rows = s.scalars(
+            select(PeopleCertification).order_by(PeopleCertification.expiry_date)
+        ).all()
+        return jsonify([r.to_dict() for r in rows])
+
+
+@app.post("/api/people/certifications")
+@require("admin", "editor")
+def create_people_certification():
+    data = request.get_json(force=True) or {}
+    if not (data.get("name") or "").strip():
+        return jsonify({"error": "name is required"}), 400
+    if not (data.get("expiry_date") or "").strip():
+        return jsonify({"error": "expiry_date is required"}), 400
+    with Session() as s:
+        c = PeopleCertification()
+        for f in PEOPLE_CE_FIELDS:
+            if f in data:
+                setattr(c, f, data[f])
+        s.add(c); s.commit()
+        return jsonify(c.to_dict()), 201
+
+
+@app.put("/api/people/certifications/<int:cid>")
+@require("admin", "editor")
+def update_people_certification(cid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        c = s.get(PeopleCertification, cid)
+        if not c:
+            return jsonify({"error": "not found"}), 404
+        for f in PEOPLE_CE_FIELDS:
+            if f in data:
+                setattr(c, f, data[f])
+        s.commit()
+        return jsonify(c.to_dict())
+
+
+@app.delete("/api/people/certifications/<int:cid>")
+@require("admin", "editor")
+def delete_people_certification(cid):
+    with Session() as s:
+        c = s.get(PeopleCertification, cid)
+        if not c:
+            return jsonify({"error": "not found"}), 404
+        s.delete(c); s.commit()
+        return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------
