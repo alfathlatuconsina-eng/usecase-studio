@@ -441,13 +441,27 @@
 
   /* ── Responsive tweak ────────────────────────────── */
   @media (max-width: 700px) {
-    .app-sidebar { display: none; }
-    .app-main { margin-left: 0; padding: 16px; }
+    /* sidebar becomes a horizontal, scrollable nav bar under the header
+       so admin pages (Audit, Users) stay reachable on phones */
+    .app-sidebar {
+      top: var(--header-h); left: 0; right: 0; bottom: auto;
+      width: 100%; height: 46px; padding: 0;
+      display: flex; flex-direction: row; align-items: stretch;
+      overflow-x: auto; overflow-y: hidden;
+    }
+    .sidebar-section { display: none; }
+    .nav-item {
+      border-left: none; border-bottom: 3px solid transparent;
+      padding: 0 16px; white-space: nowrap;
+    }
+    .nav-item.active { border-left: none; border-bottom-color: var(--accent); }
+    .app-main { margin-left: 0; margin-top: calc(var(--header-h) + 46px); padding: 16px; }
+
     .form-grid { grid-template-columns: 1fr; }
     #detail-drawer { width: 100%; }
 
     /* header: tighten up */
-    .header-brand { font-size: 13px; }
+    .header-brand { font-size: 14px; }
     .header-user  { display: none; }
     .btn-logout   { padding: 5px 8px; font-size: 11px; }
 
@@ -456,9 +470,20 @@
     .card  { flex: 1 1 140px; padding: 12px 14px; }
     .card-value { font-size: 22px; }
 
+    /* toolbar: stack and go full-width */
+    .page-title { flex-wrap: wrap; font-size: 16px; }
+    .toolbar { gap: 8px; }
+    .toolbar input[type=text],
+    .toolbar select { width: 100%; flex: 1 1 100%; }
+    .btn-add { margin-left: 0; width: 100%; }
+
     /* hide table, show card list */
     .table-wrap     { display: none; }
     .proj-card-list { display: flex; }
+
+    /* modal: fit small screens */
+    .modal-overlay { padding: 16px; }
+    .modal { padding: 20px; }
   }
 </style>
 </head>
@@ -469,7 +494,7 @@
 
   <!-- Header -->
   <header class="app-header">
-    <div class="header-brand">MNC Bank &nbsp;<span>PMO</span></div>
+    <div class="header-brand">PMO &nbsp;<span>Dashboard</span></div>
     <div class="header-right">
       <span class="header-user" id="hdr-email"></span>
       <span class="header-role-badge" id="hdr-role"></span>
