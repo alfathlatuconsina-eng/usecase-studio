@@ -666,9 +666,19 @@ def pmo():
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 
+@app.get("/pmo/login")
+def pmo_login():
+    return send_from_directory(FRONTEND_DIR, "login.html")
+
+
 @app.get("/people")
 def people():
     return send_from_directory(FRONTEND_DIR, "people.html")
+
+
+@app.get("/people/login")
+def people_login():
+    return send_from_directory(FRONTEND_DIR, "people-login.html")
 
 
 @app.get("/quality")

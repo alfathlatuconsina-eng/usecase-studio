@@ -33,7 +33,7 @@
 
   /* ── Hero logo ── */
   .hero-logo {
-    display: block; margin: 0 auto 24px;
+    display: block; margin: 0 auto 12px;
     max-width: 420px; width: 72%;
     mix-blend-mode: multiply;  /* removes white background, blends with page */
   }
@@ -41,7 +41,7 @@
   /* ── Hero ── */
   .hero {
     text-align: center;
-    padding: 52px 20px 32px;
+    padding: 24px 20px 12px;
   }
   .hero h1 {
     font-size: 40px; font-weight: 800; color: #1a3c6b;
@@ -53,13 +53,13 @@
   }
   .hero-divider {
     width: 60px; height: 4px; background: #e8a020;
-    border-radius: 2px; margin: 18px auto 0;
+    border-radius: 2px; margin: 12px auto 0;
   }
 
   /* ── Cards ── */
   .cards-container {
     display: flex; gap: 28px;
-    padding: 24px 48px 56px;
+    padding: 16px 48px 56px;
     justify-content: center;
     flex-wrap: wrap; flex: 1;
     align-items: stretch;
@@ -158,9 +158,16 @@
 <!-- Hero -->
 <section class="hero">
   <img src="site-logo.png" alt="Usecase-Studio.xyz" class="hero-logo">
-  <p>Please select the area you want to access</p>
+  <p id="greeting"></p>
   <div class="hero-divider"></div>
 </section>
+
+<script>
+  const hour = new Date().getHours();
+  const timeOfDay = hour < 12 ? 'Morning' : hour < 18 ? 'Afternoon' : 'Evening';
+  document.getElementById('greeting').textContent =
+    'Good ' + timeOfDay + '. Please select a module to access';
+</script>
 
 <!-- Cards -->
 <div class="cards-container">

@@ -28,36 +28,6 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--gray-bg);
 a { color: inherit; text-decoration: none; }
 button { cursor: pointer; font-family: inherit; font-size: 13px; }
 
-/* ── Login page ─────────────────────────────────────────────────────────── */
-#login-page {
-  display: flex; align-items: center; justify-content: center;
-  min-height: 100vh; background: #0d0d0d;
-}
-.login-box {
-  background: #1a1a1a; border: 1px solid #2e2e2e;
-  border-radius: 14px; padding: 44px 40px 36px;
-  width: 420px; box-shadow: 0 24px 64px rgba(0,0,0,.6);
-}
-.login-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
-.login-logo-bar { width: 4px; height: 36px; background: var(--accent); border-radius: 2px; flex-shrink: 0; }
-.login-logo-text .brand { font-size: 18px; font-weight: 700; color: #fff; line-height: 1.1; }
-.login-logo-text .sub { font-size: 10px; letter-spacing: 2px; color: #7a7a7a; text-transform: uppercase; margin-top: 2px; }
-.login-heading { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 6px; }
-.login-sub { font-size: 13px; color: #6b6b6b; margin-bottom: 28px; }
-.login-box label { display: block; font-size: 10px; font-weight: 700; color: #6b6b6b;
-  text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; margin-top: 18px; }
-.login-box input { width: 100%; padding: 11px 14px; background: #111; border: 1px solid #2e2e2e;
-  border-radius: 7px; font-size: 14px; color: #fff; outline: none; transition: border-color .15s; }
-.login-box input::placeholder { color: #444; }
-.login-box input:focus { border-color: var(--accent); }
-#login-error { color: #e05252; font-size: 12px; margin-top: 10px; min-height: 16px; }
-.btn-primary { width: 100%; padding: 13px; margin-top: 24px; background: var(--accent);
-  color: #1a0f00; border: none; border-radius: 7px; font-size: 15px; font-weight: 700;
-  letter-spacing: .2px; transition: background .15s, transform .1s; }
-.btn-primary:hover  { background: #f0b030; }
-.btn-primary:active { transform: scale(.98); }
-.login-footer { text-align: center; margin-top: 22px; font-size: 11px; color: #3a3a3a; line-height: 1.5; }
-
 /* ── App shell ──────────────────────────────────────────────────────────── */
 #app { display: none; min-height: 100vh; }
 
@@ -253,28 +223,6 @@ tr.row-expiring { background: #fffbf5; }
 </style>
 </head>
 <body>
-
-<!-- ═══════════════════════════ LOGIN PAGE ═══════════════════════════════ -->
-<div id="login-page">
-  <div class="login-box">
-    <div class="login-logo">
-      <div class="login-logo-bar"></div>
-      <div class="login-logo-text">
-        <div class="brand">PMO Dashboard</div>
-        <div class="sub">People Development</div>
-      </div>
-    </div>
-    <div class="login-heading">Sign In</div>
-    <div class="login-sub">Enter your credentials to access this module.</div>
-    <label for="li-email">Email</label>
-    <input type="email" id="li-email" placeholder="you@bank.co.id" autocomplete="username">
-    <label for="li-pw">Password</label>
-    <input type="password" id="li-pw" placeholder="••••••••" autocomplete="current-password">
-    <div id="login-error"></div>
-    <button class="btn-primary" id="li-btn">Sign In</button>
-    <div class="login-footer">People Development · PMO Dashboard<br>Internal Use Only</div>
-  </div>
-</div>
 
 <!-- ═══════════════════════════ APP SHELL ════════════════════════════════ -->
 <div id="app">
@@ -684,58 +632,31 @@ function authHdr() {
 function canEdit() { return S.role === 'admin' || S.role === 'editor'; }
 
 // ── Auth ───────────────────────────────────────────────────────────────────
-async function doLogin() {
-  const errEl = document.getElementById('login-error');
-  errEl.textContent = '';
-  const btn = document.getElementById('li-btn');
-  btn.textContent = 'Signing in…';
-  try {
-    const r = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email:    document.getElementById('li-email').value.trim(),
-        password: document.getElementById('li-pw').value,
-      }),
-    });
-    const d = await r.json();
-    if (!r.ok) { errEl.textContent = d.error || 'Login failed.'; return; }
-    S.token = d.token; S.role = d.role; S.email = d.email;
-    localStorage.setItem('pmo_token', d.token);
-    localStorage.setItem('pmo_role',  d.role);
-    localStorage.setItem('pmo_email', d.email);
-    showApp();
-  } catch(e) {
-    errEl.textContent = 'Connection error — is the server running?';
-  } finally {
-    btn.textContent = 'Sign In';
-  }
-}
+// The login page lives in its own file (/people/login)
+const LOGIN_URL = '/people/login';
 
 function doLogout() {
   ['pmo_token','pmo_role','pmo_email'].forEach(k => localStorage.removeItem(k));
-  location.reload();
+  location.href = LOGIN_URL;
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
 async function init() {
-  if (S.token) {
-    try {
-      const r = await fetch('/api/me', { headers: authHdr() });
-      if (r.ok) { const d = await r.json(); S.role = d.role; S.email = d.email; }
-      else { S.token = ''; localStorage.removeItem('pmo_token'); }
-    } catch { /* offline — will fail later at loadAll */ }
-  }
-  if (S.token) showApp(); else showLogin();
-}
-
-function showLogin() {
-  document.getElementById('login-page').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
+  if (!S.token) { location.href = LOGIN_URL; return; }
+  try {
+    const r = await fetch('/api/me', { headers: authHdr() });
+    if (r.ok) {
+      const d = await r.json(); S.role = d.role; S.email = d.email;
+    } else {
+      localStorage.removeItem('pmo_token');
+      location.href = LOGIN_URL;
+      return;
+    }
+  } catch { /* offline — proceed and let loadAll surface the error */ }
+  showApp();
 }
 
 async function showApp() {
-  document.getElementById('login-page').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('hdr-email').textContent = S.email;
   document.getElementById('hdr-role').textContent  = S.role;
@@ -1102,8 +1023,6 @@ document.getElementById('confirm-ok').addEventListener('click', async () => {
 });
 
 // ── Wire up buttons ────────────────────────────────────────────────────────
-document.getElementById('li-btn').addEventListener('click', doLogin);
-document.getElementById('li-pw').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 document.getElementById('btn-logout').addEventListener('click', doLogout);
 document.getElementById('btn-add-tr').addEventListener('click', () => openTrModal());
 document.getElementById('btn-add-ev').addEventListener('click', () => openEvModal());
