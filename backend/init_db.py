@@ -14,7 +14,7 @@ import sys
 import bcrypt
 from sqlalchemy import select, func
 from app import (Base, engine, Session, User, Project,
-                 PeopleTraining, PeopleEvaluation, PeopleCertification)
+                 PeopleTraining, PeopleEvaluation, PeopleCertification, PeopleUser)
 
 DEFAULT_EMAIL = "admin@mncbank.co.id"
 DEFAULT_PASSWORD = "pmo2026"   # change this — or pass args
@@ -139,6 +139,17 @@ def main():
         else:
             s.add(User(email=email.lower(), pw_hash=pw_hash, role="admin"))
             print(f"Created admin user {email} (role: admin)")
+        s.commit()
+
+        # People dashboard admin (separate credential table, upsert by email)
+        puser = s.scalar(select(PeopleUser).where(PeopleUser.email == email.lower()))
+        if puser:
+            puser.pw_hash = pw_hash
+            puser.role = "admin"
+            print(f"Updated People admin {email} (role: admin)")
+        else:
+            s.add(PeopleUser(email=email.lower(), pw_hash=pw_hash, role="admin"))
+            print(f"Created People admin {email} (role: admin)")
         s.commit()
 
         # seed projects only if empty

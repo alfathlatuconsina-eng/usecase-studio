@@ -192,6 +192,21 @@ class PeopleCertification(Base):
         }
 
 
+class PeopleUser(Base):
+    """Separate credential table for the People Development dashboard.
+    Mirrors User but is a completely independent set of accounts."""
+    __tablename__ = "people_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    pw_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="viewer")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "email": self.email, "role": self.role,
+                "created_at": self.created_at.isoformat() if self.created_at else None}
+
+
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
@@ -199,8 +214,10 @@ CORS(app)
 # ---------------------------------------------------------------------------
 # Auth helpers
 # ---------------------------------------------------------------------------
-def make_token(user):
+def make_token(user, module):
+    """module is 'pmo' or 'people' — a token is only valid for its own module."""
     payload = {"uid": user.id, "email": user.email, "role": user.role,
+               "module": module,
                "exp": dt.datetime.utcnow() + dt.timedelta(hours=JWT_HOURS)}
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
@@ -218,13 +235,20 @@ def _decode():
 
 
 def require(*allowed_roles):
-    """Decorator: valid token required; if roles given, user.role must match."""
+    """Decorator: valid token required; if roles given, user.role must match.
+
+    The token is also module-scoped: requests to /api/people/* require a token
+    issued for the People dashboard, everything else requires a PMO token.
+    This keeps the two user sets fully separated."""
     def deco(fn):
         @wraps(fn)
         def wrapper(*a, **k):
             claims, err = _decode()
             if err:
                 return jsonify({"error": err[0]}), err[1]
+            expected_module = "people" if request.path.startswith("/api/people/") else "pmo"
+            if claims.get("module") != expected_module:
+                return jsonify({"error": "Please sign in to this dashboard"}), 403
             if allowed_roles and claims.get("role") not in allowed_roles:
                 return jsonify({"error": "You don't have permission for this action"}), 403
             request.user = claims
@@ -257,21 +281,43 @@ def log_audit(s, action, proj, changes=None):
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
-@app.post("/api/login")
-def login():
+def _do_login(model, module):
     data = request.get_json(force=True, silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     pw = data.get("password") or ""
     with Session() as s:
-        user = s.scalar(select(User).where(User.email == email))
+        user = s.scalar(select(model).where(model.email == email))
         if not user or not bcrypt.checkpw(pw.encode(), user.pw_hash.encode()):
             return jsonify({"error": "Incorrect email or password"}), 401
-        return jsonify({"token": make_token(user), "email": user.email, "role": user.role})
+        return jsonify({"token": make_token(user, module),
+                        "email": user.email, "role": user.role})
 
 
-@app.get("/api/me")
+@app.post("/api/pmo/login")
+def pmo_login_api():
+    return _do_login(User, "pmo")
+
+
+@app.post("/api/people/login")
+def people_login_api():
+    return _do_login(PeopleUser, "people")
+
+
+# legacy alias — old PMO clients posted here
+@app.post("/api/login")
+def login():
+    return _do_login(User, "pmo")
+
+
+@app.get("/api/pmo/me")
 @require()
-def me():
+def pmo_me():
+    return jsonify({"email": request.user["email"], "role": request.user["role"]})
+
+
+@app.get("/api/people/me")
+@require()
+def people_me():
     return jsonify({"email": request.user["email"], "role": request.user["role"]})
 
 
@@ -650,6 +696,76 @@ def delete_people_certification(cid):
         if not c:
             return jsonify({"error": "not found"}), 404
         s.delete(c); s.commit()
+        return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# People Development — Users  (People admin only; separate from PMO users)
+# ---------------------------------------------------------------------------
+@app.get("/api/people/users")
+@require("admin")
+def list_people_users():
+    with Session() as s:
+        rows = s.scalars(select(PeopleUser).order_by(PeopleUser.id)).all()
+        return jsonify([u.to_dict() for u in rows])
+
+
+@app.post("/api/people/users")
+@require("admin")
+def create_people_user():
+    data = request.get_json(force=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pw = data.get("password") or ""
+    role = data.get("role") or "viewer"
+    if not email or not pw:
+        return jsonify({"error": "email and password are required"}), 400
+    if role not in ROLES:
+        return jsonify({"error": "role must be admin, editor, or viewer"}), 400
+    with Session() as s:
+        if s.scalar(select(PeopleUser).where(PeopleUser.email == email)):
+            return jsonify({"error": "a user with that email already exists"}), 409
+        u = PeopleUser(email=email, role=role,
+                       pw_hash=bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode())
+        s.add(u); s.commit()
+        return jsonify(u.to_dict()), 201
+
+
+@app.put("/api/people/users/<int:uid>")
+@require("admin")
+def update_people_user(uid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        u = s.get(PeopleUser, uid)
+        if not u:
+            return jsonify({"error": "not found"}), 404
+        if "role" in data:
+            if data["role"] not in ROLES:
+                return jsonify({"error": "invalid role"}), 400
+            if u.role == "admin" and data["role"] != "admin":
+                admins = s.scalar(select(func.count(PeopleUser.id)).where(PeopleUser.role == "admin"))
+                if admins <= 1:
+                    return jsonify({"error": "cannot demote the last admin"}), 400
+            u.role = data["role"]
+        if data.get("password"):
+            u.pw_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt()).decode()
+        s.commit()
+        return jsonify(u.to_dict())
+
+
+@app.delete("/api/people/users/<int:uid>")
+@require("admin")
+def delete_people_user(uid):
+    with Session() as s:
+        u = s.get(PeopleUser, uid)
+        if not u:
+            return jsonify({"error": "not found"}), 404
+        if u.email == request.user["email"]:
+            return jsonify({"error": "you cannot delete your own account"}), 400
+        if u.role == "admin":
+            admins = s.scalar(select(func.count(PeopleUser.id)).where(PeopleUser.role == "admin"))
+            if admins <= 1:
+                return jsonify({"error": "cannot delete the last admin"}), 400
+        s.delete(u); s.commit()
         return jsonify({"ok": True})
 
 

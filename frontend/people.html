@@ -310,6 +310,7 @@ tr.row-expiring { background: #fffbf5; }
       <button class="tab-btn" data-tab="training">Training Database</button>
       <button class="tab-btn" data-tab="evaluation">Evaluation Results</button>
       <button class="tab-btn" data-tab="certs">Certifications &amp; Deadlines</button>
+      <button class="tab-btn admin-only" data-tab="users" style="display:none">Users</button>
     </div>
 
     <!-- ── TAB: Overview ── -->
@@ -446,6 +447,34 @@ tr.row-expiring { background: #fffbf5; }
         </table>
       </div>
     </div>
+
+    <!-- ── TAB: Users (admin only) ── -->
+    <div id="tab-users" class="tab-content">
+      <div class="toolbar">
+        <button class="btn-add" id="btn-add-user" style="margin-left:0">+ Add User</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="user-tbody"></tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;font-size:11px;color:var(--muted)">
+        These accounts are <strong>separate</strong> from the PMO dashboard — they only grant access to People Development.
+      </p>
+    </div>
+
+    <footer style="text-align:center; padding:20px 0 4px; margin-top:28px;
+      font-size:12px; color:var(--muted); border-top:1px solid var(--gray-line);">
+      @ 2026 Alfath Latuconsina · UseCase-Studio.XYZ
+    </footer>
 
   </main>
 </div><!-- /app -->
@@ -621,6 +650,37 @@ tr.row-expiring { background: #fffbf5; }
   </div>
 </div>
 
+<!-- ═══════════════════════ MODAL: User ════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-user">
+  <div class="modal" style="max-width:460px">
+    <button class="modal-close" onclick="closeModal('modal-user')">×</button>
+    <div class="modal-title" id="user-modal-title">Add User</div>
+    <div class="form-grid">
+      <div class="form-field full">
+        <label>Email *</label>
+        <input type="email" id="user-email" autocomplete="off">
+      </div>
+      <div class="form-field full">
+        <label>Password <span id="user-pw-hint" style="text-transform:none;color:var(--muted)"></span></label>
+        <input type="password" id="user-pw" autocomplete="new-password">
+      </div>
+      <div class="form-field full">
+        <label>Role</label>
+        <select id="user-role">
+          <option value="viewer">viewer — read only</option>
+          <option value="editor">editor — add/edit/delete</option>
+          <option value="admin">admin — full access + users</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-error" id="user-modal-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-user')">Cancel</button>
+      <button class="btn-save" id="user-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════ CONFIRM DIALOG ════════════════════════════════ -->
 <div class="confirm-overlay" id="confirm-overlay">
   <div class="confirm-box">
@@ -639,12 +699,13 @@ tr.row-expiring { background: #fffbf5; }
 
 // ── State ──────────────────────────────────────────────────────────────────
 const S = {
-  token:          localStorage.getItem('pmo_token') || '',
-  role:           localStorage.getItem('pmo_role')  || '',
-  email:          localStorage.getItem('pmo_email') || '',
+  token:          localStorage.getItem('people_token') || '',
+  role:           '',
+  email:          '',
   trainings:      [],
   evaluations:    [],
   certifications: [],
+  users:          [],
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -680,7 +741,7 @@ function canEdit() { return S.role === 'admin' || S.role === 'editor'; }
 const LOGIN_URL = '/people/login';
 
 function doLogout() {
-  ['pmo_token','pmo_role','pmo_email'].forEach(k => localStorage.removeItem(k));
+  localStorage.removeItem('people_token');
   location.href = LOGIN_URL;
 }
 
@@ -688,11 +749,11 @@ function doLogout() {
 async function init() {
   if (!S.token) { location.href = LOGIN_URL; return; }
   try {
-    const r = await fetch('/api/me', { headers: authHdr() });
+    const r = await fetch('/api/people/me', { headers: authHdr() });
     if (r.ok) {
       const d = await r.json(); S.role = d.role; S.email = d.email;
     } else {
-      localStorage.removeItem('pmo_token');
+      localStorage.removeItem('people_token');
       location.href = LOGIN_URL;
       return;
     }
@@ -706,6 +767,9 @@ async function showApp() {
   document.getElementById('hdr-role').textContent  = S.role;
   document.querySelectorAll('.editor-only').forEach(el => {
     el.style.display = canEdit() ? '' : 'none';
+  });
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = (S.role === 'admin') ? '' : 'none';
   });
   await loadAll();
 }
@@ -727,9 +791,73 @@ async function loadAll() {
     renderTraining();
     renderEvaluation();
     renderCerts();
+    if (S.role === 'admin') await loadUsers();
   } catch(e) {
     console.error('loadAll error:', e);
   }
+}
+
+// ── Users (admin only) ──────────────────────────────────────────────────────
+async function loadUsers() {
+  const r = await fetch('/api/people/users', { headers: authHdr() });
+  if (!r.ok) return;
+  S.users = await r.json();
+  renderUsers();
+}
+
+function renderUsers() {
+  const tbody = document.getElementById('user-tbody');
+  if (!S.users.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No users yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = S.users.map(u => {
+    const isSelf = u.email === S.email;
+    const created = u.created_at ? new Date(u.created_at).toLocaleDateString('id-ID') : '—';
+    const del = isSelf
+      ? '<span style="font-size:11px;color:var(--muted)">(you)</span>'
+      : `<button class="btn-del" onclick="askDel('user',${u.id},${JSON.stringify(u.email)})">Del</button>`;
+    return `<tr>
+      <td><strong>${esc(u.email)}</strong></td>
+      <td><span class="badge badge-active">${esc(u.role)}</span></td>
+      <td>${created}</td>
+      <td><button class="btn-edit" onclick="openUserModal(${u.id})">Edit</button>${del}</td>
+    </tr>`;
+  }).join('');
+}
+
+let editUserId = null;
+function openUserModal(id = null) {
+  editUserId = id;
+  const u = id ? S.users.find(x => x.id === id) : null;
+  document.getElementById('user-modal-title').textContent = id ? 'Edit User' : 'Add User';
+  document.getElementById('user-modal-err').textContent = '';
+  document.getElementById('user-email').value = u ? u.email : '';
+  document.getElementById('user-email').disabled = !!id;
+  document.getElementById('user-pw').value = '';
+  document.getElementById('user-pw-hint').textContent = id ? '(leave blank to keep current)' : '(required)';
+  document.getElementById('user-role').value = u ? u.role : 'viewer';
+  openModal('modal-user');
+}
+
+async function saveUser() {
+  const errEl = document.getElementById('user-modal-err');
+  errEl.textContent = '';
+  const email = document.getElementById('user-email').value.trim();
+  const pw    = document.getElementById('user-pw').value;
+  const role  = document.getElementById('user-role').value;
+  if (!editUserId && (!email || !pw)) { errEl.textContent = 'Email and password are required.'; return; }
+  const body = { role };
+  if (!editUserId) { body.email = email; body.password = pw; }
+  else if (pw) { body.password = pw; }
+  const r = await fetch(
+    editUserId ? `/api/people/users/${editUserId}` : '/api/people/users',
+    { method: editUserId ? 'PUT' : 'POST', headers: authHdr(), body: JSON.stringify(body) }
+  );
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { errEl.textContent = d.error || 'Save failed.'; return; }
+  closeModal('modal-user');
+  await loadUsers();
 }
 
 // ── KPIs ───────────────────────────────────────────────────────────────────
@@ -1059,11 +1187,11 @@ function closeConfirm() {
 }
 document.getElementById('confirm-ok').addEventListener('click', async () => {
   if (!pendingDel) return;
-  const urlMap = { tr: 'trainings', ev: 'evaluations', cert: 'certifications' };
+  const urlMap = { tr: 'trainings', ev: 'evaluations', cert: 'certifications', user: 'users' };
   const r = await fetch(`/api/people/${urlMap[pendingDel.type]}/${pendingDel.id}`,
     { method: 'DELETE', headers: authHdr() });
   closeConfirm();
-  if (r.ok) await loadAll();
+  if (r.ok) { if (pendingDel.type === 'user') await loadUsers(); else await loadAll(); }
 });
 
 // ── Wire up buttons ────────────────────────────────────────────────────────
@@ -1074,6 +1202,8 @@ document.getElementById('btn-add-cert').addEventListener('click', () => openCert
 document.getElementById('tr-save-btn').addEventListener('click', saveTr);
 document.getElementById('ev-save-btn').addEventListener('click', saveEv);
 document.getElementById('cert-save-btn').addEventListener('click', saveCert);
+document.getElementById('btn-add-user').addEventListener('click', () => openUserModal());
+document.getElementById('user-save-btn').addEventListener('click', saveUser);
 
 // ── Start ──────────────────────────────────────────────────────────────────
 init();

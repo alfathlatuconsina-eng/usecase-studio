@@ -36,7 +36,7 @@
     letter-spacing: .2px; cursor: pointer; transition: background .15s, transform .1s; }
   .btn-primary:hover  { background: #f0b030; }
   .btn-primary:active { transform: scale(.98); }
-  .login-footer { text-align: center; margin-top: 22px; font-size: 11px; color: #3a3a3a; line-height: 1.5; }
+  .login-footer { text-align: center; margin-top: 22px; font-size: 11px; color: #b0b0b0; line-height: 1.5; }
   .login-home-link { display: block; text-align: center; margin-top: 18px; font-size: 12px;
     color: #6b6b6b; letter-spacing: .3px; text-decoration: none; transition: color .15s; }
   .login-home-link:hover { color: var(--accent); }
@@ -72,9 +72,9 @@
 <script>
   const REDIRECT_TO = '/people';
 
-  const existing = localStorage.getItem('pmo_token');
+  const existing = localStorage.getItem('people_token');
   if (existing) {
-    fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + existing } })
+    fetch('/api/people/me', { headers: { 'Authorization': 'Bearer ' + existing } })
       .then(r => { if (r.ok) location.href = REDIRECT_TO; })
       .catch(() => {});
   }
@@ -90,14 +90,14 @@
     btn.innerHTML = '<span class="spinner"></span>';
     btn.disabled = true;
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch('/api/people/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: pw }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Login failed.');
-      localStorage.setItem('pmo_token', data.token);
+      localStorage.setItem('people_token', data.token);
       location.href = REDIRECT_TO;
     } catch (e) {
       err.textContent = e.message || 'Login failed.';
