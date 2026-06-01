@@ -1388,6 +1388,11 @@ def landing():
     return send_from_directory(FRONTEND_DIR, "landing.html")
 
 
+@app.get("/about")
+def about():
+    return send_from_directory(FRONTEND_DIR, "about.html")
+
+
 @app.get("/pmo")
 def pmo():
     return send_from_directory(FRONTEND_DIR, "index.html")

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About The Author — USECASE-STUDIO.xyz</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; min-height: 100vh;
+         display: flex; flex-direction: column; color: #1e2329; }
+
+  /* Header */
+  .site-header { background: #1a3c6b; color: #fff; padding: 14px 40px; display: flex; align-items: center;
+                 box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  .header-brand { display: flex; align-items: center; gap: 10px; }
+  .header-brand-bar { width: 4px; height: 28px; background: #e8a020; border-radius: 2px; }
+  .header-brand-text .top { font-size: 15px; font-weight: 700; }
+  .header-brand-text .bot { font-size: 10px; letter-spacing: 1.5px; color: rgba(255,255,255,.5); text-transform: uppercase; }
+
+  .main { flex: 1; max-width: 920px; width: 100%; margin: 0 auto; padding: 40px 20px 56px; }
+
+  /* Hero */
+  .about-hero { display: flex; gap: 28px; align-items: center; flex-wrap: wrap;
+                background: #fff; border-radius: 18px; padding: 32px; box-shadow: 0 4px 24px rgba(0,0,0,.08);
+                border-top: 6px solid #e8a020; }
+  .about-photo { width: 168px; height: 168px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+                 box-shadow: 0 6px 20px rgba(0,0,0,.18); border: 4px solid #fff; outline: 2px solid #e8e8ee; }
+  .about-id { flex: 1; min-width: 240px; }
+  .about-id h1 { font-size: 30px; font-weight: 800; color: #1a3c6b; line-height: 1.2; }
+  .about-id .role { font-size: 14px; color: #d97706; font-weight: 700; margin-top: 4px; letter-spacing: .3px; }
+  .about-id .tag  { font-size: 14px; color: #6b7280; margin-top: 12px; line-height: 1.6; }
+
+  /* Sections */
+  .section { background: #fff; border-radius: 14px; padding: 26px 30px; margin-top: 22px;
+             box-shadow: 0 2px 14px rgba(0,0,0,.06); }
+  .section h2 { font-size: 16px; color: #1a3c6b; font-weight: 800; margin-bottom: 12px;
+                display: flex; align-items: center; gap: 8px; }
+  .section p  { font-size: 14px; color: #374151; line-height: 1.8; margin-bottom: 12px; }
+  .section p:last-child { margin-bottom: 0; }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .pill { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 20px;
+          background: #eef2f7; color: #1a3c6b; border: 1px solid #dde3ec; }
+
+  .modules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 6px; }
+  .mod { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; }
+  .mod .ic { font-size: 22px; }
+  .mod .nm { font-weight: 700; color: #1a3c6b; margin-top: 6px; font-size: 14px; }
+  .mod .ds { font-size: 12px; color: #6b7280; margin-top: 3px; line-height: 1.5; }
+
+  .draft-note { font-size: 12px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a;
+                border-radius: 8px; padding: 10px 14px; margin-top: 16px; line-height: 1.6; }
+
+  .back-row { text-align: center; margin-top: 28px; }
+  .btn-back { display: inline-flex; align-items: center; gap: 6px; color: #1a3c6b; font-size: 14px;
+              font-weight: 600; text-decoration: none; padding: 11px 24px; border: 1px solid #dde1e7;
+              border-radius: 8px; background: #fff; transition: background .15s; }
+  .btn-back:hover { background: #f0f4f8; }
+
+  .site-footer { text-align: center; padding: 18px 20px; font-size: 12px; color: #4b5563; font-weight: 600;
+                 border-top: 1px solid #e5e7eb; background: #fff; }
+
+  @media (max-width: 600px) {
+    .site-header { padding: 12px 20px; }
+    .about-hero { padding: 24px; }
+    .about-id h1 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-brand">
+    <div class="header-brand-bar"></div>
+    <div class="header-brand-text">
+      <div class="top">Alfath Latuconsina</div>
+      <div class="bot">Use Case Studio</div>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- Hero -->
+  <div class="about-hero">
+    <img src="author-photo.jpg" alt="Alfath Latuconsina" class="about-photo">
+    <div class="about-id">
+      <h1>Alfath Latuconsina</h1>
+      <div class="role">Creator · USECASE-STUDIO.xyz™</div>
+      <div class="tag">Turning ideas into working tools — a personal studio for showcasing
+        practical, end-to-end project concepts.</div>
+    </div>
+  </div>
+
+  <!-- About the platform -->
+  <div class="section">
+    <h2>🚀 About This Platform</h2>
+    <p><strong>USECASE-STUDIO.xyz</strong> is a personal showcase — a place to turn real-world ideas
+      into functional, working prototypes rather than slides. Each module is a fully operational
+      dashboard with its own login, role-based access, and live data, built to demonstrate how a
+      concept becomes a usable tool from end to end.</p>
+    <div class="modules-grid">
+      <div class="mod"><div class="ic">📋</div><div class="nm">Project Management Office</div><div class="ds">Strategic projects, milestones, risks &amp; issues.</div></div>
+      <div class="mod"><div class="ic">👥</div><div class="nm">People Development</div><div class="ds">Training, evaluation &amp; certification reminders.</div></div>
+      <div class="mod"><div class="ic">⭐</div><div class="nm">Service Quality</div><div class="ds">Branch service survey performance.</div></div>
+      <div class="mod"><div class="ic">📚</div><div class="nm">E-Library</div><div class="ds">Document repository by subject &amp; category.</div></div>
+    </div>
+  </div>
+
+  <!-- About the author (DRAFT — replace with your CV wording) -->
+  <div class="section">
+    <h2>👤 About Alfath Latuconsina</h2>
+    <p>Alfath Latuconsina is a project-management and banking professional who believes the best
+      ideas deserve to be <em>built</em>, not just presented. His work sits at the intersection of
+      strategy and execution — taking complex operational challenges and shaping them into clear,
+      data-driven tools that teams can actually use every day.</p>
+    <p>His interests span the full delivery lifecycle: managing strategic projects and risks,
+      developing people and capabilities, raising service-quality standards, and organizing
+      institutional knowledge. Across all of them, the goal stays the same — make information
+      visible, decisions easier, and progress measurable.</p>
+    <p>With a hands-on, problem-solving mindset, he is equally comfortable framing the big picture
+      and getting into the details to make something work end to end. USECASE-STUDIO.xyz is his
+      personal studio for prototyping these ideas in the open — proof that a concept can become a
+      living, working product.</p>
+    <div class="pill-row">
+      <span class="pill">Project Management</span>
+      <span class="pill">Digital Transformation</span>
+      <span class="pill">Banking &amp; Operations</span>
+      <span class="pill">People Development</span>
+      <span class="pill">Service Quality</span>
+      <span class="pill">Data-Driven Dashboards</span>
+    </div>
+  </div>
+
+  <div class="back-row">
+    <a href="/" class="btn-back">← Back to Home</a>
+  </div>
+</main>
+
+<footer class="site-footer">
+  © 2026 Alfath Latuconsina &nbsp;·&nbsp; USECASE-STUDIO.xyz<sup>™</sup> &nbsp;·&nbsp; Beta Version
+</footer>
+
+</body>
+</html>
