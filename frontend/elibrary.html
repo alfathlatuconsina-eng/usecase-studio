@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E-Library — Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #1a3c6b; --accent: #d97706; --green: #1a7a4a; --red: #c0392b;
+  --orange: #e67e22; --blue: #2980b9; --gray-bg: #f4f6f9; --gray-line: #dde1e7;
+  --text: #1e2329; --muted: #6b7280; --white: #fff; --sidebar-w: 220px; --header-h: 56px;
+}
+body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--gray-bg); color: var(--text); font-size: 13px; }
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; font-size: 13px; }
+
+#app { display: none; min-height: 100vh; }
+.app-header { position: fixed; top: 0; left: 0; right: 0; height: var(--header-h); background: var(--primary); color: #fff; display: flex; align-items: center; padding: 0 20px; box-shadow: 0 2px 8px rgba(0,0,0,.2); z-index: 100; }
+.header-brand { font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+.header-brand span { color: var(--accent); }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.header-user { font-size: 12px; opacity: .85; }
+.header-role-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: rgba(255,255,255,.18); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.btn-logout { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3); border-radius: 5px; padding: 5px 12px; font-size: 12px; transition: background .15s; }
+.btn-logout:hover { background: rgba(255,255,255,.28); }
+
+.app-sidebar { position: fixed; top: var(--header-h); left: 0; bottom: 0; width: var(--sidebar-w); background: var(--primary); padding: 18px 0; overflow-y: auto; z-index: 90; }
+.sidebar-section { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,.4); padding: 14px 20px 6px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; color: rgba(255,255,255,.75); transition: background .12s, color .12s; font-size: 13px; border-left: 3px solid transparent; }
+.nav-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+.nav-item.active { background: rgba(255,255,255,.12); color: #fff; border-left-color: var(--accent); }
+.nav-icon { font-size: 15px; width: 18px; text-align: center; }
+
+.app-main { margin-left: var(--sidebar-w); margin-top: var(--header-h); padding: 24px; min-height: calc(100vh - var(--header-h)); }
+.page-title { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
+.page-title small { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+.tabs-bar { display: flex; gap: 2px; margin-bottom: 20px; border-bottom: 2px solid var(--gray-line); }
+.tab-btn { padding: 9px 20px; background: none; border: none; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color .15s, border-color .15s; }
+.tab-btn:hover { color: var(--primary); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.cards { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+.card { background: var(--white); border-radius: 8px; padding: 16px 20px; flex: 1 1 160px; box-shadow: 0 1px 4px rgba(0,0,0,.07); border-left: 4px solid var(--gray-line); }
+.card-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+.card-value { font-size: 26px; font-weight: 700; color: var(--primary); }
+.card-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.card.amber { border-left-color: var(--accent); }
+.card.blue { border-left-color: var(--blue); }
+.card.green { border-left-color: var(--green); }
+.card.orange { border-left-color: var(--orange); }
+
+/* Library layout */
+.lib-grid { display: grid; grid-template-columns: 240px 240px 1fr; gap: 16px; align-items: start; }
+.lib-pane { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.07); overflow: hidden; }
+.lib-pane-head { background: var(--primary); color: #fff; padding: 9px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: center; justify-content: space-between; }
+.lib-add { background: rgba(255,255,255,.2); color: #fff; border: none; border-radius: 5px; width: 22px; height: 22px; font-size: 15px; line-height: 1; }
+.lib-add:hover { background: rgba(255,255,255,.35); }
+.lib-list { max-height: 460px; overflow-y: auto; }
+.lib-row { padding: 9px 12px; border-bottom: 1px solid var(--gray-line); cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.lib-row:last-child { border-bottom: none; }
+.lib-row:hover { background: #fdf6ec; }
+.lib-row.active { background: #fef3e2; border-left: 3px solid var(--accent); padding-left: 9px; }
+.lib-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.lib-row .mini { font-size: 11px; color: var(--accent); opacity: 0; }
+.lib-row:hover .mini { opacity: 1; }
+.lib-empty { padding: 20px 12px; color: var(--muted); font-style: italic; font-size: 12px; text-align: center; }
+
+.docs-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--gray-line); }
+.docs-toolbar .ctx { font-weight: 700; color: var(--primary); font-size: 13px; }
+.btn-upload { margin-left: auto; padding: 7px 14px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-weight: 600; }
+.btn-upload:hover { background: #ea8a12; }
+.btn-upload:disabled { background: #e5cfa6; cursor: not-allowed; }
+
+table { width: 100%; border-collapse: collapse; background: var(--white); font-size: 12px; }
+thead th { background: #f1ede6; color: var(--primary); padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 700; white-space: nowrap; }
+tbody tr { border-bottom: 1px solid var(--gray-line); }
+tbody tr:hover { background: #fdf6ec; }
+tbody td { padding: 8px 10px; vertical-align: middle; }
+.empty-row td { text-align: center; color: var(--muted); padding: 30px; font-style: italic; }
+.doc-icon { font-size: 16px; margin-right: 6px; }
+
+.btn-sm { padding: 3px 9px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 4px; border: 1px solid; transition: background .12s; }
+.btn-dl { background: #fef3e2; color: var(--accent); border-color: #f3d9a8; }
+.btn-dl:hover { background: #f3d9a8; }
+.btn-rep { background: #e8f0fe; color: var(--primary); border-color: #c7d7fd; }
+.btn-rep:hover { background: #c7d7fd; }
+.btn-del { background: #fee2e2; color: var(--red); border-color: #fca5a5; }
+.btn-del:hover { background: #fca5a5; }
+.btn-edit { background: #e8f0fe; color: var(--primary); border-color: #c7d7fd; }
+
+.badge-role { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; background: #fde9cf; color: #92400e; text-transform: uppercase; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--white); border-radius: 10px; width: 100%; max-width: 480px; padding: 28px; box-shadow: 0 12px 40px rgba(0,0,0,.25); position: relative; }
+.modal-title { font-size: 16px; font-weight: 700; color: var(--primary); margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid var(--gray-line); }
+.modal-close { position: absolute; top: 16px; right: 18px; background: none; border: none; font-size: 22px; color: var(--muted); line-height: 1; padding: 4px 8px; }
+.modal-close:hover { color: var(--red); }
+.form-field { margin-bottom: 14px; }
+.form-field label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+.form-field input, .form-field select { width: 100%; padding: 8px 10px; border: 1px solid var(--gray-line); border-radius: 5px; font-size: 13px; font-family: inherit; outline: none; }
+.form-field input:focus, .form-field select:focus { border-color: var(--accent); }
+.form-field small { color: var(--muted); font-size: 11px; margin-top: 3px; display: block; }
+.modal-error { color: var(--red); font-size: 12px; margin-top: 8px; min-height: 16px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--gray-line); }
+.btn-cancel { padding: 8px 18px; background: var(--white); border: 1px solid var(--gray-line); border-radius: 6px; }
+.btn-cancel:hover { background: var(--gray-bg); }
+.btn-save { padding: 8px 22px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-weight: 600; }
+.btn-save:hover { background: #ea8a12; }
+
+.confirm-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 300; align-items: center; justify-content: center; }
+.confirm-overlay.open { display: flex; }
+.confirm-box { background: #fff; border-radius: 10px; padding: 28px 32px; max-width: 380px; width: 90%; box-shadow: 0 12px 40px rgba(0,0,0,.3); text-align: center; }
+.confirm-box h3 { font-size: 16px; color: var(--primary); margin-bottom: 10px; }
+.confirm-box p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+.confirm-btns { display: flex; gap: 10px; justify-content: center; }
+.btn-confirm-del { padding: 8px 22px; background: var(--red); color: #fff; border: none; border-radius: 6px; font-weight: 600; }
+
+@media (max-width: 820px) {
+  .app-sidebar { top: var(--header-h); left: 0; right: 0; bottom: auto; width: 100%; height: 46px; padding: 0; display: flex; flex-direction: row; align-items: stretch; overflow-x: auto; }
+  .sidebar-section { display: none; }
+  .nav-item { border-left: none; border-bottom: 3px solid transparent; padding: 0 16px; white-space: nowrap; }
+  .nav-item.active { border-left: none; border-bottom-color: var(--accent); }
+  .app-main { margin-left: 0; margin-top: calc(var(--header-h) + 46px); padding: 16px; }
+  .header-user { display: none; }
+  .lib-grid { grid-template-columns: 1fr; }
+  .lib-list { max-height: 220px; }
+  .cards { gap: 10px; } .card { flex: 1 1 100%; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="app-header">
+    <div class="header-brand">E-Library <span>Dashboard</span></div>
+    <div class="header-right">
+      <span class="header-user" id="hdr-email"></span>
+      <span class="header-role-badge" id="hdr-role"></span>
+      <button class="btn-logout" id="btn-logout">Sign out</button>
+    </div>
+  </header>
+
+  <nav class="app-sidebar">
+    <div class="sidebar-section">Modules</div>
+    <a href="/elibrary" class="nav-item active"><span class="nav-icon">📚</span> E-Library</a>
+  </nav>
+
+  <main class="app-main">
+    <div class="page-title">📚 E-Library <small>Document Repository · by Subject &amp; Category</small></div>
+
+    <div class="tabs-bar">
+      <button class="tab-btn active" data-tab="library">Library</button>
+      <button class="tab-btn admin-only" data-tab="users" style="display:none">Users</button>
+    </div>
+
+    <!-- LIBRARY TAB -->
+    <div id="tab-library" class="tab-content active">
+      <div class="cards">
+        <div class="card amber"><div class="card-label">Subjects</div><div class="card-value" id="kpi-subjects">—</div><div class="card-sub">top-level topics</div></div>
+        <div class="card blue"><div class="card-label">Categories</div><div class="card-value" id="kpi-categories">—</div><div class="card-sub">across all subjects</div></div>
+        <div class="card green"><div class="card-label">Documents</div><div class="card-value" id="kpi-documents">—</div><div class="card-sub">files stored</div></div>
+        <div class="card orange"><div class="card-label">Total Size</div><div class="card-value" id="kpi-size">—</div><div class="card-sub">storage used</div></div>
+      </div>
+
+      <div class="lib-grid">
+        <!-- Subjects pane -->
+        <div class="lib-pane">
+          <div class="lib-pane-head">Subjects <button class="lib-add editor-only" id="btn-add-subject" style="display:none" title="Add subject">+</button></div>
+          <div class="lib-list" id="subjects-list"></div>
+        </div>
+        <!-- Categories pane -->
+        <div class="lib-pane">
+          <div class="lib-pane-head">Categories <button class="lib-add editor-only" id="btn-add-category" style="display:none" title="Add category">+</button></div>
+          <div class="lib-list" id="categories-list"><div class="lib-empty">Select a subject</div></div>
+        </div>
+        <!-- Documents pane -->
+        <div class="lib-pane">
+          <div class="docs-toolbar">
+            <span class="ctx" id="docs-ctx">Documents</span>
+            <button class="btn-upload editor-only" id="btn-upload" style="display:none" disabled>⬆ Upload</button>
+          </div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr><th>Title</th><th>File</th><th>Size</th><th>Uploaded By</th><th>Date</th><th>Actions</th></tr></thead>
+              <tbody id="docs-tbody"><tr class="empty-row"><td colspan="6">Select a category to view documents.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- USERS TAB (super_admin) -->
+    <div id="tab-users" class="tab-content">
+      <div style="margin-bottom:12px"><button class="btn-save" id="btn-add-user">+ Add User</button></div>
+      <div class="lib-pane" style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Email</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="user-tbody"></tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px;font-size:11px;color:var(--muted)">
+        Roles: <strong>super_admin</strong> manages users · <strong>admin</strong> manages subjects/categories &amp; files · <strong>user</strong> can view &amp; download.
+        These accounts are <strong>separate</strong> from the other modules.
+      </p>
+    </div>
+
+    <footer style="text-align:center; padding:20px 0 4px; margin-top:28px; font-size:12px; color:var(--muted); border-top:1px solid var(--gray-line);">
+      © 2026 Alfath Latuconsina · USECASE-STUDIO.xyz<sup>™</sup> · Beta Version
+    </footer>
+  </main>
+</div>
+
+<!-- MODAL: Subject/Category (simple name) -->
+<div class="modal-overlay" id="modal-name">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-name')">×</button>
+    <div class="modal-title" id="name-modal-title">Add</div>
+    <div class="form-field"><label id="name-label">Name *</label><input type="text" id="name-input"></div>
+    <div class="modal-error" id="name-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-name')">Cancel</button>
+      <button class="btn-save" id="name-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Upload / Replace -->
+<div class="modal-overlay" id="modal-upload">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-upload')">×</button>
+    <div class="modal-title" id="upload-modal-title">Upload Document</div>
+    <div class="form-field"><label>Title</label><input type="text" id="up-title" placeholder="Defaults to file name"></div>
+    <div class="form-field">
+      <label id="up-file-label">File *</label>
+      <input type="file" id="up-file">
+      <small>Max 25 MB · pdf, doc(x), xls(x), ppt(x), txt, csv, images, zip</small>
+    </div>
+    <div class="modal-error" id="upload-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-upload')">Cancel</button>
+      <button class="btn-save" id="upload-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: User -->
+<div class="modal-overlay" id="modal-user">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-user')">×</button>
+    <div class="modal-title" id="user-modal-title">Add User</div>
+    <div class="form-field"><label>Email *</label><input type="email" id="user-email" autocomplete="off"></div>
+    <div class="form-field"><label>Password <span id="user-pw-hint" style="text-transform:none;color:var(--muted)"></span></label><input type="password" id="user-pw" autocomplete="new-password"></div>
+    <div class="form-field"><label>Role</label>
+      <select id="user-role">
+        <option value="user">user — view &amp; download</option>
+        <option value="admin">admin — subjects, categories, files</option>
+        <option value="super_admin">super_admin — manage users</option>
+      </select>
+    </div>
+    <div class="modal-error" id="user-err"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('modal-user')">Cancel</button>
+      <button class="btn-save" id="user-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <h3 id="confirm-title">Delete?</h3>
+    <p id="confirm-msg">This action cannot be undone.</p>
+    <div class="confirm-btns">
+      <button class="btn-cancel" onclick="closeConfirm()">Cancel</button>
+      <button class="btn-confirm-del" id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const LOGIN_URL = '/elibrary/login';
+const S = { token: localStorage.getItem('elibrary_token') || '', role: '', email: '',
+            subjects: [], categories: [], docs: [], users: [], selSubject: null, selCategory: null };
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function authHdr(){ return { 'Authorization': 'Bearer ' + S.token }; }
+function jsonHdr(){ return { 'Authorization': 'Bearer ' + S.token, 'Content-Type': 'application/json' }; }
+function canEdit(){ return S.role === 'admin' || S.role === 'super_admin'; }
+function fmtSize(b){ if(b==null) return '—'; if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+function fmtDate(s){ if(!s) return '—'; try { return new Date(s).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}); } catch { return s; } }
+function fileIcon(name){ const e=(name||'').split('.').pop().toLowerCase();
+  if(['pdf'].includes(e))return '📕'; if(['doc','docx'].includes(e))return '📘';
+  if(['xls','xlsx','csv'].includes(e))return '📗'; if(['ppt','pptx'].includes(e))return '📙';
+  if(['png','jpg','jpeg','gif'].includes(e))return '🖼️'; if(['zip'].includes(e))return '🗜️'; return '📄'; }
+
+function doLogout(){ localStorage.removeItem('elibrary_token'); location.href = LOGIN_URL; }
+
+async function init(){
+  if(!S.token){ location.href = LOGIN_URL; return; }
+  try {
+    const r = await fetch('/api/elibrary/me', { headers: authHdr() });
+    if(r.ok){ const d = await r.json(); S.role=d.role; S.email=d.email; }
+    else { localStorage.removeItem('elibrary_token'); location.href = LOGIN_URL; return; }
+  } catch {}
+  showApp();
+}
+
+async function showApp(){
+  document.getElementById('app').style.display='block';
+  document.getElementById('hdr-email').textContent = S.email;
+  document.getElementById('hdr-role').textContent  = S.role.replace('_',' ');
+  document.querySelectorAll('.editor-only').forEach(el => el.style.display = canEdit() ? '' : 'none');
+  document.querySelectorAll('.admin-only').forEach(el => el.style.display = (S.role==='super_admin') ? '' : 'none');
+  await loadSummary();
+  await loadSubjects();
+  if (S.role === 'super_admin') await loadUsers();
+}
+
+async function loadSummary(){
+  const r = await fetch('/api/elibrary/summary', { headers: authHdr() });
+  if(!r.ok) return;
+  const d = await r.json();
+  document.getElementById('kpi-subjects').textContent   = d.subjects;
+  document.getElementById('kpi-categories').textContent = d.categories;
+  document.getElementById('kpi-documents').textContent  = d.documents;
+  document.getElementById('kpi-size').textContent       = fmtSize(d.total_bytes);
+}
+
+// Subjects
+async function loadSubjects(){
+  const r = await fetch('/api/elibrary/subjects', { headers: authHdr() });
+  S.subjects = await r.json();
+  renderSubjects();
+}
+function renderSubjects(){
+  const el = document.getElementById('subjects-list');
+  if(!S.subjects.length){ el.innerHTML = '<div class="lib-empty">No subjects yet.</div>'; return; }
+  el.innerHTML = S.subjects.map(su => `
+    <div class="lib-row ${S.selSubject&&S.selSubject.id===su.id?'active':''}" onclick="selectSubject(${su.id})">
+      <span class="nm">📂 ${esc(su.name)}</span>
+      ${canEdit()?`<span class="mini" onclick="event.stopPropagation();editSubject(${su.id})">✎</span><span class="mini" onclick="event.stopPropagation();askDel('subject',${su.id},${JSON.stringify(su.name)})">🗑</span>`:''}
+    </div>`).join('');
+}
+async function selectSubject(id){
+  S.selSubject = S.subjects.find(x=>x.id===id) || null;
+  S.selCategory = null;
+  renderSubjects();
+  document.getElementById('docs-tbody').innerHTML = '<tr class="empty-row"><td colspan="6">Select a category.</td></tr>';
+  document.getElementById('docs-ctx').textContent = 'Documents';
+  document.getElementById('btn-upload').disabled = true;
+  await loadCategories();
+}
+
+// Categories
+async function loadCategories(){
+  if(!S.selSubject){ return; }
+  const r = await fetch('/api/elibrary/categories?subject_id='+S.selSubject.id, { headers: authHdr() });
+  S.categories = await r.json();
+  renderCategories();
+}
+function renderCategories(){
+  const el = document.getElementById('categories-list');
+  if(!S.selSubject){ el.innerHTML = '<div class="lib-empty">Select a subject</div>'; return; }
+  if(!S.categories.length){ el.innerHTML = '<div class="lib-empty">No categories yet.</div>'; return; }
+  el.innerHTML = S.categories.map(c => `
+    <div class="lib-row ${S.selCategory&&S.selCategory.id===c.id?'active':''}" onclick="selectCategory(${c.id})">
+      <span class="nm">🏷️ ${esc(c.name)}</span>
+      ${canEdit()?`<span class="mini" onclick="event.stopPropagation();editCategory(${c.id})">✎</span><span class="mini" onclick="event.stopPropagation();askDel('category',${c.id},${JSON.stringify(c.name)})">🗑</span>`:''}
+    </div>`).join('');
+}
+async function selectCategory(id){
+  S.selCategory = S.categories.find(x=>x.id===id) || null;
+  renderCategories();
+  document.getElementById('docs-ctx').textContent =
+    (S.selSubject?S.selSubject.name:'') + ' › ' + (S.selCategory?S.selCategory.name:'');
+  document.getElementById('btn-upload').disabled = false;
+  await loadDocs();
+}
+
+// Documents
+async function loadDocs(){
+  if(!S.selCategory){ return; }
+  const r = await fetch('/api/elibrary/documents?category_id='+S.selCategory.id, { headers: authHdr() });
+  S.docs = await r.json();
+  renderDocs();
+}
+function renderDocs(){
+  const tbody = document.getElementById('docs-tbody');
+  if(!S.selCategory){ tbody.innerHTML='<tr class="empty-row"><td colspan="6">Select a category.</td></tr>'; return; }
+  if(!S.docs.length){ tbody.innerHTML='<tr class="empty-row"><td colspan="6">No documents in this category yet.</td></tr>'; return; }
+  tbody.innerHTML = S.docs.map(d => {
+    const acts = `<button class="btn-sm btn-dl" onclick="downloadDoc(${d.id})">Download</button>` +
+      (canEdit()?`<button class="btn-sm btn-rep" onclick="openReplace(${d.id})">Replace</button><button class="btn-sm btn-del" onclick="askDel('doc',${d.id},${JSON.stringify(d.title||d.original_name)})">Del</button>`:'');
+    return `<tr>
+      <td><span class="doc-icon">${fileIcon(d.original_name)}</span><strong>${esc(d.title||d.original_name)}</strong></td>
+      <td style="color:var(--muted)">${esc(d.original_name)}</td>
+      <td>${fmtSize(d.size_bytes)}</td>
+      <td style="color:var(--muted)">${esc(d.uploaded_by||'—')}</td>
+      <td>${fmtDate(d.updated_at||d.created_at)}</td>
+      <td style="white-space:nowrap">${acts}</td>
+    </tr>`;
+  }).join('');
+}
+async function downloadDoc(id){
+  const r = await fetch(`/api/elibrary/documents/${id}/file`, { headers: authHdr() });
+  if(!r.ok){ alert('Download failed.'); return; }
+  const blob = await r.blob();
+  const d = S.docs.find(x=>x.id===id);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (d && d.original_name) ? d.original_name : 'document';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+}
+
+// Modals
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('open'); }));
+
+// Subject/Category name modal
+let nameCtx = null; // {kind:'subject'|'category', id?}
+function openNameModal(kind, id=null){
+  nameCtx = { kind, id };
+  const isEdit = id!=null;
+  const label = kind==='subject'?'Subject':'Category';
+  document.getElementById('name-modal-title').textContent = (isEdit?'Edit ':'Add ')+label;
+  document.getElementById('name-label').textContent = label+' name *';
+  let cur = '';
+  if(isEdit){ const arr = kind==='subject'?S.subjects:S.categories; const o=arr.find(x=>x.id===id); cur=o?o.name:''; }
+  document.getElementById('name-input').value = cur;
+  document.getElementById('name-err').textContent = '';
+  openModal('modal-name');
+}
+function editSubject(id){ openNameModal('subject', id); }
+function editCategory(id){ openNameModal('category', id); }
+async function saveName(){
+  const err = document.getElementById('name-err'); err.textContent='';
+  const name = document.getElementById('name-input').value.trim();
+  if(!name){ err.textContent='Name is required.'; return; }
+  let url, method, body;
+  if(nameCtx.kind==='subject'){
+    url = nameCtx.id?`/api/elibrary/subjects/${nameCtx.id}`:'/api/elibrary/subjects';
+    body = { name };
+  } else {
+    if(!S.selSubject){ err.textContent='Select a subject first.'; return; }
+    url = nameCtx.id?`/api/elibrary/categories/${nameCtx.id}`:'/api/elibrary/categories';
+    body = { name, subject_id: S.selSubject.id };
+  }
+  method = nameCtx.id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers: jsonHdr(), body: JSON.stringify(body) });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ err.textContent = d.error||'Save failed.'; return; }
+  closeModal('modal-name');
+  await loadSummary();
+  if(nameCtx.kind==='subject'){ await loadSubjects(); }
+  else { await loadCategories(); }
+}
+
+// Upload / Replace
+let replaceId = null;
+function openUpload(){
+  replaceId = null;
+  if(!S.selCategory){ alert('Select a category first.'); return; }
+  document.getElementById('upload-modal-title').textContent = 'Upload Document';
+  document.getElementById('up-file-label').textContent = 'File *';
+  document.getElementById('up-title').value = '';
+  document.getElementById('up-file').value = '';
+  document.getElementById('upload-err').textContent = '';
+  openModal('modal-upload');
+}
+function openReplace(id){
+  replaceId = id;
+  const d = S.docs.find(x=>x.id===id);
+  document.getElementById('upload-modal-title').textContent = 'Replace Document';
+  document.getElementById('up-file-label').textContent = 'New File (leave empty to keep current)';
+  document.getElementById('up-title').value = d?(d.title||''):'';
+  document.getElementById('up-file').value = '';
+  document.getElementById('upload-err').textContent = '';
+  openModal('modal-upload');
+}
+async function saveUpload(){
+  const err = document.getElementById('upload-err'); err.textContent='';
+  const file = document.getElementById('up-file').files[0];
+  const title = document.getElementById('up-title').value.trim();
+  const fd = new FormData();
+  if(title) fd.append('title', title);
+  if(file) fd.append('file', file);
+  let url, method;
+  if(replaceId){
+    url = `/api/elibrary/documents/${replaceId}`; method = 'PUT';
+  } else {
+    if(!file){ err.textContent='Please choose a file.'; return; }
+    url = '/api/elibrary/documents'; method = 'POST';
+    fd.append('subject_id', S.selSubject.id);
+    fd.append('category_id', S.selCategory.id);
+  }
+  const r = await fetch(url, { method, headers: authHdr(), body: fd }); // no Content-Type -> browser sets multipart
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ err.textContent = d.error||'Upload failed.'; return; }
+  closeModal('modal-upload');
+  await loadSummary(); await loadDocs();
+}
+
+// Users
+async function loadUsers(){
+  const r = await fetch('/api/elibrary/users', { headers: authHdr() });
+  if(!r.ok) return;
+  S.users = await r.json();
+  renderUsers();
+}
+function renderUsers(){
+  const tbody = document.getElementById('user-tbody');
+  if(!S.users.length){ tbody.innerHTML='<tr class="empty-row"><td colspan="4">No users.</td></tr>'; return; }
+  tbody.innerHTML = S.users.map(u=>{
+    const isSelf = u.email===S.email;
+    const created = u.created_at ? new Date(u.created_at).toLocaleDateString('id-ID') : '—';
+    const del = isSelf ? '<span style="font-size:11px;color:var(--muted)">(you)</span>'
+      : `<button class="btn-sm btn-del" onclick="askDel('user',${u.id},${JSON.stringify(u.email)})">Del</button>`;
+    return `<tr><td><strong>${esc(u.email)}</strong></td><td><span class="badge-role">${esc(u.role.replace('_',' '))}</span></td><td>${created}</td><td><button class="btn-sm btn-edit" onclick="openUserModal(${u.id})">Edit</button>${del}</td></tr>`;
+  }).join('');
+}
+let editUserId = null;
+function openUserModal(id=null){
+  editUserId = id;
+  const u = id ? S.users.find(x=>x.id===id) : null;
+  document.getElementById('user-modal-title').textContent = id?'Edit User':'Add User';
+  document.getElementById('user-err').textContent='';
+  document.getElementById('user-email').value = u?u.email:'';
+  document.getElementById('user-email').disabled = !!id;
+  document.getElementById('user-pw').value='';
+  document.getElementById('user-pw-hint').textContent = id?'(leave blank to keep current)':'(required)';
+  document.getElementById('user-role').value = u?u.role:'user';
+  openModal('modal-user');
+}
+async function saveUser(){
+  const err = document.getElementById('user-err'); err.textContent='';
+  const email = document.getElementById('user-email').value.trim();
+  const pw = document.getElementById('user-pw').value;
+  const role = document.getElementById('user-role').value;
+  if(!editUserId && (!email||!pw)){ err.textContent='Email and password are required.'; return; }
+  const body = { role };
+  if(!editUserId){ body.email=email; body.password=pw; } else if(pw){ body.password=pw; }
+  const r = await fetch(editUserId?`/api/elibrary/users/${editUserId}`:'/api/elibrary/users',
+    { method: editUserId?'PUT':'POST', headers: jsonHdr(), body: JSON.stringify(body) });
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ err.textContent = d.error||'Save failed.'; return; }
+  closeModal('modal-user');
+  await loadUsers();
+}
+
+// Delete (subject/category/doc/user)
+let pendingDel = null;
+function askDel(type, id, label){
+  pendingDel = { type, id };
+  document.getElementById('confirm-title').textContent = `Delete "${label}"?`;
+  document.getElementById('confirm-msg').textContent =
+    type==='subject' ? 'This removes the subject, its categories, and all their files.' :
+    type==='category' ? 'This removes the category and all its files.' :
+    'This action cannot be undone.';
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+function closeConfirm(){ pendingDel=null; document.getElementById('confirm-overlay').classList.remove('open'); }
+document.getElementById('confirm-ok').addEventListener('click', async ()=>{
+  if(!pendingDel) return;
+  const map = { subject:'subjects', category:'categories', doc:'documents', user:'users' };
+  const r = await fetch(`/api/elibrary/${map[pendingDel.type]}/${pendingDel.id}`, { method:'DELETE', headers: authHdr() });
+  const t = pendingDel.type;
+  closeConfirm();
+  if(!r.ok) return;
+  await loadSummary();
+  if(t==='user'){ await loadUsers(); }
+  else if(t==='subject'){ S.selSubject=null; S.selCategory=null; await loadSubjects(); renderCategories(); renderDocs(); }
+  else if(t==='category'){ S.selCategory=null; await loadCategories(); renderDocs(); }
+  else { await loadDocs(); }
+});
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', ()=>{
+  const tab = btn.dataset.tab;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b===btn));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.toggle('active', c.id==='tab-'+tab));
+}));
+
+// Wire up
+document.getElementById('btn-logout').addEventListener('click', doLogout);
+document.getElementById('btn-add-subject').addEventListener('click', ()=>openNameModal('subject'));
+document.getElementById('btn-add-category').addEventListener('click', ()=>{ if(!S.selSubject){ alert('Select a subject first.'); return; } openNameModal('category'); });
+document.getElementById('name-save').addEventListener('click', saveName);
+document.getElementById('btn-upload').addEventListener('click', openUpload);
+document.getElementById('upload-save').addEventListener('click', saveUpload);
+document.getElementById('btn-add-user').addEventListener('click', ()=>openUserModal());
+document.getElementById('user-save').addEventListener('click', saveUser);
+
+init();
+</script>
+</body>
+</html>

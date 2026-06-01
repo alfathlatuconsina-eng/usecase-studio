@@ -16,12 +16,14 @@
 """
 import os
 import json
+import uuid
 import datetime as dt
 from functools import wraps
 
 import bcrypt
 import jwt
 from flask import Flask, request, jsonify, send_from_directory
+from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from sqlalchemy import (create_engine, Integer, String, Numeric, Text,
                         DateTime, ForeignKey, select, func)
@@ -36,6 +38,16 @@ DB_URL = os.environ.get("DATABASE_URL",
 JWT_SECRET = os.environ.get("JWT_SECRET", "change-me-in-production")
 JWT_HOURS = 12
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+
+# E-Library file storage (not publicly listable; served only via authed endpoint)
+ELIB_UPLOAD_DIR = os.environ.get(
+    "ELIBRARY_UPLOAD_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "uploads", "elibrary"))
+os.makedirs(ELIB_UPLOAD_DIR, exist_ok=True)
+ELIB_MAX_BYTES = 25 * 1024 * 1024  # 25 MB per file
+ELIB_ALLOWED_EXT = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+                    "txt", "csv", "png", "jpg", "jpeg", "gif", "zip"}
+ELIBRARY_ROLES = ("super_admin", "admin", "user")
 
 engine = create_engine(DB_URL, pool_pre_ping=True)
 Session = sessionmaker(bind=engine)
@@ -254,7 +266,70 @@ class QualityBranch(Base):
         }
 
 
+class ElibraryUser(Base):
+    """Separate credential table for the E-Library module.
+    Roles: super_admin (manage users), admin (subjects/categories/files), user (view)."""
+    __tablename__ = "elibrary_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    pw_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="user")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "email": self.email, "role": self.role,
+                "created_at": self.created_at.isoformat() if self.created_at else None}
+
+
+class ElibrarySubject(Base):
+    __tablename__ = "elibrary_subjects"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "name": self.name}
+
+
+class ElibraryCategory(Base):
+    __tablename__ = "elibrary_categories"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subject_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("elibrary_subjects.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "subject_id": self.subject_id, "name": self.name}
+
+
+class ElibraryDocument(Base):
+    __tablename__ = "elibrary_documents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subject_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("elibrary_subjects.id", ondelete="CASCADE"), nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("elibrary_categories.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)   # uuid on disk
+    original_name: Mapped[str] = mapped_column(String(255), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=True)
+    uploaded_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "subject_id": self.subject_id, "category_id": self.category_id,
+            "title": self.title, "original_name": self.original_name,
+            "size_bytes": self.size_bytes, "uploaded_by": self.uploaded_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = ELIB_MAX_BYTES
 CORS(app)
 
 
@@ -297,6 +372,8 @@ def require(*allowed_roles):
                 expected_module = "people"
             elif request.path.startswith("/api/quality/"):
                 expected_module = "quality"
+            elif request.path.startswith("/api/elibrary/"):
+                expected_module = "elibrary"
             else:
                 expected_module = "pmo"
             if claims.get("module") != expected_module:
@@ -360,6 +437,11 @@ def quality_login_api():
     return _do_login(QualityUser, "quality")
 
 
+@app.post("/api/elibrary/login")
+def elibrary_login_api():
+    return _do_login(ElibraryUser, "elibrary")
+
+
 # legacy alias — old PMO clients posted here
 @app.post("/api/login")
 def login():
@@ -381,6 +463,12 @@ def people_me():
 @app.get("/api/quality/me")
 @require()
 def quality_me():
+    return jsonify({"email": request.user["email"], "role": request.user["role"]})
+
+
+@app.get("/api/elibrary/me")
+@require()
+def elibrary_me():
     return jsonify({"email": request.user["email"], "role": request.user["role"]})
 
 
@@ -990,6 +1078,309 @@ def delete_quality_user(uid):
 
 
 # ---------------------------------------------------------------------------
+# E-Library — Subjects, Categories, Documents (with file upload)
+# ---------------------------------------------------------------------------
+def _elib_ext_ok(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ELIB_ALLOWED_EXT
+
+
+@app.get("/api/elibrary/summary")
+@require()
+def elibrary_summary():
+    with Session() as s:
+        subs = s.scalar(select(func.count(ElibrarySubject.id))) or 0
+        cats = s.scalar(select(func.count(ElibraryCategory.id))) or 0
+        docs = s.scalar(select(func.count(ElibraryDocument.id))) or 0
+        total = s.scalar(select(func.coalesce(func.sum(ElibraryDocument.size_bytes), 0))) or 0
+        return jsonify({"subjects": subs, "categories": cats, "documents": docs,
+                        "total_bytes": int(total)})
+
+
+# ----- Subjects -----
+@app.get("/api/elibrary/subjects")
+@require()
+def list_elib_subjects():
+    with Session() as s:
+        rows = s.scalars(select(ElibrarySubject).order_by(ElibrarySubject.name)).all()
+        return jsonify([r.to_dict() for r in rows])
+
+
+@app.post("/api/elibrary/subjects")
+@require("admin", "super_admin")
+def create_elib_subject():
+    data = request.get_json(force=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "subject name is required"}), 400
+    with Session() as s:
+        sub = ElibrarySubject(name=name)
+        s.add(sub); s.commit()
+        return jsonify(sub.to_dict()), 201
+
+
+@app.put("/api/elibrary/subjects/<int:sid>")
+@require("admin", "super_admin")
+def update_elib_subject(sid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        sub = s.get(ElibrarySubject, sid)
+        if not sub:
+            return jsonify({"error": "not found"}), 404
+        if "name" in data:
+            sub.name = (data["name"] or "").strip()
+        s.commit()
+        return jsonify(sub.to_dict())
+
+
+@app.delete("/api/elibrary/subjects/<int:sid>")
+@require("admin", "super_admin")
+def delete_elib_subject(sid):
+    with Session() as s:
+        sub = s.get(ElibrarySubject, sid)
+        if not sub:
+            return jsonify({"error": "not found"}), 404
+        # remove files on disk for documents under this subject
+        docs = s.scalars(select(ElibraryDocument).where(ElibraryDocument.subject_id == sid)).all()
+        for d in docs:
+            _elib_delete_file(d.stored_name)
+        s.delete(sub); s.commit()
+        return jsonify({"ok": True})
+
+
+# ----- Categories -----
+@app.get("/api/elibrary/categories")
+@require()
+def list_elib_categories():
+    with Session() as s:
+        q = select(ElibraryCategory)
+        sid = request.args.get("subject_id")
+        if sid:
+            q = q.where(ElibraryCategory.subject_id == int(sid))
+        rows = s.scalars(q.order_by(ElibraryCategory.name)).all()
+        return jsonify([r.to_dict() for r in rows])
+
+
+@app.post("/api/elibrary/categories")
+@require("admin", "super_admin")
+def create_elib_category():
+    data = request.get_json(force=True) or {}
+    name = (data.get("name") or "").strip()
+    sid = data.get("subject_id")
+    if not name or not sid:
+        return jsonify({"error": "subject_id and name are required"}), 400
+    with Session() as s:
+        if not s.get(ElibrarySubject, int(sid)):
+            return jsonify({"error": "subject not found"}), 404
+        cat = ElibraryCategory(subject_id=int(sid), name=name)
+        s.add(cat); s.commit()
+        return jsonify(cat.to_dict()), 201
+
+
+@app.put("/api/elibrary/categories/<int:cid>")
+@require("admin", "super_admin")
+def update_elib_category(cid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        cat = s.get(ElibraryCategory, cid)
+        if not cat:
+            return jsonify({"error": "not found"}), 404
+        if "name" in data:
+            cat.name = (data["name"] or "").strip()
+        s.commit()
+        return jsonify(cat.to_dict())
+
+
+@app.delete("/api/elibrary/categories/<int:cid>")
+@require("admin", "super_admin")
+def delete_elib_category(cid):
+    with Session() as s:
+        cat = s.get(ElibraryCategory, cid)
+        if not cat:
+            return jsonify({"error": "not found"}), 404
+        docs = s.scalars(select(ElibraryDocument).where(ElibraryDocument.category_id == cid)).all()
+        for d in docs:
+            _elib_delete_file(d.stored_name)
+        s.delete(cat); s.commit()
+        return jsonify({"ok": True})
+
+
+# ----- Documents -----
+def _elib_delete_file(stored_name):
+    try:
+        if stored_name:
+            os.remove(os.path.join(ELIB_UPLOAD_DIR, stored_name))
+    except OSError:
+        pass
+
+
+@app.get("/api/elibrary/documents")
+@require()
+def list_elib_documents():
+    with Session() as s:
+        q = select(ElibraryDocument)
+        if request.args.get("subject_id"):
+            q = q.where(ElibraryDocument.subject_id == int(request.args["subject_id"]))
+        if request.args.get("category_id"):
+            q = q.where(ElibraryDocument.category_id == int(request.args["category_id"]))
+        rows = s.scalars(q.order_by(ElibraryDocument.created_at.desc())).all()
+        return jsonify([r.to_dict() for r in rows])
+
+
+@app.post("/api/elibrary/documents")
+@require("admin", "super_admin")
+def upload_elib_document():
+    # multipart/form-data: file + subject_id + category_id + title
+    f = request.files.get("file")
+    subject_id = request.form.get("subject_id")
+    category_id = request.form.get("category_id")
+    title = (request.form.get("title") or "").strip()
+    if not f or not f.filename:
+        return jsonify({"error": "a file is required"}), 400
+    if not subject_id or not category_id:
+        return jsonify({"error": "subject_id and category_id are required"}), 400
+    if not _elib_ext_ok(f.filename):
+        return jsonify({"error": "file type not allowed"}), 400
+    orig = secure_filename(f.filename)
+    ext = orig.rsplit(".", 1)[1].lower()
+    stored = f"{uuid.uuid4().hex}.{ext}"
+    path = os.path.join(ELIB_UPLOAD_DIR, stored)
+    f.save(path)
+    size = os.path.getsize(path)
+    with Session() as s:
+        d = ElibraryDocument(
+            subject_id=int(subject_id), category_id=int(category_id),
+            title=title or orig, stored_name=stored, original_name=orig,
+            size_bytes=size, uploaded_by=request.user.get("email", "?"))
+        s.add(d); s.commit()
+        return jsonify(d.to_dict()), 201
+
+
+@app.put("/api/elibrary/documents/<int:did>")
+@require("admin", "super_admin")
+def replace_elib_document(did):
+    """Replace the file (and/or title) of an existing document."""
+    with Session() as s:
+        d = s.get(ElibraryDocument, did)
+        if not d:
+            return jsonify({"error": "not found"}), 404
+        title = request.form.get("title")
+        if title is not None:
+            d.title = title.strip() or d.title
+        f = request.files.get("file")
+        if f and f.filename:
+            if not _elib_ext_ok(f.filename):
+                return jsonify({"error": "file type not allowed"}), 400
+            _elib_delete_file(d.stored_name)
+            orig = secure_filename(f.filename)
+            ext = orig.rsplit(".", 1)[1].lower()
+            stored = f"{uuid.uuid4().hex}.{ext}"
+            f.save(os.path.join(ELIB_UPLOAD_DIR, stored))
+            d.stored_name = stored
+            d.original_name = orig
+            d.size_bytes = os.path.getsize(os.path.join(ELIB_UPLOAD_DIR, stored))
+            d.uploaded_by = request.user.get("email", "?")
+        d.updated_at = dt.datetime.utcnow()
+        s.commit()
+        return jsonify(d.to_dict())
+
+
+@app.delete("/api/elibrary/documents/<int:did>")
+@require("admin", "super_admin")
+def delete_elib_document(did):
+    with Session() as s:
+        d = s.get(ElibraryDocument, did)
+        if not d:
+            return jsonify({"error": "not found"}), 404
+        _elib_delete_file(d.stored_name)
+        s.delete(d); s.commit()
+        return jsonify({"ok": True})
+
+
+@app.get("/api/elibrary/documents/<int:did>/file")
+@require()
+def download_elib_document(did):
+    with Session() as s:
+        d = s.get(ElibraryDocument, did)
+        if not d:
+            return jsonify({"error": "not found"}), 404
+        return send_from_directory(ELIB_UPLOAD_DIR, d.stored_name,
+                                   as_attachment=True, download_name=d.original_name)
+
+
+# ----- E-Library Users (super_admin only) -----
+@app.get("/api/elibrary/users")
+@require("super_admin")
+def list_elib_users():
+    with Session() as s:
+        rows = s.scalars(select(ElibraryUser).order_by(ElibraryUser.id)).all()
+        return jsonify([u.to_dict() for u in rows])
+
+
+@app.post("/api/elibrary/users")
+@require("super_admin")
+def create_elib_user():
+    data = request.get_json(force=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pw = data.get("password") or ""
+    role = data.get("role") or "user"
+    if not email or not pw:
+        return jsonify({"error": "email and password are required"}), 400
+    if role not in ELIBRARY_ROLES:
+        return jsonify({"error": "role must be super_admin, admin, or user"}), 400
+    with Session() as s:
+        if s.scalar(select(ElibraryUser).where(ElibraryUser.email == email)):
+            return jsonify({"error": "a user with that email already exists"}), 409
+        u = ElibraryUser(email=email, role=role,
+                         pw_hash=bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode())
+        s.add(u); s.commit()
+        return jsonify(u.to_dict()), 201
+
+
+@app.put("/api/elibrary/users/<int:uid>")
+@require("super_admin")
+def update_elib_user(uid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        u = s.get(ElibraryUser, uid)
+        if not u:
+            return jsonify({"error": "not found"}), 404
+        if "role" in data:
+            if data["role"] not in ELIBRARY_ROLES:
+                return jsonify({"error": "invalid role"}), 400
+            if u.role == "super_admin" and data["role"] != "super_admin":
+                supers = s.scalar(select(func.count(ElibraryUser.id)).where(ElibraryUser.role == "super_admin"))
+                if supers <= 1:
+                    return jsonify({"error": "cannot demote the last super admin"}), 400
+            u.role = data["role"]
+        if data.get("password"):
+            u.pw_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt()).decode()
+        s.commit()
+        return jsonify(u.to_dict())
+
+
+@app.delete("/api/elibrary/users/<int:uid>")
+@require("super_admin")
+def delete_elib_user(uid):
+    with Session() as s:
+        u = s.get(ElibraryUser, uid)
+        if not u:
+            return jsonify({"error": "not found"}), 404
+        if u.email == request.user["email"]:
+            return jsonify({"error": "you cannot delete your own account"}), 400
+        if u.role == "super_admin":
+            supers = s.scalar(select(func.count(ElibraryUser.id)).where(ElibraryUser.role == "super_admin"))
+            if supers <= 1:
+                return jsonify({"error": "cannot delete the last super admin"}), 400
+        s.delete(u); s.commit()
+        return jsonify({"ok": True})
+
+
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({"error": "File too large (max 25 MB)."}), 413
+
+
+# ---------------------------------------------------------------------------
 # Frontend
 # ---------------------------------------------------------------------------
 @app.get("/")
@@ -1025,6 +1416,16 @@ def quality():
 @app.get("/quality/login")
 def quality_login():
     return send_from_directory(FRONTEND_DIR, "quality-login.html")
+
+
+@app.get("/elibrary")
+def elibrary():
+    return send_from_directory(FRONTEND_DIR, "elibrary.html")
+
+
+@app.get("/elibrary/login")
+def elibrary_login():
+    return send_from_directory(FRONTEND_DIR, "elibrary-login.html")
 
 
 @app.get("/<path:path>")

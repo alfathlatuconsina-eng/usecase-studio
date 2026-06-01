@@ -15,7 +15,8 @@ import bcrypt
 from sqlalchemy import select, func
 from app import (Base, engine, Session, User, Project,
                  PeopleTraining, PeopleEvaluation, PeopleCertification, PeopleUser,
-                 QualityUser, QualityBranch)
+                 QualityUser, QualityBranch,
+                 ElibraryUser, ElibrarySubject, ElibraryCategory)
 
 DEFAULT_EMAIL = "admin@mncbank.co.id"
 DEFAULT_PASSWORD = "pmo2026"   # change this — or pass args
@@ -193,6 +194,17 @@ def main():
             print(f"Created Quality admin {email} (role: admin)")
         s.commit()
 
+        # E-Library super admin (separate credential table; seed copies PMO creds)
+        euser = s.scalar(select(ElibraryUser).where(ElibraryUser.email == email.lower()))
+        if euser:
+            euser.pw_hash = pw_hash
+            euser.role = "super_admin"
+            print(f"Updated E-Library super admin {email} (role: super_admin)")
+        else:
+            s.add(ElibraryUser(email=email.lower(), pw_hash=pw_hash, role="super_admin"))
+            print(f"Created E-Library super admin {email} (role: super_admin)")
+        s.commit()
+
         # seed projects only if empty
         count = s.scalar(select(func.count(Project.id)))
         if count == 0:
@@ -233,6 +245,26 @@ def main():
             print(f"Seeded {len(QUALITY_BRANCHES)} quality branch survey rows.")
         else:
             print(f"Quality table already has {q_count} rows — not seeding.")
+
+        # seed E-Library subjects/categories only if empty
+        e_count = s.scalar(select(func.count(ElibrarySubject.id)))
+        if e_count == 0:
+            elib_seed = {
+                "Risk Management": ["Policies", "Internal Memo", "Technical Documents"],
+                "Compliance": ["Regulations", "Circular Letters", "Guidelines"],
+                "Operations": ["SOPs", "Work Instructions", "Forms & Templates"],
+                "Information Technology": ["IT Policies", "Architecture", "User Manuals"],
+            }
+            for subj_name, cats in elib_seed.items():
+                subj = ElibrarySubject(name=subj_name)
+                s.add(subj); s.flush()
+                for c in cats:
+                    s.add(ElibraryCategory(subject_id=subj.id, name=c))
+            s.commit()
+            n_cats = sum(len(v) for v in elib_seed.values())
+            print(f"Seeded {len(elib_seed)} E-Library subjects and {n_cats} categories.")
+        else:
+            print(f"E-Library already has {e_count} subjects — not seeding.")
 
     print("\nDone. Start the server with:  python app.py")
     print(f"Login with: {email} / {password}")
