@@ -128,9 +128,24 @@
 
   /* icon-style card image (no photo needed) */
   .card-img-icon {
-    height: 260px; display: flex; align-items: center; justify-content: center;
-    font-size: 92px; color: #fff;
+    position: relative; height: 260px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
     background: linear-gradient(135deg, #b45309 0%, #f59e0b 100%);
+  }
+  .cii-emoji { font-size: 104px; line-height: 1; filter: drop-shadow(0 4px 10px rgba(0,0,0,.25)); }
+  .card-elibrary .card-img img {
+    transition: transform .4s ease;
+    image-rendering: -webkit-optimize-contrast;   /* crisper scaling in Chrome/Edge */
+    filter: contrast(1.06) saturate(1.06) brightness(1.01);
+  }
+  .card-elibrary:hover .card-img img { transform: scale(1.05); }
+  .cii-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
+    background: rgba(0,0,0,.45); color: #fff;
+    font-size: 12.5px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; text-align: center; padding: 9px 10px;
+    backdrop-filter: blur(2px);
   }
 
   /* ── Footer ── */
@@ -220,7 +235,10 @@
 
   <!-- E-Library -->
   <a href="/elibrary" class="card card-elibrary">
-    <div class="card-img-icon">📚</div>
+    <div class="card-img" style="position:relative">
+      <img src="img-elibrary.jpg" alt="E-Library">
+      <span class="cii-overlay">Proposed Internal Development</span>
+    </div>
     <div class="card-body">
       <div class="card-title">E-Library</div>
       <div class="card-desc">Central document repository — organize files by Subject and Category, upload, version, and access policies, memos, and technical documents.</div>
