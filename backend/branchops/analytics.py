@@ -52,7 +52,7 @@ def daftar_cabang(scope=""):
     keberadaan cabang yang seharusnya tidak ia ketahui."""
     swh, sp = scoping.klausa(scope, "br")
     return db.q(f"""SELECT br.branch_code, br.branch_name, br.branch_type,
-                           br.region, br.region_class
+                           br.region_class
                     FROM branchops_branches br WHERE 1=1{swh}
                     ORDER BY br.branch_name""", sp)
 

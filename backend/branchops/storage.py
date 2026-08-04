@@ -134,15 +134,14 @@ def upsert_branches(rows):
     with db.conn() as c:
         with c.cursor() as k:
             psycopg2.extras.execute_values(
-                k, """INSERT INTO branchops_branches (branch_code, branch_name, branch_type, region, core_alias, region_class)
+                k, """INSERT INTO branchops_branches (branch_code, branch_name, branch_type, core_alias, region_class)
                       VALUES %s
                       ON CONFLICT (branch_code) DO UPDATE SET
                         branch_name=EXCLUDED.branch_name,
                         branch_type=EXCLUDED.branch_type,
-                        region=EXCLUDED.region,
                         region_class=EXCLUDED.region_class""",
                 [(r["branch_code"], r["branch_name"], r["branch_type"],
-                  r["region"], r.get("core_alias"), r.get("region_class"))
+                  r.get("core_alias"), r.get("region_class"))
                  for r in rows])
     return len(rows)
 

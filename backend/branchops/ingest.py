@@ -578,18 +578,22 @@ def parse_master(path):
         # Kolom D. len(r) diperiksa supaya berkas berkolom dua tidak error.
         kelas = clean(r[3]) if len(r) > 3 else None
         out.append({"branch_code": kode, "branch_name": nama, "branch_type": tipe,
-                    "region": _region(kode), "core_alias": None,
-                    "region_class": kelas or None})
+                    "core_alias": None, "region_class": kelas or None})
     wb.close()
     return out
 
 
-_REGION = {"1": "Jakarta & sekitarnya", "2": "Jawa Barat", "3": "Sumatera",
-           "4": "Jawa Timur, Bali & Indonesia Timur", "0": "Kantor Pusat"}
-
-
-def _region(kode):
-    return _REGION.get(kode[0], "Lainnya")
+# CATATAN (Agustus 2026) - kolom 'region' lama sudah DIBUANG.
+#
+# Dulu ada _REGION/_region() yang menebak wilayah dari digit pertama kode
+# cabang. Fungsi itu tidak pernah bekerja: branch_code() menambal kode
+# menjadi 5 digit lebih dulu ("1303" -> "01303"), sehingga digit pertama
+# SELALU "0" dan setiap cabang dinilai "Kantor Pusat". Seluruh 44 cabang di
+# basis data terbukti bernilai sama, dan nilainya tidak pernah ditampilkan
+# di layar mana pun.
+#
+# Penggantinya adalah region_class, yang diisi manual dari kolom D berkas
+# master. Jangan menghidupkan lagi penebakan otomatis dari kode cabang.
 
 
 PARSERS = {"it_break": parse_it, "pencairan": parse_pencairan, "tbo": parse_tbo}

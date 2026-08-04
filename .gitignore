@@ -20,6 +20,8 @@ backend/.env
 *.sql
 !backend/branchops/schema.sql
 !migrations/*.sql
+# Skrip migrasi manual - kode, bukan salinan data. Wajib ikut tersimpan.
+!hapus-kolom-region-lama.sql
 
 # --- Arsip berkas yang ditarik dari VPS ---
 vps-berkas-*.tar.gz

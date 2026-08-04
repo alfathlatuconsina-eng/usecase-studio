@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS branchops_branches (
     branch_name VARCHAR(120) NOT NULL,
     branch_type VARCHAR(10)  NOT NULL DEFAULT 'Lainnya'
                 CHECK (branch_type IN ('KC', 'KCP', 'Pusat', 'Lainnya')),
-    region      VARCHAR(60),
+    -- Kolom 'region' lama DIBUANG Agustus 2026. Isinya ditebak dari kode
+    -- cabang dan selalu salah ("Kantor Pusat" untuk semua), serta tidak
+    -- pernah ditampilkan. Penggantinya region_class di bawah.
     core_alias  VARCHAR(120),                    -- nama versi core banking
     is_active   BOOLEAN NOT NULL DEFAULT TRUE
 );
