@@ -218,6 +218,13 @@ tbody td { padding: 8px 10px; vertical-align: middle; }
       <button class="tab-btn admin-only" data-tab="users" style="display:none">Users</button>
     </div>
 
+    <!-- Survey-period filter (applies to KPIs, ranking and branch table) -->
+    <div class="period-bar" id="period-bar" style="display:flex;align-items:center;gap:8px;margin:2px 0 16px;">
+      <label for="q-period" style="font-size:13px;font-weight:600;color:var(--muted)">Periode Survei Layanan:</label>
+      <select id="q-period" onchange="changePeriod()"
+              style="padding:6px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff;cursor:pointer"></select>
+    </div>
+
     <!-- ── TAB: Overview ── -->
     <div id="tab-overview" class="tab-content active">
       <div class="cards">
@@ -411,7 +418,7 @@ tbody td { padding: 8px 10px; vertical-align: middle; }
 <script>
 'use strict';
 const LOGIN_URL = '/quality/login';
-const S = { token: localStorage.getItem('quality_token') || '', role: '', email: '', branches: [], users: [] };
+const S = { token: localStorage.getItem('quality_token') || '', role: '', email: '', branches: [], users: [], periods: null, period: null };
 
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function numOrNull(id){ const v=document.getElementById(id).value; if(v==='')return null; const n=parseFloat(v); return isNaN(n)?null:n; }
@@ -440,11 +447,31 @@ async function showApp(){
   await loadAll();
 }
 
+async function loadPeriods(){
+  try {
+    const r = await fetch('/api/quality/periods', { headers: authHdr() });
+    if(!r.ok) return;
+    S.periods = await r.json();
+    const sel = document.getElementById('q-period');
+    sel.innerHTML = S.periods.map(p =>
+      `<option value="${p.period_no}">${esc(p.period)}${p.period_label?' · '+esc(p.period_label):''}</option>`).join('');
+    if(S.period==null && S.periods.length) S.period = S.periods[0].period_no;
+    if(S.period!=null) sel.value = S.period;
+  } catch(e){ console.error('loadPeriods error', e); }
+}
+
+function changePeriod(){
+  S.period = document.getElementById('q-period').value;
+  loadAll();
+}
+
 async function loadAll(){
   try {
+    if(!S.periods) await loadPeriods();
+    const qp = (S.period!=null && S.period!=='') ? ('?period='+encodeURIComponent(S.period)) : '';
     const [bR, sR] = await Promise.all([
-      fetch('/api/quality/branches', { headers: authHdr() }),
-      fetch('/api/quality/summary',  { headers: authHdr() }),
+      fetch('/api/quality/branches'+qp, { headers: authHdr() }),
+      fetch('/api/quality/summary'+qp,  { headers: authHdr() }),
     ]);
     S.branches = await bR.json();
     renderKPIs(await sR.json());

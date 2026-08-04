@@ -21,6 +21,10 @@ backend/.env
 !backend/branchops/schema.sql
 !migrations/*.sql
 
+# --- Arsip berkas yang ditarik dari VPS ---
+vps-berkas-*.tar.gz
+*.tar.gz
+
 # --- Berkas sementara Python ---
 __pycache__/
 *.py[cod]

@@ -119,6 +119,32 @@ button { cursor: pointer; font-family: inherit; font-size: 13px; }
 .no-data { color: var(--muted); font-size: 13px; padding: 28px 0; text-align: center;
            font-style: italic; }
 
+/* ── PD Analytics (bar charts / panels) ─────────────────────────────────── */
+.pd-section { margin-bottom: 30px; }
+.pd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px; }
+.pd-panel { background: #fff; border-radius: 8px; padding: 16px 18px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+.pd-panel h4 { margin: 0 0 14px; font-size: 13px; font-weight: 700; color: var(--primary); }
+.bar-row { margin-bottom: 9px; }
+.bar-head { display: flex; justify-content: space-between; font-size: 11px;
+  margin-bottom: 3px; gap: 10px; }
+.bar-head .bl { color: #374151; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.bar-head .bv { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.bar-track { height: 8px; background: #eef1f5; border-radius: 5px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 5px; background: var(--blue);
+  transition: width .4s ease; }
+.bar-fill.green { background: var(--green); }
+.bar-fill.teal  { background: var(--teal); }
+.bar-fill.orange{ background: var(--orange); }
+.bar-fill.red   { background: var(--red); }
+.pd-rank { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pd-rank th, .pd-rank td { padding: 6px 8px; text-align: left;
+  border-bottom: 1px solid var(--gray-line); }
+.pd-rank th { font-size: 10px; text-transform: uppercase; color: var(--muted); }
+.pd-rank td.num { text-align: right; font-weight: 600; }
+
 /* ── Toolbar ────────────────────────────────────────────────────────────── */
 .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .toolbar input[type=text] { padding: 7px 12px; border: 1px solid var(--gray-line);
@@ -310,6 +336,7 @@ tr.row-expiring { background: #fffbf5; }
       <button class="tab-btn" data-tab="training">Training Database</button>
       <button class="tab-btn" data-tab="evaluation">Evaluation Results</button>
       <button class="tab-btn" data-tab="certs">Certifications &amp; Deadlines</button>
+      <button class="tab-btn" data-tab="pd">📊 PD Analytics</button>
       <button class="tab-btn admin-only" data-tab="users" style="display:none">Users</button>
     </div>
 
@@ -407,6 +434,22 @@ tr.row-expiring { background: #fffbf5; }
           <tbody id="ev-tbody"></tbody>
         </table>
       </div>
+      <!-- Evaluations -->
+      <div class="pd-section">
+        <div class="section-heading">⭐ Evaluations</div>
+        <div class="toolbar" id="pd-ev-filters" style="margin-bottom:14px">
+          <select id="pd-ev-f-year" onchange="loadEvalAnalytics(true)"><option value="">All Years</option></select>
+          <button class="btn-add" style="margin-left:auto;background:var(--gray-line);color:var(--text)" onclick="document.getElementById('pd-ev-f-year').value='';loadEvalAnalytics(true)">Reset</button>
+        </div>
+        <div class="cards" id="pd-ev-kpis"></div>
+        <div class="pd-grid">
+          <div class="pd-panel"><h4>Event Scores by Dimension (/5)</h4><div id="pd-ev-dim"></div></div>
+          <div class="pd-panel"><h4>Facilitator Scores by Dimension (/5)</h4><div id="pd-fc-dim"></div></div>
+          <div class="pd-panel"><h4>Top Facilitators (≥2 evals)</h4><div id="pd-fc-top"></div></div>
+          <div class="pd-panel"><h4>Lowest-Rated Facilitators (≥2 evals)</h4><div id="pd-fc-bottom"></div></div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ── TAB: Certifications & Deadlines ── -->
@@ -446,6 +489,43 @@ tr.row-expiring { background: #fffbf5; }
           <tbody id="cert-tbody"></tbody>
         </table>
       </div>
+    </div>
+
+    <!-- ── TAB: PD Analytics (imported People-Development data) ── -->
+    <div id="tab-pd" class="tab-content">
+
+      <!-- Training -->
+      <div class="pd-section">
+        <div class="section-heading">🎓 Training</div>
+        <div class="toolbar" id="pd-tr-filters" style="margin-bottom:14px">
+          <select id="pd-f-year"  onchange="loadPdTraining()"><option value="">All Years</option></select>
+          <select id="pd-f-month" onchange="loadPdTraining()"><option value="">All Months</option></select>
+          <select id="pd-f-dir"   onchange="loadPdTraining()"><option value="">All Directorates</option></select>
+          <select id="pd-f-type"  onchange="loadPdTraining()"><option value="">All Training Types</option></select>
+          <button class="btn-add" style="margin-left:auto;background:var(--gray-line);color:var(--text)"
+                  onclick="resetPdFilters()">Reset</button>
+        </div>
+        <div class="cards" id="pd-tr-kpis">
+          <div class="no-data" style="flex:1 1 100%">Loading…</div>
+        </div>
+        <div class="pd-grid">
+          <div class="pd-panel"><h4>Man-Days by Year</h4><div id="pd-tr-year"></div></div>
+          <div class="pd-panel"><h4>Top Directorates (Man-Days)</h4><div id="pd-tr-dir"></div></div>
+          <div class="pd-panel"><h4>By Training Type (Man-Days)</h4><div id="pd-tr-type"></div></div>
+          <div class="pd-panel"><h4>By Training Method (Sessions)</h4><div id="pd-tr-method"></div></div>
+        </div>
+      </div>
+
+      <!-- Ikatan Dinas -->
+      <div class="pd-section">
+        <div class="section-heading">📜 Ikatan Dinas (Service Bonding)</div>
+        <div class="cards" id="pd-id-kpis"></div>
+        <div class="pd-grid">
+          <div class="pd-panel"><h4>By Classification (Penalty, Rp)</h4><div id="pd-id-class"></div></div>
+          <div class="pd-panel"><h4>By Bonding Status (Records)</h4><div id="pd-id-status"></div></div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ── TAB: Users (admin only) ── -->
@@ -1036,6 +1116,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const tab = btn.dataset.tab;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tab));
+    if (tab === 'pd') loadPdAnalytics();   // lazy-load on first open
+    if (tab === 'evaluation') loadEvalAnalytics();
   });
 });
 
@@ -1204,6 +1286,176 @@ document.getElementById('ev-save-btn').addEventListener('click', saveEv);
 document.getElementById('cert-save-btn').addEventListener('click', saveCert);
 document.getElementById('btn-add-user').addEventListener('click', () => openUserModal());
 document.getElementById('user-save-btn').addEventListener('click', saveUser);
+
+// ── PD Analytics (imported People-Development data) ─────────────────────────
+function fmtNum(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+}
+function fmtRp(n) {
+  if (n == null) return '—';
+  return 'Rp ' + Number(n).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+}
+function kpiCard(cls, label, value, sub) {
+  return `<div class="card ${cls}">
+    <div class="card-label">${esc(label)}</div>
+    <div class="card-value">${value}</div>
+    <div class="card-sub">${esc(sub)}</div>
+  </div>`;
+}
+// items: [{label, value}]  — fmt formats the displayed value, max caps the bar scale
+function renderBars(elId, items, color, fmt) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!items || !items.length) { el.innerHTML = '<div class="no-data">No data.</div>'; return; }
+  fmt = fmt || fmtNum;
+  const max = Math.max(...items.map(i => Number(i.value) || 0), 0) || 1;
+  el.innerHTML = items.map(i => {
+    const v = Number(i.value) || 0;
+    const pct = Math.max(2, Math.round(v / max * 100));
+    return `<div class="bar-row">
+      <div class="bar-head"><span class="bl" title="${esc(i.label)}">${esc(i.label)}</span>
+        <span class="bv">${fmt(i.value)}</span></div>
+      <div class="bar-track"><div class="bar-fill ${color}" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+function renderRank(elId, rows) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!rows || !rows.length) { el.innerHTML = '<div class="no-data">No data.</div>'; return; }
+  el.innerHTML = `<table class="pd-rank">
+    <thead><tr><th>Facilitator</th><th>Evals</th><th>Avg</th></tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td>${esc(r.facilitator_name || r.facilitator_nip)}</td>
+      <td class="num">${r.evaluations}</td>
+      <td class="num">${r.avg_score == null ? '—' : Number(r.avg_score).toFixed(2)}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+// ── Training filters ────────────────────────────────────────────────────────
+function pdTrainingQuery() {
+  const p = new URLSearchParams();
+  const y = document.getElementById('pd-f-year').value;
+  const m = document.getElementById('pd-f-month').value;
+  const d = document.getElementById('pd-f-dir').value;
+  const t = document.getElementById('pd-f-type').value;
+  if (y) p.set('year', y);
+  if (m) p.set('month', m);
+  if (d) p.set('directorate', d);
+  if (t) p.set('training_type', t);
+  const qs = p.toString();
+  return qs ? ('?' + qs) : '';
+}
+
+let pdFiltersReady = false;
+function populatePdFilters(f) {
+  if (pdFiltersReady || !f) return;
+  pdFiltersReady = true;
+  const fill = (id, vals) => {
+    const sel = document.getElementById(id);
+    const head = sel.options[0] ? sel.options[0].outerHTML : '';
+    sel.innerHTML = head + (vals || []).map(v =>
+      `<option value="${esc(String(v))}">${esc(String(v))}</option>`).join('');
+  };
+  fill('pd-f-year',  f.years);
+  fill('pd-f-month', f.months);
+  fill('pd-f-dir',   f.directorates);
+  fill('pd-f-type',  f.training_types);
+}
+
+function resetPdFilters() {
+  ['pd-f-year','pd-f-month','pd-f-dir','pd-f-type']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  loadPdTraining();
+}
+
+async function loadPdTraining() {
+  try {
+    const trR = await fetch('/api/people/pd/training/analytics' + pdTrainingQuery(),
+                            { headers: authHdr() });
+    if (!trR.ok) throw new Error('training analytics fetch failed');
+    const tr = await trR.json();
+    populatePdFilters(tr.filters);
+    const k = tr.kpis;
+    document.getElementById('pd-tr-kpis').innerHTML =
+        kpiCard('blue',  'Training Sessions', fmtNum(k.sessions),       'participant-program rows') +
+        kpiCard('green', 'Participants',      fmtNum(k.participants),   'distinct NIP') +
+        kpiCard('teal',  'Programs',          fmtNum(k.programs),       'distinct program codes') +
+        kpiCard('orange','Total Man-Days',    fmtNum(k.total_man_days), 'sum of man-days') +
+        kpiCard('red',   'Training Hours',    fmtNum(k.total_training_hours), 'sum of total hours');
+    renderBars('pd-tr-year',   tr.by_year.map(r => ({ label: r.year == null ? '(no year)' : String(r.year), value: r.man_days })), 'blue');
+    renderBars('pd-tr-dir',    tr.by_directorate.map(r => ({ label: r.directorate, value: r.man_days })), 'teal');
+    renderBars('pd-tr-type',   tr.by_training_type.map(r => ({ label: r.training_type, value: r.man_days })), 'green');
+    renderBars('pd-tr-method', tr.by_method.map(r => ({ label: r.training_method, value: r.sessions })), 'orange');
+  } catch (e) {
+    console.error('loadPdTraining error:', e);
+    document.getElementById('pd-tr-kpis').innerHTML =
+      '<div class="no-data" style="flex:1 1 100%">Failed to load training analytics.</div>';
+  }
+}
+
+let evalAnalyticsLoaded = false;
+async function loadEvalAnalytics(force) {
+  if (evalAnalyticsLoaded && !force) return;
+  evalAnalyticsLoaded = true;
+  try {
+    const _y = (document.getElementById('pd-ev-f-year')||{}).value||'';
+    const _qs = _y ? ('?year='+encodeURIComponent(_y)) : '';
+    const evR = await fetch('/api/people/pd/evaluate/analytics'+_qs, { headers: authHdr() });
+    if (!evR.ok) throw new Error('eval analytics fetch failed');
+    const ev = await evR.json();
+    if (ev.filters) {
+      const _s = document.getElementById('pd-ev-f-year');
+      if (_s && !_s.dataset.filled) { _s.dataset.filled='1';
+        ev.filters.years.forEach(y => { const o=document.createElement('option'); o.value=y; o.textContent=y; _s.appendChild(o); }); }
+      if (_s) _s.value = ev.filters.applied.year||'';
+    }
+    document.getElementById('pd-ev-kpis').innerHTML =
+        kpiCard('blue',  'Events Evaluated', fmtNum(ev.event.count),              'programs with feedback') +
+        kpiCard('green', 'Event Avg',        ev.event.overall_avg ?? '\u2014',    'out of 5.0') +
+        kpiCard('teal',  'Facilitators',     fmtNum(ev.facilitator.facilitators), 'distinct facilitators') +
+        kpiCard('orange','Facilitator Avg',  ev.facilitator.overall_avg ?? '\u2014', 'out of 5.0');
+    const dimItems = o => Object.entries(o).map(([k2, v]) => ({ label: k2.replace(/_/g, ' '), value: v }));
+    renderBars('pd-ev-dim', dimItems(ev.event.by_dimension),       'teal', v => v == null ? '\u2014' : Number(v).toFixed(2));
+    renderBars('pd-fc-dim', dimItems(ev.facilitator.by_dimension), 'blue', v => v == null ? '\u2014' : Number(v).toFixed(2));
+    renderRank('pd-fc-top',    ev.facilitator.top);
+    renderRank('pd-fc-bottom', ev.facilitator.bottom);
+  } catch (e) {
+    console.error('loadEvalAnalytics error:', e);
+    evalAnalyticsLoaded = false;
+    document.getElementById('pd-ev-kpis').innerHTML =
+      '<div class="no-data" style="flex:1 1 100%">Failed to load evaluation analytics. Reopen the tab to retry.</div>';
+  }
+}
+
+let pdLoaded = false;
+async function loadPdAnalytics() {
+  if (pdLoaded) return;
+  pdLoaded = true;
+  try {
+    loadPdTraining();
+
+    const idR = await fetch('/api/people/pd/ikatan-dinas/analytics', { headers: authHdr() });
+    if (!idR.ok) throw new Error('analytics fetch failed');
+    const id = await idR.json();
+
+    // Ikatan Dinas
+    const ik = id.kpis;
+    document.getElementById('pd-id-kpis').innerHTML =
+        kpiCard('blue',  'Bonding Records',  fmtNum(ik.records),        'ikatan dinas entries') +
+        kpiCard('green', 'Participants',     fmtNum(ik.participants),   'distinct NIP') +
+        kpiCard('red',   'Total Penalty',    fmtRp(ik.total_penalty),   'outstanding bond value') +
+        kpiCard('orange','Total Man-Days',   fmtNum(ik.total_man_days), 'sum of man-days');
+    renderBars('pd-id-class',  id.by_classification.map(r => ({ label: r.training_classification, value: r.penalty })), 'red', fmtRp);
+    renderBars('pd-id-status', id.by_status.map(r => ({ label: r.ikatan_dinas, value: r.records })), 'blue');
+  } catch (e) {
+    console.error('loadPdAnalytics error:', e);
+    pdLoaded = false;   // allow retry on next open
+    document.getElementById('pd-id-kpis').innerHTML =
+      '<div class="no-data" style="flex:1 1 100%">Failed to load analytics. Reopen the tab to retry.</div>';
+  }
+}
 
 // ── Start ──────────────────────────────────────────────────────────────────
 init();
