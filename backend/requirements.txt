@@ -5,3 +5,6 @@ SQLAlchemy>=2.0
 PyJWT>=2.8
 bcrypt>=4.1
 python-dotenv>=1.0
+
+# Branch Operations module: Excel (.xlsx) parsing for daily uploads
+openpyxl>=3.1

@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Branch Operations and Transactions Monitoring</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  /* Palet TERANG, disamakan dengan dashboard PMO / People / Quality / E-Library.
+     Nama variabel sengaja dipertahankan agar sisa berkas tidak perlu diubah. */
+  --primary:#1a3c6b;                              /* navy, sama dgn dashboard lain */
+  --bg:#f4f6f9; --panel:#ffffff; --panel2:#eef1f5; --line:#dde1e7;
+  --tx:#1e2329; --tx2:#6b7280; --tx3:#6e7783;   /* tx3 dijaga >=4.5:1 agar terbaca */
+  --acc:#2563eb; --ok:#1a7a4a; --warn:#e67e22; --bad:#c0392b;
+  --roll:#7c3aed; --teal:#0d9488;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+h1{font-size:19px;font-weight:650;letter-spacing:-.2px}
+h2{font-size:13px;font-weight:650;text-transform:uppercase;letter-spacing:.7px;color:var(--tx2);margin:26px 0 10px}
+h3{font-size:13.5px;font-weight:640}
+.wrap{max-width:1500px;margin:0 auto;padding:0 24px 60px}
+.muted{color:var(--tx3)}.sub{color:var(--tx2);font-size:12.5px;margin-top:3px}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---------- navbar ---------- */
+nav{background:var(--primary);border-bottom:1px solid #16325a;position:sticky;top:0;z-index:50}
+nav .inner{max-width:1500px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:6px;height:52px}
+nav .brand{font-weight:660;font-size:14.5px;margin-right:14px;white-space:nowrap;color:#fff}
+nav .brand span{color:rgba(255,255,255,.62);font-weight:400;font-size:12px;display:block;line-height:1.1}
+nav a.item{padding:7px 12px;border-radius:7px;color:rgba(255,255,255,.78);font-size:13px;white-space:nowrap}
+nav a.item:hover{background:rgba(255,255,255,.13);color:#fff;text-decoration:none}
+nav a.item.on{background:rgba(255,255,255,.20);color:#fff;font-weight:600}
+nav .spacer{flex:1}
+/* Wadah tab. Di layar lebar tampilannya sama persis seperti sebelumnya
+   (satu baris, jarak 6px). overflow-x dipasang sejak awal supaya kalau
+   tabnya kebanyakan - misalnya peran admin yang melihat 9 tab - strip ini
+   bisa digeser, bukan meluber keluar layar. */
+nav .tabs{display:flex;align-items:center;gap:6px;min-width:0;
+  overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+nav .tabs::-webkit-scrollbar{display:none}
+nav .tabs a.item{flex:0 0 auto}
+nav .who{font-size:12.5px;color:rgba(255,255,255,.78);white-space:nowrap}
+nav .who b{color:#fff}
+.role{display:inline-block;padding:1px 7px;border-radius:4px;font-size:10.5px;font-weight:640;margin-left:5px}
+.role.admin{background:rgba(255,255,255,.22);color:#fff}
+.role.editor{background:rgba(255,255,255,.22);color:#fff}
+.role.viewer{background:rgba(255,255,255,.16);color:rgba(255,255,255,.9)}
+
+/* ---------- kartu & panel ---------- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.card .h-note{font-size:11.5px;color:var(--tx3);margin:3px 0 13px;line-height:1.45}
+.grid{display:grid;gap:14px;margin-top:12px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1.35fr 1fr}
+@media(max-width:1080px){.g2,.g3{grid-template-columns:1fr}}
+.chart-box{position:relative;height:270px}.chart-box.tall{height:320px}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:15px 17px;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tx3)}
+.kpi.c-bad::before{background:var(--bad)}.kpi.c-warn::before{background:var(--warn)}
+.kpi.c-acc::before{background:var(--acc)}.kpi.c-ok::before{background:var(--ok)}
+.kpi.c-roll::before{background:var(--roll)}.kpi.c-teal::before{background:var(--teal)}
+.kpi .lab{font-size:11.5px;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.kpi .val{font-size:23px;font-weight:660;margin:7px 0 3px;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.kpi .val.sm{font-size:18px}
+.kpi .note{font-size:11.5px;color:var(--tx3);line-height:1.45}
+
+/* ---------- banner ---------- */
+.banner{border-radius:8px;padding:13px 16px;margin:14px 0 4px;font-size:13px;line-height:1.55}
+.banner b{color:var(--tx)}
+.b-info{background:linear-gradient(90deg,rgba(37,99,235,.10),rgba(37,99,235,.02));
+  border:1px solid rgba(37,99,235,.28);border-left:3px solid var(--acc);color:#1e3a5f}
+.b-ok{background:linear-gradient(90deg,rgba(26,122,74,.09),rgba(26,122,74,.02));
+  border:1px solid rgba(26,122,74,.26);border-left:3px solid var(--ok);color:#14532d}
+.b-bad{background:linear-gradient(90deg,rgba(192,57,43,.10),rgba(192,57,43,.02));
+  border:1px solid rgba(192,57,43,.28);border-left:3px solid var(--bad);color:#7f1d1d}
+.b-warn{background:linear-gradient(90deg,rgba(230,126,34,.10),rgba(230,126,34,.02));
+  border:1px solid rgba(230,126,34,.28);border-left:3px solid var(--warn);color:#78350f}
+
+/* ---------- form ---------- */
+label{font-size:12px;color:var(--tx2);display:block;margin-bottom:4px}
+select,input[type=text],input[type=password],input[type=date],input[type=file],textarea{
+  background:#fff;color:var(--tx);border:1px solid var(--line);border-radius:7px;
+  padding:8px 11px;font-size:13px;font-family:inherit;outline:none;width:100%}
+select:focus,input:focus,textarea:focus{border-color:var(--acc)}
+.filters{display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end;margin:14px 0 4px}
+.filters>div{min-width:150px}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--tx2);border-radius:7px;
+  padding:8px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.btn:hover{border-color:var(--acc);color:var(--tx)}
+.btn.on{background:rgba(37,99,235,.15);border-color:var(--acc);color:#1d4ed8}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.btn.primary:hover{background:#1d4ed8}
+.btn.danger{border-color:rgba(192,57,43,.4);color:#b91c1c}
+.btn.danger:hover{background:rgba(192,57,43,.12)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{padding:4px 9px;font-size:11.5px}
+
+/* ---------- tabel ---------- */
+.tbl-wrap{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:9px;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{position:sticky;top:0;background:var(--panel2);text-align:left;padding:9px 11px;font-weight:640;
+  font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--tx2);
+  border-bottom:1px solid var(--line);white-space:nowrap;z-index:2}
+td{padding:8px 11px;border-bottom:1px solid rgba(0,0,0,.07);vertical-align:top}
+tr:hover td{background:rgba(37,99,235,.05)}
+.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:620;white-space:nowrap}
+.t-ok{background:rgba(26,122,74,.14);color:#15803d}
+.t-warn{background:rgba(230,126,34,.16);color:#b45309}
+.t-bad{background:rgba(192,57,43,.14);color:#b91c1c}
+.t-acc{background:rgba(37,99,235,.14);color:#1d4ed8}
+.t-roll{background:rgba(124,58,237,.14);color:#6d28d9}
+.t-grey{background:rgba(107,114,128,.14);color:var(--tx2)}
+.flagdots{display:flex;gap:3px;flex-wrap:wrap;max-width:210px}
+.fl{font-size:10.5px;padding:1px 6px;border-radius:3px;background:rgba(230,126,34,.13);color:#b45309;white-space:nowrap}
+
+/* ---------- baris ringkas ---------- */
+.qrow{display:flex;align-items:center;gap:11px;padding:7px 0;border-bottom:1px solid rgba(0,0,0,.08);font-size:12.5px}
+.qrow:last-child{border-bottom:none}.qrow .qn{flex:1;color:var(--tx2)}
+.qrow .qv{font-variant-numeric:tabular-nums;font-weight:640;min-width:92px;text-align:right}
+.qbar{width:96px;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;flex-shrink:0}
+.qbar i{display:block;height:100%;border-radius:3px}
+
+.alert{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(0,0,0,.08)}
+.alert:last-child{border-bottom:none}
+.alert .ic{width:22px;height:22px;border-radius:5px;display:grid;place-items:center;flex-shrink:0;font-size:12px;font-weight:700}
+.ic.r{background:rgba(192,57,43,.15);color:#b91c1c}
+.ic.y{background:rgba(230,126,34,.15);color:#b45309}
+.ic.b{background:rgba(37,99,235,.15);color:#1d4ed8}
+.alert .tt{font-size:12.5px;font-weight:600}
+.alert .dd{font-size:11.5px;color:var(--tx3);margin-top:2px;line-height:1.45}
+
+/* ---------- halaman masuk ---------- */
+.auth-wrap{min-height:100vh;display:grid;place-items:center;padding:24px}
+.auth-box{width:100%;max-width:390px;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:30px 30px 26px}
+.auth-box h1{font-size:18px;margin-bottom:4px}
+.auth-box .fld{margin-top:14px}
+.err{background:rgba(192,57,43,.12);border:1px solid rgba(192,57,43,.3);color:#b91c1c;
+  border-radius:7px;padding:9px 12px;font-size:12.5px;margin-top:14px}
+.okmsg{background:rgba(26,122,74,.12);border:1px solid rgba(26,122,74,.3);color:#15803d;
+  border-radius:7px;padding:9px 12px;font-size:12.5px;margin-top:14px}
+
+/* ---------- menu beranda ---------- */
+.menu{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:12px}
+.menu a{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;
+  display:block;color:var(--tx);position:relative;overflow:hidden}
+.menu a:hover{border-color:var(--acc);text-decoration:none}
+.menu a::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tx3)}
+.menu a.m1::before{background:var(--bad)}.menu a.m2::before{background:var(--acc)}
+.menu a.m3::before{background:var(--teal)}.menu a.m4::before{background:var(--warn)}
+.menu .mt{font-size:14.5px;font-weight:640;margin-bottom:5px}
+.menu .md{font-size:12px;color:var(--tx3);line-height:1.5}
+.menu .mn{font-size:11.5px;color:var(--tx2);margin-top:9px;font-variant-numeric:tabular-nums}
+
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+  border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.loading{padding:36px;text-align:center;color:var(--tx3);font-size:13px}
+footer{margin-top:34px;padding:16px 0;border-top:1px solid var(--line);color:var(--tx3);font-size:11.5px;line-height:1.6}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:26px;text-align:center;color:var(--tx3);
+  font-size:13px;cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--acc);color:var(--tx2);background:rgba(37,99,235,.04)}
+
+/* ---- tambahan shell modul (tab & view) ---- */
+.view{display:none}.view.on{display:block}
+.hidden{display:none!important}
+nav .brand small{display:block;font-size:10px;color:rgba(255,255,255,.55);letter-spacing:1.5px;text-transform:uppercase}
+
+/* ==================================================================
+   TAMPILAN LAYAR SEMPIT - bilah navigasi
+   Ambangnya 1100px, bukan 760px, karena peran admin melihat 9 tab.
+   Ditambah nama modul, keterangan pengguna, dan tombol Keluar,
+   satu baris butuh kira-kira 1200px. Di bawah itu tabnya meluber.
+
+   Penanganannya: bilah dipecah jadi dua baris.
+     baris 1 : nama modul (kiri) + pengguna & tombol Keluar (kanan)
+     baris 2 : deretan tab, digeser menyamping dengan jari
+   Tidak ada JavaScript baru - murni CSS.
+   ================================================================== */
+@media(max-width:1100px){
+  nav .inner{flex-wrap:wrap;height:auto;padding:9px 16px;gap:8px 6px}
+  nav .brand{margin-right:auto}      /* dorong pengguna+Keluar ke kanan */
+  nav .spacer{display:none}          /* tidak diperlukan saat membungkus */
+  nav .tabs{order:3;width:100%}      /* paksa tab turun ke baris kedua */
+}
+
+/* Ponsel: perbesar sasaran sentuh dan rapatkan teks yang tidak penting */
+@media(max-width:560px){
+  nav .inner{padding:8px 12px}
+  nav .brand{font-size:13.5px}
+  nav .brand small{font-size:9px;letter-spacing:1.1px}
+  nav .who{font-size:11px}
+  nav .tabs a.item{padding:10px 14px;font-size:12.5px}
+}
+
+</style>
+</head>
+<body>
+<nav><div class="inner">
+  <span class="brand">Branch Operations<small>Transactions Monitoring</small></span>
+  <span class="tabs">
+    <a class="item on" data-tab="home"  href="#">Beranda</a>
+    <a class="item" data-tab="d1" href="#">Break Deposito</a>
+    <a class="item" data-tab="d2" href="#">Pencairan</a>
+    <a class="item" data-tab="d3" href="#">TBO</a>
+    <a class="item" data-tab="d4" href="#">Rekonsiliasi</a>
+    <a class="item hidden" data-tab="upload" id="tabUpload" href="#">Unggah</a>
+    <a class="item hidden" data-tab="users"  id="tabUsers"  href="#">Pengguna</a>
+    <a class="item hidden" data-tab="settings" id="tabSettings" href="#">Pengaturan</a>
+    <a class="item hidden" data-tab="audit"  id="tabAudit"  href="#">Audit</a>
+  </span>
+  <span class="spacer"></span>
+  <span class="who" id="who"></span>
+  <a class="item" href="#" id="btnLogout">Keluar</a>
+</div></nav>
+<div class="wrap">
+
+<!-- ======================= BERANDA ======================= -->
+<div class="view on" id="view-home"><div id="homeRoot" class="loading"><span class="spin"></span> Memuat…</div></div>
+
+<!-- ======================= DASHBOARD ======================= -->
+<div class="view" id="view-dash">
+  <div style="padding-top:22px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap">
+    <div><h1 id="dashTitle"></h1><div class="sub" id="meta">Memuat…</div></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn hidden" id="bRerun">Jalankan ulang rekonsiliasi</button>
+      <button class="btn" id="bCsv">Unduh tabel (CSV)</button>
+    </div>
+  </div>
+  <div id="banner"></div>
+  <div class="filters">
+    <div><label>Dari tanggal</label><input type="date" id="fA"></div>
+    <div><label>Sampai tanggal</label><input type="date" id="fB"></div>
+    <div><label>Cabang</label><select id="fCab"><option value="">Semua cabang</option></select></div>
+    <div><label>Tipe</label><select id="fTipe"><option value="">Semua tipe</option>
+      <option>KC</option><option>KCP</option><option>Pusat</option></select></div>
+    <div id="wrapStatus" class="hidden"><label>Status</label>
+      <select id="fStatus"><option value="">Semua status</option>
+        <option>Cocok</option><option>Selisih material</option>
+        <option>Tidak dilaporkan cabang</option><option>Tidak ada di data IT</option></select></div>
+    <div style="min-width:auto" id="wrapDup" class="hidden"><label>&nbsp;</label>
+      <button class="btn on" id="bDup">Duplikat dikecualikan</button></div>
+    <div style="min-width:auto"><label>&nbsp;</label><button class="btn" id="bReset">Reset</button></div>
+    <div style="min-width:auto;flex:1;text-align:right"><label>&nbsp;</label><span class="sub" id="cnt"></span></div>
+  </div>
+  <div id="root"><div class="loading"><span class="spin"></span> Memuat data…</div></div>
+</div>
+
+<!-- ======================= UNGGAH ======================= -->
+<div class="view" id="view-upload"><div id="uploadRoot"></div></div>
+
+<!-- ======================= PENGGUNA ======================= -->
+<div class="view" id="view-users"><div id="usersRoot"></div></div>
+
+<!-- ======================= PENGATURAN ======================= -->
+<div class="view" id="view-settings"><div id="settingsRoot"></div></div>
+
+<!-- ======================= AUDIT ======================= -->
+<div class="view" id="view-audit"><div id="auditRoot"></div></div>
+
+<footer>
+  Branch Operations and Transactions Monitoring · bagian dari USECASE-STUDIO.xyz<br>
+  Berisi data internal. Jangan dibagikan atau ditampilkan di luar keperluan kerja.
+</footer>
+</div>
+
+<script>
+"use strict";
+/* ================= AUTH (pola platform: JWT per modul) ================= */
+const TOKEN_KEY = "branchops_token";
+function tok(){ return localStorage.getItem(TOKEN_KEY); }
+if (!tok()) location.href = "/branchops/login";
+
+async function authFetch(url, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers, { "Authorization": "Bearer " + tok() });
+  const r = await fetch(url, opts);
+  if (r.status === 401) { localStorage.removeItem(TOKEN_KEY); location.href = "/branchops/login"; }
+  return r;
+}
+document.getElementById("btnLogout").onclick = e => {
+  e.preventDefault(); localStorage.removeItem(TOKEN_KEY); location.href = "/branchops/login";
+};
+</script>
+<script>
+"use strict";
+window.DASH = 1; window.ROLE = "viewer";
+/* Frontend keempat dashboard. Vanilla JS, satu berkas, tanpa framework. */
+"use strict";
+
+const $ = id => document.getElementById(id);
+const fmt = n => (n == null || isNaN(n)) ? "—" : new Intl.NumberFormat("id-ID", {maximumFractionDigits: 0}).format(n);
+const dec = (n, d) => Number(n).toFixed(d).replace(".", ",");
+const rp  = n => "Rp " + fmt(n);
+const rpS = n => { if (n == null) return "—"; const a = Math.abs(n);
+  if (a >= 1e12) return "Rp " + dec(n/1e12, 2) + " T";
+  if (a >= 1e9)  return "Rp " + dec(n/1e9, 1) + " M";
+  if (a >= 1e6)  return "Rp " + dec(n/1e6, 0) + " jt";
+  return rp(n); };
+const pct = (a, b) => b ? dec(100*a/b, 1) + "%" : "—";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const N   = v => v == null ? null : Number(v);
+const tgl = s => s ? String(s).slice(0, 10) : "—";
+
+let DATA = null, CHARTS = {}, DUP = false, CSV = [];
+
+/* ------------------------------------------------------------------ */
+Chart.defaults.color = "#6b7280";
+Chart.defaults.borderColor = "rgba(0,0,0,.12)";
+Chart.defaults.font.family = "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif";
+Chart.defaults.font.size = 11;
+const draw = (id, cfg) => { const el = $(id); if (!el) return;
+  if (CHARTS[id]) CHARTS[id].destroy(); CHARTS[id] = new Chart(el, cfg); };
+
+const LEG = {position:"bottom", labels:{usePointStyle:true, pointStyle:"circle", boxWidth:7, padding:12}};
+const GRID = {color:"rgba(0,0,0,.08)"};
+
+/* ------------------------------------------------------------------ */
+function params() {
+  const p = new URLSearchParams();
+  if ($("fA").value) p.set("tgl_awal", $("fA").value);
+  if ($("fB").value) p.set("tgl_akhir", $("fB").value);
+  if ($("fCab").value) p.set("branch_code", $("fCab").value);
+  if ($("fTipe").value) p.set("branch_type", $("fTipe").value);
+  if ($("fStatus") && $("fStatus").value) p.set("status", $("fStatus").value);
+  if (window.DASH === 2 && DUP) p.set("dup", "1");
+  return p.toString();
+}
+
+async function load() {
+  $("root").innerHTML = '<div class="loading"><span class="spin"></span> Memuat data…</div>';
+  try {
+    const r = await authFetch("/api/branchops/dash/" + window.DASH + "?" + params());
+    if (r.status === 401) { location.href = "/branchops/login"; return; }
+    if (!r.ok) throw new Error((await r.json()).error || "Gagal memuat");
+    DATA = await r.json();
+  } catch (e) {
+    $("root").innerHTML = '<div class="banner b-bad">Gagal memuat data: ' + esc(e.message) + '</div>';
+    return;
+  }
+  ({1: renderIT, 2: renderPencairan, 3: renderTBO, 4: renderRekon}[window.DASH])();
+}
+
+/* ================================================================== */
+/* DASHBOARD 1 - Break deposito dari IT                                */
+/* ================================================================== */
+function renderIT() {
+  const k = DATA.kpi, rows = DATA.rows;
+  $("meta").textContent = `${fmt(k.n)} transaksi break · ${k.cabang} cabang · ${k.nasabah} nasabah`;
+  $("cnt").textContent = `${rows.length} baris ditampilkan`;
+
+  $("banner").innerHTML = k.n ? `<div class="banner b-ok">
+    <b>Data ini berasal langsung dari core banking.</b> Seluruh kolom terisi penuh, sehingga
+    angkanya bisa dipakai sebagai pembanding untuk menguji laporan cabang di dashboard lain.</div>` : "";
+
+  const tanpaPenalti = N(k.sejati_tanpa_penalti), rpTanpa = N(k.rp_tanpa_penalti);
+  $("root").innerHTML = `
+  <div class="kpis">
+    ${kpi("c-bad","Nominal break", rpS(N(k.rp)),
+        `${fmt(k.n)} transaksi · ${fmt(k.sejati)} dicairkan sebelum jatuh tempo`)}
+    ${kpi("c-warn","Penalti dipungut", rpS(N(k.penalti)),
+        `${fmt(k.n_penalti)} dari ${fmt(k.sejati)} break dipercepat kena penalti<br>
+         <b style="color:var(--tx2)">${fmt(tanpaPenalti)} lolos tanpa penalti · ${rpS(rpTanpa)}</b>`, true)}
+    ${kpi("c-acc","Rate tertimbang", dec(N(k.rate_avg)*100, 2) + "%",
+        `Rentang ${dec(N(k.rate_min)*100,2)}% – ${dec(N(k.rate_max)*100,2)}%<br>Ditimbang nominal, bukan rata-rata biasa`)}
+    ${kpi("c-teal","Durasi proses", fmt(k.dur_median) + " detik",
+        `Median awal ke akhir break<br>Terlama ${fmt(k.dur_max)} detik`, true)}
+    ${kpi("c-roll","Di luar jam operasional", fmt(k.luar_jam),
+        `Transaksi sebelum ${DATA.settings.jam_operasional_mulai}:00 atau setelah ${DATA.settings.jam_operasional_selesai}:00`)}
+    ${kpi("c-ok","Via rekening perantara", fmt(k.perantara),
+        `Dana tidak langsung ke rekening nasabah`)}
+  </div>
+
+  <h2>Volume dan beban kerja</h2>
+  <div class="grid g2">
+    ${card("Tren break harian","Batang = nominal (kiri). Garis = jumlah transaksi (kanan).","cTren")}
+    ${card("Sebaran jam transaksi","Hanya tersedia di data IT. Batang merah = di luar jam operasional.","cJam")}
+  </div>
+  <div class="grid g2">
+    ${card("Cabang dengan nominal tertinggi","Batang = nominal. Titik = jumlah transaksi.","cCab","tall")}
+    ${card("Distribusi rate saat break","Nominal per tingkat suku bunga. Rate ekstrem layak diperiksa.","cRate","tall")}
+  </div>
+
+  <h2>Konsentrasi nasabah</h2>
+  <div class="card">
+    <div class="h-note">Porsi nominal per nasabah. Nama yang terpotong 20 karakter ditandai —
+      export core banking memotong nama panjang, sehingga nasabah berbeda bisa tampak sama.</div>
+    <div id="konsen"></div>
+  </div>
+
+  <h2>Detail transaksi</h2>
+  ${tabel(["Cabang","Tgl break","Jam","Nasabah","Nominal","Rate","Penalti","Jenis","Rekonsiliasi","Catatan"])}`;
+
+  chartTren(DATA.per_tgl, "tgl", "rp", "n", "Nominal break");
+  const jamMap = Object.fromEntries(DATA.per_jam.map(x => [x.jam, x.n]));
+  const jam = []; for (let h = 7; h <= 18; h++) jam.push(h);
+  const ja = DATA.settings.jam_operasional_mulai, jb = DATA.settings.jam_operasional_selesai;
+  draw("cJam", {type:"bar",
+    data:{labels: jam.map(h => String(h).padStart(2,"0")+":00"),
+      datasets:[{label:"Transaksi", data: jam.map(h => jamMap[h] || 0),
+        backgroundColor: jam.map(h => (h<ja||h>=jb) ? "rgba(192,57,43,.65)" : "rgba(37,99,235,.55)"),
+        borderRadius:3}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true, grid:GRID}, x:{grid:{display:false}}}}});
+
+  chartCabang(DATA.per_cabang, "rp", "Nominal break");
+  draw("cRate", {type:"bar",
+    data:{labels: DATA.per_rate.map(r => dec(N(r.rate),2)+"%"),
+      datasets:[{label:"Nominal", data: DATA.per_rate.map(r => N(r.rp)),
+        backgroundColor: DATA.per_rate.map(r => (N(r.rate)<=4||N(r.rate)>=8)
+          ? "rgba(230,126,34,.7)" : "rgba(13,148,136,.6)"), borderRadius:3}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>" "+rp(c.raw)}}},
+      scales:{y:{ticks:{callback:v=>rpS(v)}, grid:GRID}, x:{grid:{display:false}}}}});
+
+  const tot = N(k.rp);
+  $("konsen").innerHTML = DATA.top_nasabah.map(a => {
+    const p = tot ? 100*N(a.rp)/tot : 0;
+    const c = p>=10 ? "var(--bad)" : p>=5 ? "var(--warn)" : "var(--teal)";
+    return qrow(esc(a.nama) + (a.terpotong ? ' <span class="fl">terpotong</span>' : "")
+      + ` <span class="muted">· ${a.n}x</span>`, Math.min(p*4,100), c, rpS(N(a.rp)));
+  }).join("") || empty();
+
+  const REK = {"Cocok":"t-ok","Selisih material":"t-warn","Tidak dilaporkan cabang":"t-bad"};
+  CSV = [["Cabang","Kode","Tgl break","Jam","Nasabah","Nominal","Rate","Penalti","Jenis","Rekonsiliasi","Selisih"]];
+  $("tb").innerHTML = rows.map(r => {
+    CSV.push([r.branch_name, r.branch_code, tgl(r.tgl_break), r.waktu_awal, r.nama_pemilik,
+      N(r.nominal), N(r.rate), N(r.penalti), r.break_sejati?"Sebelum JT":"Sudah JT",
+      r.rekon||"", N(r.rekon_selisih)]);
+    return `<tr>
+      <td>${esc(r.branch_name)}<div class="muted" style="font-size:11px">${(r.branch_code||"").replace(/^0/,"")}</div></td>
+      <td class="muted">${tgl(r.tgl_break)}</td><td class="muted">${r.waktu_awal||"—"}</td>
+      <td>${esc((r.nama_pemilik||"—").slice(0,24))}${r.nama_terpotong?' <span class="fl">…</span>':""}</td>
+      <td class="num">${fmt(N(r.nominal))}</td>
+      <td class="num muted">${dec(N(r.rate)*100,2)}%</td>
+      <td class="num ${N(r.penalti)?"":"muted"}">${N(r.penalti)?fmt(N(r.penalti)):"—"}</td>
+      <td class="muted" style="font-size:11.5px">${r.break_sejati?"Sebelum JT":"Sudah JT"}</td>
+      <td>${r.rekon?`<span class="tag ${REK[r.rekon]||"t-grey"}">${r.rekon==="Tidak dilaporkan cabang"?"Tak dilaporkan":r.rekon}</span>`:'<span class="muted">—</span>'}</td>
+      <td><div class="flagdots">${(r.flags||[]).map(f=>`<span class="fl">${esc(f)}</span>`).join("")}</div></td>
+    </tr>`;
+  }).join("") || emptyRow(10);
+}
+
+/* ================================================================== */
+/* DASHBOARD 2 - Pencairan deposito dari cabang                        */
+/* ================================================================== */
+function renderPencairan() {
+  const k = DATA.kpi, rows = DATA.rows;
+  const bruto = N(k.rp_bruto), keluar = N(k.rp_keluar), roll = N(k.rp_rollover), kembali = N(k.rp_kembali);
+  $("meta").textContent = `${fmt(k.n)} transaksi · ${k.cabang} cabang melapor`;
+  $("cnt").textContent = `${rows.length} baris ditampilkan`;
+
+  const noLaporIT = DATA.tak_lapor.filter(t => t.ada_di_it);
+  $("banner").innerHTML = k.n ? `<div class="banner b-info">
+    <b>Cara membaca angka di halaman ini.</b> Nilai kotor ${rpS(bruto)} <b>bukan</b> arus keluar dana.
+    ${fmt(k.n_rollover)} transaksi (${pct(roll, bruto)} dari nilai) adalah Deposito On Call yang berputar
+    harian — dana yang sama tercatat berulang tiap hari. Angka yang relevan untuk likuiditas adalah
+    <b>Arus Keluar</b>.</div>` : "";
+
+  const lengkap = N(k.lengkap);
+  const conf = lengkap >= 95 ? ["ok","tinggi"] : lengkap >= 85 ? ["warn","sedang"] : ["bad","rendah"];
+
+  $("root").innerHTML = `
+  <div class="kpis">
+    ${kpi("c-bad","Arus keluar dana", rpS(keluar),
+      `${fmt(k.n_keluar)} transaksi · ${pct(keluar,bruto)} dari nilai kotor<br>
+       <b style="color:var(--tx2)">Angka yang relevan untuk likuiditas</b>
+       <div style="margin-top:6px"><span class="tag t-${conf[0]==="ok"?"ok":conf[0]==="warn"?"warn":"bad"}">keyakinan ${conf[1]}</span></div>`, true)}
+    ${kpi("c-roll","Rollover / Deposito On Call", rpS(roll),
+      `${fmt(k.n_rollover)} transaksi · tenor ≤ ${DATA.settings.rollover_tenor_hari} hari<br>Dana berputar, bukan arus keluar`, true)}
+    ${kpi("c-acc","Penempatan kembali", rpS(kembali),
+      `${fmt(k.n_kembali)} transaksi · cair lalu ditempatkan ulang<br>Dana tetap di bank`, true)}
+    ${kpi("","Volume transaksi", fmt(k.n),
+      `Nilai kotor ${rpS(bruto)}<br>Median ${rpS(N(k.median))}`, true)}
+    ${kpi("c-warn","Kelengkapan data", dec(lengkap,1) + "%",
+      `${fmt(k.bersih)} dari ${fmt(k.n)} baris bersih tanpa catatan<br>
+       ${fmt(k.tanpa_nip)} baris tanpa maker/checker/approver`, true)}
+  </div>
+
+  <h2>Arus dana dan volume</h2>
+  <div class="grid g2">
+    ${card("Komposisi arus dana","Klasifikasi otomatis dari tenor, dikuatkan kata kunci pada kolom catatan. Bisa dikoreksi manual di tabel detail.","cArus")}
+    ${card("Tren harian","Batang = arus keluar (kiri). Garis = jumlah transaksi (kanan).","cTren")}
+  </div>
+
+  <h2>Pencairan: dipercepat vs sesuai jatuh tempo</h2>
+  <div id="jenisRingkas" class="banner b-info" style="margin-top:0"></div>
+  <div class="grid g2">
+    ${card("Nominal harian per jenis","Batang bertumpuk — biru: sesuai jatuh tempo, oranye: dipercepat (break).","cJenisRp")}
+    ${card("Jumlah transaksi harian per jenis","Batang bertumpuk. Lonjakan proporsi break layak diperiksa.","cJenisN")}
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Rincian per cabang menurut jenis pencairan</h3>
+    <div class="h-note">Dikelompokkan jenis pencairan, diurutkan nominal. Mengikuti seluruh filter di atas.</div>
+    <div id="rincianJenis"></div></div>
+
+  <h2>Fokus pengendalian: pencairan dipercepat (break)</h2>
+  <div id="breakNote" class="h-note" style="margin:0 0 10px"></div>
+  <div class="grid g2">
+    ${card("Konsentrasi break per cabang (nominal)","Hanya transaksi dipercepat dari jatuh tempo.","cBreakRp","tall")}
+    ${card("Jumlah transaksi break per cabang","Hanya transaksi dipercepat dari jatuh tempo.","cBreakN","tall")}
+  </div>
+
+  <h2>Kinerja dan kepatuhan cabang</h2>
+  <div class="grid g3">
+    ${card("Cabang: nilai vs volume","Batang = arus keluar. Titik = jumlah transaksi. Cabang dengan banyak transaksi kecil tidak tersembunyi.","cCab","tall")}
+    <div class="card"><h3>Kelengkapan pelaporan per cabang</h3>
+      <div class="h-note">Persentase kolom wajib yang terisi, diurutkan dari yang terburuk.</div>
+      <div id="qlist" style="max-height:330px;overflow:auto"></div></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card"><h3>Cabang tidak mengirim laporan</h3>
+      <div class="h-note">Belum tentu lalai — bisa jadi memang nihil transaksi.
+        <b>Merah</b> = punya transaksi di data IT, jadi hampir pasti lupa melapor.
+        <b>Kuning</b> = sudah mengirim, tapi seluruh barisnya ditolak validasi — minta cabang
+        memperbaiki berkasnya, bukan mengejar laporannya.</div>
+      <div id="nolapor" style="max-height:300px;overflow:auto"></div></div>
+    <div class="card"><h3>Ringkasan kepatuhan</h3>
+      <div class="h-note">Dihitung atas baris yang sedang ditampilkan.</div>
+      <div id="patuh"></div></div>
+  </div>
+
+  <h2>Detail transaksi</h2>
+  ${tabel(["No deposito","Cabang","Tgl cair","Nasabah","Nominal","Tenor","Arus dana","Yakin","Jenis","Catatan mutu"])}`;
+
+  const cats = ["Arus Keluar","Rollover / DOC","Penempatan Kembali"];
+  const map = Object.fromEntries(DATA.per_arus.map(a => [a.arus_dana, N(a.rp)]));
+  draw("cArus", {type:"doughnut",
+    data:{labels:cats, datasets:[{data:cats.map(c=>map[c]||0),
+      backgroundColor:["#c0392b","#7c3aed","#2563eb"], borderWidth:0, hoverOffset:6}]},
+    options:{maintainAspectRatio:false, cutout:"58%", plugins:{legend:LEG,
+      tooltip:{callbacks:{label:c=>` ${c.label}: ${rp(c.raw)} (${pct(c.raw,bruto)})`}}}}});
+
+  chartTren(DATA.per_tgl, "tgl", "rp_keluar", "n", "Arus keluar");
+  chartCabang(DATA.per_cabang, "rp_keluar", "Arus keluar");
+
+  /* ---- analisa jenis pencairan: dipercepat vs sesuai jatuh tempo (slide 2-4) ---- */
+  const JSJT = "Sesuai Jatuh Tempo", JDIP = "Dipercepat dari Jatuh Tempo";
+  const days = [...new Set(rows.map(r => tgl(r.tgl_input)))].sort();
+  const dayAgg = days.map(d => {
+    const rr = rows.filter(r => tgl(r.tgl_input) === d);
+    const sel = j => rr.filter(r => r.jenis_pencairan === j);
+    const sumr = arr => arr.reduce((s, r) => s + (N(r.nominal) || 0), 0);
+    return {sjt_rp: sumr(sel(JSJT)), dip_rp: sumr(sel(JDIP)), sjt_n: sel(JSJT).length, dip_n: sel(JDIP).length};
+  });
+  const sumRp = j => rows.filter(r => r.jenis_pencairan === j).reduce((s, r) => s + (N(r.nominal) || 0), 0);
+  const nJ = j => rows.filter(r => r.jenis_pencairan === j).length;
+  const totN = rows.length;
+  $("jenisRingkas").innerHTML =
+    `<b>${fmt(nJ(JDIP))} pencairan dipercepat / break (${pct(nJ(JDIP), totN)})</b> senilai ${rpS(sumRp(JDIP))} · ` +
+    `<b>${fmt(nJ(JSJT))} sesuai jatuh tempo (${pct(nJ(JSJT), totN)})</b> senilai ${rpS(sumRp(JSJT))}.`;
+
+  const stackOpt = (isRp) => ({maintainAspectRatio: false, interaction: {mode: "index", intersect: false},
+    plugins: {legend: LEG, tooltip: {callbacks: {label: c => isRp ? ` ${c.dataset.label}: ${rp(c.raw)}` : ` ${c.dataset.label}: ${c.raw} transaksi`}}},
+    scales: {x: {stacked: true, grid: {display: false}}, y: {stacked: true, beginAtZero: true,
+      ticks: isRp ? {callback: v => rpS(v)} : {}, grid: GRID}}});
+  const stackDs = (kSjt, kDip) => [
+    {label: "Sesuai jatuh tempo", data: dayAgg.map(x => x[kSjt]), backgroundColor: "rgba(37,99,235,.7)", borderRadius: 3, stack: "s"},
+    {label: "Dipercepat (break)", data: dayAgg.map(x => x[kDip]), backgroundColor: "rgba(230,126,34,.85)", borderRadius: 3, stack: "s"}];
+  draw("cJenisRp", {type: "bar", data: {labels: days, datasets: stackDs("sjt_rp", "dip_rp")}, options: stackOpt(true)});
+  draw("cJenisN", {type: "bar", data: {labels: days, datasets: stackDs("sjt_n", "dip_n")}, options: stackOpt(false)});
+
+  $("rincianJenis").innerHTML = grpTableHTML(
+    ["Jenis pencairan", "Kode cabang", "Jumlah", "Nominal (Rp)"],
+    aggGroups(rows, r => r.jenis_pencairan || "(tidak diisi)", [JDIP, JSJT]));
+
+  const brk = rows.filter(r => r.jenis_pencairan === JDIP);
+  const brkCab = aggByBranch(brk).slice(0, 12);
+  $("breakNote").innerHTML = brk.length
+    ? `${fmt(brk.length)} transaksi break senilai <b>${rpS(brk.reduce((s, r) => s + (N(r.nominal) || 0), 0))}</b> dari ${aggByBranch(brk).length} cabang.`
+    : "Tidak ada pencairan dipercepat pada filter ini.";
+  const barH = (id, key, col, isRp) => draw(id, {type: "bar",
+    data: {labels: brkCab.map(x => x.short), datasets: [{data: brkCab.map(x => x[key]), backgroundColor: col, borderRadius: 3}]},
+    options: {indexAxis: "y", maintainAspectRatio: false,
+      plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => isRp ? ` ${rp(c.raw)}` : ` ${c.raw} transaksi`}}},
+      scales: {y: {grid: {display: false}, ticks: {font: {size: 10.5}}},
+        x: {beginAtZero: true, ticks: isRp ? {callback: v => rpS(v)} : {}, grid: GRID}}}});
+  barH("cBreakRp", "rp", "rgba(230,126,34,.8)", true);
+  barH("cBreakN", "n", "rgba(192,57,43,.7)", false);
+
+  $("qlist").innerHTML = DATA.per_cabang.slice()
+    .sort((a,b)=>N(a.lengkap)-N(b.lengkap)).map(a => {
+      const p = N(a.lengkap), c = p>=95?"var(--ok)":p>=85?"var(--warn)":"var(--bad)";
+      return qrow(esc(a.branch_name) + ` <span class="muted">· ${a.n} trx${a.tanpa_nip?` · ${a.tanpa_nip} tanpa NIP`:""}</span>`,
+        p, c, `<span style="color:${c}">${dec(p,0)}%</span>`);
+    }).join("") || empty();
+
+  $("nolapor").innerHTML = DATA.tak_lapor.map(t => {
+    const tag = t.kiriman_ditolak ? '<span class="tag t-warn">kiriman ditolak validasi</span>'
+              : t.ada_di_it       ? '<span class="tag t-bad">ada transaksi di IT</span>'
+              :                     '<span class="tag t-grey">tidak ada di IT</span>';
+    return `<div class="qrow"><span class="qn">${esc(t.branch_name)}
+      <span class="muted">· ${(t.branch_code||"").replace(/^0/,"")}</span></span>
+     <span class="qv">${tag}</span></div>`;
+  }).join("") || '<div class="muted" style="padding:12px 0">Seluruh cabang aktif mengirim laporan.</div>';
+
+  $("patuh").innerHTML = [
+    ["Baris bersih tanpa catatan", k.bersih, k.n, "ok"],
+    ["Tanpa maker/checker/approver", k.tanpa_nip, k.n, "bad"],
+    ["Checker sama dengan approver", k.ck_eq_ap, k.n, "warn"],
+    ["Sesuai jatuh tempo", k.sjt, k.n, "acc"],
+    ["Dipercepat dari jatuh tempo", k.dipercepat, k.n, "warn"],
+  ].map(([n,v,t,c]) => {
+    const col = {ok:"var(--ok)",bad:"var(--bad)",warn:"var(--warn)",acc:"var(--acc)"}[c];
+    return qrow(n, t?100*v/t:0, col, `<span style="color:${col}">${fmt(v)}</span> <span class="muted">/${fmt(t)}</span>`);
+  }).join("");
+
+  const AR = {"Arus Keluar":"t-bad","Rollover / DOC":"t-roll","Penempatan Kembali":"t-acc"};
+  CSV = [["No deposito","Cabang","Kode","Tgl input","Tgl cair","Nasabah","Nominal","Tenor","Arus dana","Keyakinan","Jenis pencairan","Catatan"]];
+  $("tb").innerHTML = rows.map(r => {
+    CSV.push([r.no_deposito, r.branch_name, r.branch_code, tgl(r.tgl_input), tgl(r.tgl_pencairan),
+      r.nama_pemilik, N(r.nominal), r.tenor_hari, r.arus_dana, r.arus_keyakinan, r.jenis_pencairan, r.catatan]);
+    const sel = window.ROLE !== "viewer"
+      ? `<select class="arus-sel" data-id="${r.id}" style="width:auto;padding:2px 5px;font-size:10.5px">
+           ${cats.map(c=>`<option ${c===r.arus_dana?"selected":""}>${c}</option>`).join("")}</select>`
+      : `<span class="tag ${AR[r.arus_dana]}">${r.arus_dana}</span>`;
+    return `<tr>
+      <td class="muted" style="font-size:11.5px">${esc(r.no_deposito||"—")}</td>
+      <td>${esc(r.branch_name)}</td>
+      <td class="muted">${tgl(r.tgl_pencairan)}</td>
+      <td>${esc((r.nama_pemilik||"—").slice(0,28))}</td>
+      <td class="num">${fmt(N(r.nominal))}</td>
+      <td class="num muted">${r.tenor_hari==null?"—":r.tenor_hari+" h"}</td>
+      <td>${sel}${r.arus_manual?' <span class="fl">manual</span>':""}</td>
+      <td class="muted" style="font-size:11.5px">${r.arus_keyakinan}</td>
+      <td class="muted" style="font-size:11.5px">${esc((r.jenis_pencairan||"—").replace(" dari Jatuh Tempo",""))}</td>
+      <td><div class="flagdots">${(r.flags||[]).map(f=>`<span class="fl">${esc(f)}</span>`).join("")}</div></td>
+    </tr>`;
+  }).join("") || emptyRow(10);
+
+  document.querySelectorAll(".arus-sel").forEach(s => s.onchange = async e => {
+    const r = await patch("/api/branchops/pencairan/" + e.target.dataset.id + "/arus", {arus_dana: e.target.value});
+    if (r) load();
+  });
+}
+
+/* ================================================================== */
+/* DASHBOARD 3 - Pembukaan rekening TBO                                */
+/* ================================================================== */
+function renderTBO() {
+  const k = DATA.kpi, rows = DATA.rows;
+  $("meta").textContent = `${fmt(k.n)} rekening · ${k.cabang} cabang melapor`;
+  $("cnt").textContent = `${rows.length} baris ditampilkan`;
+
+  $("banner").innerHTML = k.n && k.n < 50 ? `<div class="banner b-warn">
+    <b>Volume data masih kecil (${fmt(k.n)} baris dari ${k.cabang} cabang).</b>
+    Grafik pada jumlah sedemikian mudah menyesatkan — satu transaksi besar bisa menggeser
+    seluruh tampilan. Sampai volume pelaporan naik, pakai tabel di bawah sebagai acuan utama.</div>` : "";
+
+  $("root").innerHTML = `
+  <div class="kpis">
+    ${kpi("c-acc","Rekening dibuka", fmt(k.n),
+      `${fmt(k.baru)} baru · ${fmt(k.kembali)} penempatan kembali<br>
+       <b style="color:var(--tx2)">Penempatan kembali bukan akuisisi nasabah baru</b>`, true)}
+    ${kpi("c-ok","Setoran awal (IDR)", rpS(N(k.rp)),
+      `${fmt(k.perorangan)} perorangan · ${fmt(k.perusahaan)} perusahaan`)}
+    ${kpi("c-bad","TBO outstanding", fmt(k.outstanding),
+      `${fmt(k.lengkap)} sudah dilengkapi dari ${fmt(k.dengan_tbo)} ber-TBO`, true)}
+    ${kpi("c-warn","Aging rata-rata", fmt(Math.round(N(k.aging_rata))) + " hari",
+      `Terlama ${fmt(k.aging_max)} hari<br>Dihitung dari tanggal input sampai hari ini`, true)}
+  </div>
+
+  <h2>Aging dokumen TBO</h2>
+  <div class="grid g2">
+    ${card("Umur TBO yang masih outstanding","Semakin ke kanan semakin lama menggantung. Ini alasan utama dashboard ini ada.","cAging")}
+    ${card("Komposisi jenis produk","Diturunkan dari kolom keterangan yang formatnya masih bebas.","cProduk")}
+  </div>
+
+  <h2>Per cabang</h2>
+  <div class="card">
+    <div class="h-note">Jumlah rekening dan TBO yang masih outstanding.</div>
+    <div id="cabList"></div>
+  </div>
+
+  <h2>Rincian pembukaan rekening</h2>
+  <div class="grid g2">
+    <div class="card" style="padding:14px 16px"><h3>Menurut jenis dokumen TBO</h3>
+      <div class="h-note">Kategori diturunkan dari teks bebas kolom dokumen. Setoran valas dihitung Rp 0. Mengikuti filter.</div>
+      <div id="tboDoc"></div></div>
+    <div class="card" style="padding:14px 16px"><h3>Menurut jenis rekening</h3>
+      <div class="h-note">Perorangan vs perusahaan, per cabang.</div>
+      <div id="tboJenis"></div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Perlu ditindaklanjuti</h3>
+    <div id="tboFindings"></div></div>
+
+  <h2>Detail rekening ${window.ROLE !== "viewer" ? '<span class="sub" style="text-transform:none;font-weight:400">— tandai TBO selesai lewat tombol di kolom terakhir</span>' : ""}</h2>
+  ${tabel(["Cabang","Tgl input","Nasabah","No rekening","Nominal","Produk","Tipe","Dokumen TBO","Aging","Status","Aksi"])}`;
+
+  draw("cAging", {type:"bar",
+    data:{labels: DATA.aging.map(a => a.bucket),
+      datasets:[{label:"Rekening", data: DATA.aging.map(a => a.n),
+        backgroundColor: DATA.aging.map(a => a.bucket === ">30 hari" ? "rgba(192,57,43,.7)"
+          : a.bucket === "15-30 hari" ? "rgba(230,126,34,.7)" : "rgba(37,99,235,.55)"),
+        borderRadius:4}]},
+    options:{maintainAspectRatio:false, plugins:{legend:{display:false},
+      tooltip:{callbacks:{afterLabel:c=>" Nilai " + rp(N(DATA.aging[c.dataIndex].rp))}}},
+      scales:{y:{beginAtZero:true, grid:GRID}, x:{grid:{display:false}}}}});
+
+  draw("cProduk", {type:"doughnut",
+    data:{labels: DATA.per_produk.map(p => p.produk),
+      datasets:[{data: DATA.per_produk.map(p => p.n),
+        backgroundColor:["#2563eb","#7c3aed","#0d9488","#e67e22","#c0392b","#6b7280"],
+        borderWidth:0, hoverOffset:6}]},
+    options:{maintainAspectRatio:false, cutout:"58%", plugins:{legend:LEG}}});
+
+  const maxN = Math.max(1, ...DATA.per_cabang.map(c => c.n));
+  $("cabList").innerHTML = DATA.per_cabang.map(c =>
+    qrow(esc(c.branch_name) + ` <span class="muted">· ${c.n} rekening${c.outstanding?` · ${c.outstanding} TBO outstanding`:""}</span>`,
+      100*c.n/maxN, c.outstanding ? "var(--warn)" : "var(--ok)", rpS(N(c.rp)))
+  ).join("") || empty();
+
+  /* ---- rincian per jenis dokumen TBO & jenis rekening (slide 5) ---- */
+  $("tboDoc").innerHTML = grpTableHTML(
+    ["Jenis dokumen TBO", "Kode cabang", "Jumlah", "Nominal (Rp)"],
+    aggGroups(rows, r => classifyTbo(r.dokumen_tbo, r.ada_tbo)));
+  $("tboJenis").innerHTML = grpTableHTML(
+    ["Jenis rekening", "Kode cabang", "Jumlah", "Nominal (Rp)"],
+    aggGroups(rows, r => r.jenis_rekening || "(tidak diisi)"));
+
+  const notes = [];
+  const bigOR = rows.filter(r => /form or\b|\bor\b/i.test(r.dokumen_tbo || "") && (N(r.nominal) || 0) >= 1e10 && r.mata_uang === "IDR");
+  if (bigOR.length) notes.push(`${fmt(bigOR.length)} penempatan besar (≥ Rp 10 M) hanya berbasis "Form OR" — kewenangan penandatangan dan kelengkapan CIF perlu ditelusuri.`);
+  const tanpa = rows.filter(r => classifyTbo(r.dokumen_tbo, r.ada_tbo) === "Tanpa dokumen TBO");
+  if (tanpa.length) notes.push(`${fmt(tanpa.length)} rekening tercatat tanpa dokumen TBO — kelengkapan berkas perlu dikonfirmasi cabang.`);
+  const gab = rows.filter(r => r.cif_gabungan);
+  if (gab.length) notes.push(`${fmt(gab.length)} rekening ber-CIF gabungan (joint account) — pastikan seluruh CIF terdaftar dan kewenangannya jelas.`);
+  const valas = rows.filter(r => r.mata_uang && r.mata_uang !== "IDR");
+  if (valas.length) notes.push(`${fmt(valas.length)} rekening valuta asing (${[...new Set(valas.map(r => r.mata_uang))].join(", ")}) — dikeluarkan dari total rupiah, cek terpisah.`);
+  $("tboFindings").innerHTML = notes.length
+    ? notes.map(n => `<div class="qrow"><span class="qn">${esc(n)}</span></div>`).join("")
+    : '<div class="muted" style="padding:8px 0">Tidak ada temuan menonjol pada filter ini.</div>';
+
+  const ST = {"Outstanding":"t-bad","Lengkap":"t-ok","Dikecualikan":"t-grey"};
+  CSV = [["Cabang","Kode","Tgl input","Nasabah","No rekening","Nominal","Mata uang","Produk","Tipe","Dokumen TBO","Aging","Status TBO"]];
+  $("tb").innerHTML = rows.map(r => {
+    CSV.push([r.branch_name, r.branch_code, tgl(r.tgl_input), r.nama_pemilik, r.no_rekening,
+      N(r.nominal), r.mata_uang, r.jenis_produk, r.tipe_pembukaan, r.dokumen_tbo, r.aging, r.status_tbo]);
+    const aksi = (window.ROLE !== "viewer" && r.ada_tbo)
+      ? (r.status_tbo === "Outstanding"
+          ? `<button class="btn sm primary" onclick="tbo(${r.id},'Lengkap')">Tandai lengkap</button>`
+          : `<button class="btn sm" onclick="tbo(${r.id},'Outstanding')">Buka lagi</button>`)
+      : '<span class="muted">—</span>';
+    return `<tr>
+      <td>${esc(r.branch_name)}</td>
+      <td class="muted">${tgl(r.tgl_input)}</td>
+      <td>${esc((r.nama_pemilik||"—").slice(0,26))}${r.cif_gabungan?' <span class="fl">gabungan</span>':""}</td>
+      <td class="muted" style="font-size:11.5px">${esc(r.no_rekening||"—")}</td>
+      <td class="num">${fmt(N(r.nominal))}${r.mata_uang!=="IDR"?` <span class="fl">${esc(r.mata_uang)}</span>`:""}</td>
+      <td class="muted" style="font-size:11.5px">${esc(r.jenis_produk||"—")}</td>
+      <td class="muted" style="font-size:11.5px">${r.tipe_pembukaan==="Baru"?"Baru":'<span class="fl">Penempatan kembali</span>'}</td>
+      <td class="muted" style="font-size:11.5px;max-width:190px;word-break:break-word">${esc(r.dokumen_tbo||"—")}</td>
+      <td class="num ${r.aging>14?"":"muted"}">${r.aging==null?"—":r.aging+" h"}</td>
+      <td><span class="tag ${ST[r.status_tbo]}">${r.status_tbo}</span>
+        ${r.tgl_tbo_lengkap?`<div class="muted" style="font-size:10.5px">${tgl(r.tgl_tbo_lengkap)}</div>`:""}</td>
+      <td>${aksi}</td>
+    </tr>`;
+  }).join("") || emptyRow(11);
+}
+
+window.tbo = async (id, status) => {
+  if (await patch("/api/branchops/tbo/" + id, {status_tbo: status})) load();
+};
+
+/* ================================================================== */
+/* DASHBOARD 4 - Rekonsiliasi                                          */
+/* ================================================================== */
+function renderRekon() {
+  const k = DATA.kpi, rows = DATA.rows;
+  $("meta").textContent = `${fmt(k.total)} butir dicocokkan · toleransi selisih ${rp(DATA.settings.rekon_toleransi_rp)}`;
+  $("cnt").textContent = `${rows.length} baris ditampilkan`;
+
+  $("banner").innerHTML = k.total ? `<div class="banner b-bad">
+    <b>${fmt(k.tak_lapor)} break senilai ${rpS(N(k.rp_tak_lapor))} tidak dilaporkan cabang</b>,
+    ditambah ${fmt(k.selisih)} transaksi dengan selisih nominal material (total ${rpS(N(k.rp_selisih))}).
+    Gap ini tidak akan terlihat kalau kedua dashboard berdiri sendiri.</div>
+    <div class="banner b-warn">Toleransi selisih ${rp(DATA.settings.rekon_toleransi_rp)} adalah angka
+    sementara dan <b>belum ditetapkan resmi</b>. Nilai ini menentukan berapa transaksi ditandai bermasalah —
+    admin bisa mengubahnya di <a href="/pengaturan">Pengaturan</a>.</div>` : `
+    <div class="banner b-info">Belum ada hasil rekonsiliasi. Rekonsiliasi berjalan otomatis setelah
+    berkas IT dan berkas pencairan cabang sama-sama dikomit.</div>`;
+
+  $("root").innerHTML = `
+  <div class="kpis">
+    ${kpi("c-ok","Cocok", fmt(k.cocok), `Selisih dalam toleransi ${rp(DATA.settings.rekon_toleransi_rp)}`)}
+    ${kpi("c-warn","Selisih material", fmt(k.selisih), `Total selisih ${rpS(N(k.rp_selisih))}`)}
+    ${kpi("c-bad","Tidak dilaporkan cabang", fmt(k.tak_lapor),
+      `Senilai ${rpS(N(k.rp_tak_lapor))}<br><b style="color:var(--tx2)">Break tercatat di sistem, tanpa laporan</b>`, true)}
+    ${kpi("c-acc","Tidak ada di data IT", fmt(k.cabang_only),
+      `Dilaporkan cabang sebagai dipercepat, tapi tidak ada di export IT`)}
+    ${kpi("c-roll","Belum ditinjau", fmt(k.belum_ditinjau), `Butir yang belum ada tindak lanjutnya`)}
+  </div>
+
+  <h2>Sebaran</h2>
+  <div class="grid g3">
+    ${card("Status pencocokan","Dicocokkan lewat nomor rekening deposito setelah normalisasi digit.","cRek")}
+    <div class="card"><h3>Cabang dengan temuan terbanyak</h3>
+      <div class="h-note">Diurutkan dari jumlah butir bermasalah.</div>
+      <div id="cabRek" style="max-height:300px;overflow:auto"></div></div>
+  </div>
+
+  <h2>Daftar temuan</h2>
+  <div class="card" style="padding:14px 16px">
+    <div class="h-note" style="margin:0">Diurutkan dari selisih terbesar.
+      ${window.ROLE!=="viewer" ? "Ubah tindak lanjut lewat menu di kolom terakhir — perubahan tercatat di jejak audit." : ""}</div>
+    <div class="tbl-wrap"><table><thead><tr>
+      <th>Status</th><th>Cabang</th><th>No rekening</th><th>Nasabah</th>
+      <th class="num">Nominal IT</th><th class="num">Nominal cabang</th><th class="num">Selisih</th>
+      <th>Catatan cabang</th><th>Tindak lanjut</th></tr></thead>
+      <tbody id="tb"></tbody></table></div>
+  </div>`;
+
+  const st = ["Cocok","Selisih material","Tidak dilaporkan cabang","Tidak ada di data IT"];
+  const val = [k.cocok, k.selisih, k.tak_lapor, k.cabang_only].map(Number);
+  draw("cRek", {type:"doughnut",
+    data:{labels:st, datasets:[{data:val,
+      backgroundColor:["#1a7a4a","#e67e22","#c0392b","#2563eb"], borderWidth:0, hoverOffset:6}]},
+    options:{maintainAspectRatio:false, cutout:"58%", plugins:{legend:LEG,
+      tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} butir (${pct(c.raw,val.reduce((a,b)=>a+b,0))})`}}}}});
+
+  const maxB = Math.max(1, ...DATA.per_cabang.map(c => c.bermasalah));
+  $("cabRek").innerHTML = DATA.per_cabang.filter(c => c.bermasalah).map(c =>
+    qrow(esc(c.branch_name||"(tanpa cabang)") + ` <span class="muted">· ${c.n} butir</span>`,
+      100*c.bermasalah/maxB, "var(--bad)",
+      `<span style="color:var(--bad)">${c.bermasalah}</span> <span class="muted">bermasalah</span>`)
+  ).join("") || '<div class="muted" style="padding:12px 0">Tidak ada temuan pada filter ini.</div>';
+
+  const ST = {"Cocok":"t-ok","Selisih material":"t-warn","Tidak dilaporkan cabang":"t-bad","Tidak ada di data IT":"t-acc"};
+  const TL = ["Belum ditinjau","Sedang ditelusuri","Selesai - wajar","Selesai - dikoreksi"];
+  CSV = [["Status","Cabang","Kode","No rekening","Nasabah IT","Nasabah cabang","Nominal IT","Nominal cabang","Selisih","Tindak lanjut","Catatan"]];
+  $("tb").innerHTML = rows.map(r => {
+    CSV.push([r.status, r.branch_name, r.branch_code, r.rek_norm, r.nasabah_it, r.nasabah_cabang,
+      N(r.nominal_it), N(r.nominal_cabang), N(r.selisih), r.tindak_lanjut, r.catatan_tl]);
+    const sel = window.ROLE !== "viewer"
+      ? `<select class="tl-sel" data-id="${r.id}" style="width:auto;padding:2px 5px;font-size:10.5px">
+           ${TL.map(t=>`<option ${t===r.tindak_lanjut?"selected":""}>${t}</option>`).join("")}</select>`
+      : `<span class="tag t-grey">${r.tindak_lanjut}</span>`;
+    const besar = Math.abs(N(r.selisih)||0) > 1e9;
+    return `<tr>
+      <td><span class="tag ${ST[r.status]}">${r.status}</span></td>
+      <td>${esc(r.branch_name||"—")}</td>
+      <td class="muted" style="font-size:11.5px">${esc(r.rek_norm)}</td>
+      <td>${esc((r.nasabah_it||r.nasabah_cabang||"—").slice(0,24))}</td>
+      <td class="num">${r.nominal_it==null?"—":fmt(N(r.nominal_it))}</td>
+      <td class="num">${r.nominal_cabang==null?"—":fmt(N(r.nominal_cabang))}</td>
+      <td class="num" style="${besar?"color:var(--bad);font-weight:640":""}">${r.selisih==null?"—":fmt(Math.abs(N(r.selisih)))}</td>
+      <td class="muted" style="font-size:11.5px;max-width:200px;word-break:break-word">${esc((r.catatan_cabang||"").slice(0,70))}</td>
+      <td>${sel}</td>
+    </tr>`;
+  }).join("") || emptyRow(9);
+
+  document.querySelectorAll(".tl-sel").forEach(s => s.onchange = async e => {
+    await patch("/api/branchops/rekon/" + e.target.dataset.id, {tindak_lanjut: e.target.value});
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* helper tampilan                                                     */
+/* ------------------------------------------------------------------ */
+function kpi(cls, lab, val, note, small) {
+  return `<div class="kpi ${cls}"><div class="lab">${lab}</div>
+    <div class="val ${small?"sm":""}">${val}</div><div class="note">${note}</div></div>`;
+}
+function card(judul, note, canvasId, extra) {
+  return `<div class="card"><h3>${judul}</h3><div class="h-note">${note}</div>
+    <div class="chart-box ${extra||""}"><canvas id="${canvasId}"></canvas></div></div>`;
+}
+function tabel(cols) {
+  return `<div class="card" style="padding:14px 16px"><div class="tbl-wrap" style="margin-top:0">
+    <table><thead><tr>${cols.map(c =>
+      `<th class="${["Nominal","Tenor","Rate","Penalti","Aging"].includes(c)?"num":""}">${c}</th>`).join("")}</tr></thead>
+    <tbody id="tb"></tbody></table></div></div>`;
+}
+function qrow(label, barPct, color, right) {
+  return `<div class="qrow"><span class="qn">${label}</span>
+    <span class="qbar"><i style="width:${Math.max(0,Math.min(100,barPct))}%;background:${color}"></i></span>
+    <span class="qv">${right}</span></div>`;
+}
+const empty = () => '<div class="muted" style="padding:12px 0">Tidak ada data pada filter ini.</div>';
+const emptyRow = n => `<tr><td colspan="${n}" class="muted" style="padding:24px;text-align:center">Tidak ada baris yang cocok.</td></tr>`;
+
+function chartTren(rows, kx, ky, kn, label) {
+  draw("cTren", {data:{labels: rows.map(r => tgl(r[kx])), datasets:[
+    {type:"bar", label, yAxisID:"y", data: rows.map(r => N(r[ky])),
+     backgroundColor:"rgba(192,57,43,.6)", borderRadius:4, barPercentage:.55},
+    {type:"line", label:"Jumlah transaksi", yAxisID:"y1", data: rows.map(r => N(r[kn])),
+     borderColor:"#2563eb", backgroundColor:"#2563eb", tension:.3, pointRadius:4, borderWidth:2}]},
+    options:{maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
+      plugins:{legend:LEG, tooltip:{callbacks:{label:c =>
+        c.dataset.yAxisID==="y" ? ` ${c.dataset.label}: ${rp(c.raw)}` : ` ${c.raw} transaksi`}}},
+      scales:{y:{ticks:{callback:v=>rpS(v)}, grid:GRID},
+        y1:{position:"right", grid:{drawOnChartArea:false}, title:{display:true,text:"transaksi"}}}}});
+}
+
+function chartCabang(rows, key, label) {
+  const top = rows.slice(0, 12);
+  draw("cCab", {data:{labels: top.map(r => (r.branch_name||"").replace(/ \((KC|KCP)\)$/,"")),
+    datasets:[
+      {type:"bar", label, yAxisID:"y", data: top.map(r => N(r[key])),
+       backgroundColor:"rgba(192,57,43,.6)", borderRadius:3},
+      {type:"line", label:"Jumlah transaksi", yAxisID:"y1", data: top.map(r => N(r.n)),
+       borderColor:"#1a7a4a", backgroundColor:"#1a7a4a", showLine:false, pointRadius:5, pointStyle:"rectRot"}]},
+    options:{maintainAspectRatio:false, indexAxis:"y",
+      plugins:{legend:LEG, tooltip:{callbacks:{label:c =>
+        c.dataset.yAxisID==="y" ? ` ${rp(c.raw)}` : ` ${c.raw} transaksi`}}},
+      scales:{y:{grid:{display:false}, ticks:{font:{size:10.5}}},
+        x:{ticks:{callback:v=>rpS(v)}, grid:GRID}, y1:{display:false}}}});
+}
+
+/* ---- agregasi bersama untuk analisa tambahan (slide PPTX) ---- */
+const nomIDR = r => (r.mata_uang && r.mata_uang !== "IDR") ? 0 : (N(r.nominal) || 0);
+
+function aggByBranch(rows) {
+  const m = new Map();
+  rows.forEach(r => {
+    const key = (r.branch_code || "") + "|" + (r.branch_name || "");
+    const cur = m.get(key) || {name: r.branch_name || "", code: r.branch_code || "", n: 0, rp: 0};
+    cur.n++; cur.rp += nomIDR(r); m.set(key, cur);
+  });
+  return [...m.values()].map(x => ({...x,
+    short: (x.name || "").replace(/ \((KC|KCP)\)$/, ""),
+    label: String(x.code).replace(/^0/, "") + " - " + x.name
+  })).sort((a, b) => b.rp - a.rp);
+}
+
+function aggGroups(rows, groupFn, order) {
+  const g = new Map();
+  rows.forEach(r => {
+    const gn = groupFn(r) || "(tidak diisi)";
+    const lbl = String(r.branch_code || "").replace(/^0/, "") + " - " + (r.branch_name || "");
+    if (!g.has(gn)) g.set(gn, new Map());
+    const gm = g.get(gn);
+    const c = gm.get(lbl) || {label: lbl, n: 0, rp: 0};
+    c.n++; c.rp += nomIDR(r); gm.set(lbl, c);
+  });
+  let out = [...g.entries()].map(([name, gm]) => {
+    const items = [...gm.values()].sort((a, b) => b.rp - a.rp);
+    return {name, items, tn: items.reduce((s, x) => s + x.n, 0), trp: items.reduce((s, x) => s + x.rp, 0)};
+  });
+  if (order) out.sort((a, b) => {
+    const ia = order.indexOf(a.name), ib = order.indexOf(b.name);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  else out.sort((a, b) => b.trp - a.trp);
+  return out;
+}
+
+function grpTableHTML(cols, groups) {
+  const gTn = groups.reduce((s, g) => s + g.tn, 0), gTrp = groups.reduce((s, g) => s + g.trp, 0);
+  const body = groups.map(g => {
+    const items = g.items.map((it, i) => `<tr><td>${i === 0 ? esc(g.name) : ""}</td><td>${esc(it.label)}</td>
+      <td class="num">${fmt(it.n)}</td><td class="num">${fmt(it.rp)}</td></tr>`).join("");
+    const sub = `<tr style="background:var(--panel2)"><td></td><td class="muted">${esc(g.name)} — total</td>
+      <td class="num"><b>${fmt(g.tn)}</b> <span class="muted">(${pct(g.tn, gTn)})</span></td>
+      <td class="num"><b>${fmt(g.trp)}</b></td></tr>`;
+    return items + sub;
+  }).join("");
+  const grand = `<tr style="background:var(--panel2)"><td></td><td><b>Grand total</b></td>
+    <td class="num"><b>${fmt(gTn)}</b></td><td class="num"><b>${fmt(gTrp)}</b></td></tr>`;
+  return `<div class="tbl-wrap" style="margin-top:6px;max-height:none"><table><thead><tr>${
+    cols.map((c, i) => `<th class="${i >= 2 ? "num" : ""}">${esc(c)}</th>`).join("")}</tr></thead>
+    <tbody>${body || emptyRow(4)}${groups.length ? grand : ""}</tbody></table></div>`;
+}
+
+/* teks bebas kolom dokumen TBO -> kategori (mengikuti pengelompokan PPTX) */
+function classifyTbo(doc, adaTbo) {
+  const d = (doc || "").toLowerCase().trim();
+  if (adaTbo === false || d === "" || /^(tidak ada|tidak ad|tdk ada|tidak|tdk|-)$/.test(d)) return "Tanpa dokumen TBO";
+  if (/sipina/.test(d)) return "Form SIPINA";
+  if (/bundling|kepesertaan/.test(d)) return "Bundling";
+  if (/form cif|aplikasi penempatan|kctt|riplay|koresponden/.test(d)) return "Aplikasi penempatan + Form CIF";
+  if (/form or\b|\bor\b/.test(d)) return "Form OR";
+  if (/penempatan/.test(d)) return "Formulir penempatan";
+  if (/memo|wa dari|whatsapp|by wa/.test(d)) return "Memo / WA (informal)";
+  return "Lainnya";
+}
+
+async function patch(url, body) {
+  const r = await authFetch(url, {method:"PATCH", headers:{"Content-Type":"application/json"},
+                              body: JSON.stringify(body)});
+  if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.error || "Gagal menyimpan"); return false; }
+  return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* kendali halaman                                                     */
+/* ------------------------------------------------------------------ */
+["fA","fB","fCab","fTipe","fStatus"].forEach(id => { const e = $(id); if (e) e.onchange = load; });
+if ($("bDup")) $("bDup").onclick = e => {
+  DUP = !DUP; e.target.classList.toggle("on", !DUP);
+  e.target.textContent = DUP ? "Duplikat disertakan" : "Duplikat dikecualikan"; load();
+};
+$("bReset").onclick = () => {
+  ["fCab","fTipe","fStatus"].forEach(id => { if ($(id)) $(id).value = ""; });
+  DUP = false;
+  if ($("bDup")) { $("bDup").classList.add("on"); $("bDup").textContent = "Duplikat dikecualikan"; }
+  load();
+};
+if ($("bRerun")) $("bRerun").onclick = async () => {
+  $("bRerun").disabled = true;
+  try {
+    const r = await authFetch("/api/branchops/rekonsiliasi/jalankan", {method:"POST"});
+    const j = await r.json();
+    if (r.ok) { alert(`Rekonsiliasi selesai.\n${j.cocok} cocok · ${j.selisih} selisih · ${j.tak_lapor} tidak dilaporkan cabang.`); load(); }
+    else alert(j.error || "Gagal");
+  } finally { $("bRerun").disabled = false; }
+};
+$("bCsv").onclick = () => {
+  if (!CSV.length) return;
+  const body = CSV.map(row => row.map(c => {
+    const s = c == null ? "" : String(c);
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }).join(";")).join("\r\n");
+  const blob = new Blob(["﻿" + body], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `dashboard-${window.DASH}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+};
+
+
+
+/* ================= HELPER TAMBAHAN ================= */
+async function dlCsv(bid){
+  const r = await authFetch("/api/branchops/batch/" + bid + "/issues.csv");
+  if (!r.ok) { alert("Gagal mengunduh"); return; }
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "validasi-batch-" + bid + ".csv";
+  a.click(); URL.revokeObjectURL(a.href);
+}
+const J = (u, m, b) => authFetch(u, { method: m,
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+const JENIS_LABEL = { it_break: "Break IT", pencairan: "Pencairan", tbo: "TBO" };
+const ST_BATCH = { committed: "t-ok", draft: "t-warn", dibatalkan: "t-grey" };
+const dtfmt = s => s ? String(s).replace("T", " ").slice(0, 16) : "—";
+
+/* ================= BERANDA ================= */
+async function renderHome(){
+  const el = $("homeRoot");
+  el.innerHTML = '<div class="loading"><span class="spin"></span> Memuat…</div>';
+  const r = await authFetch("/api/branchops/summary");
+  if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Gagal memuat ringkasan.</div>'; return; }
+  const d = await r.json();
+  const h = d.hitung || {};
+  const per = d.periode || {};
+  let html = `<div style="padding-top:22px"><h1>Branch Operations and Transactions Monitoring</h1>
+    <div class="sub">${per.awal ? "Data termuat: " + tgl(per.awal) + " s/d " + tgl(per.akhir) : "Belum ada data yang dikomit."}</div></div>`;
+  if (!h.cabang) html += `<div class="banner b-warn"><b>Master cabang belum diisi.</b>
+    Buka tab <a href="#" onclick="switchTab('upload');return false">Unggah</a> dan unggah
+    <code>01. Kode dan Nama Cabang.xlsx</code> lebih dulu.</div>`;
+  else if (!(h.it || h.pencairan || h.tbo)) html += `<div class="banner b-info"><b>Belum ada data transaksi.</b>
+    Modul ini mulai dalam keadaan kosong — data masuk lewat tab Unggah.</div>`;
+  html += `<h2>Menu</h2><div class="menu">
+    <a class="m1" href="#" onclick="switchTab('d1');return false"><div class="mt">Data Break Deposito</div>
+      <div class="md">Dari IT Group. Volume, penalti, rate, durasi proses, jam transaksi.</div>
+      <div class="mn">${fmt(h.it || 0)} baris</div></a>
+    <a class="m2" href="#" onclick="switchTab('d2');return false"><div class="mt">Seluruh Pencairan Deposito</div>
+      <div class="md">Dari cabang. Arus keluar dipisah dari rollover dan penempatan kembali.</div>
+      <div class="mn">${fmt(h.pencairan || 0)} baris</div></a>
+    <a class="m3" href="#" onclick="switchTab('d3');return false"><div class="mt">Pembukaan Rekening dengan TBO</div>
+      <div class="md">Dari cabang. Status dan aging dokumen TBO dilacak di modul ini.</div>
+      <div class="mn">${fmt(h.tbo || 0)} baris</div></a>
+    <a class="m4" href="#" onclick="switchTab('d4');return false"><div class="mt">Rekonsiliasi IT vs Cabang</div>
+      <div class="md">Break tak dilaporkan cabang dan selisih nominal antar sumber.</div>
+      <div class="mn">${fmt(h.rekon_bermasalah || 0)} butir perlu ditinjau</div></a></div>`;
+  const rows = d.batch || [];
+  html += `<h2>Unggahan terakhir</h2><div class="card" style="padding:14px 16px">`;
+  html += rows.length ? `<div class="tbl-wrap" style="max-height:none;margin-top:0"><table><thead><tr>
+    <th>#</th><th>Jenis</th><th>Berkas</th><th>Periode</th><th class="num">Baris</th>
+    <th class="num">Ditolak</th><th>Status</th><th>Oleh</th><th>Waktu</th></tr></thead><tbody>` +
+    rows.map(b => `<tr><td class="muted">${b.id}</td><td>${JENIS_LABEL[b.jenis] || b.jenis}</td>
+      <td>${esc(b.nama_file)}</td><td class="muted">${tgl(b.periode_awal)} … ${tgl(b.periode_akhir)}</td>
+      <td class="num">${b.baris_total}</td><td class="num ${b.baris_ditolak ? "" : "muted"}">${b.baris_ditolak}</td>
+      <td><span class="tag ${ST_BATCH[b.status]}">${b.status}</span></td>
+      <td class="muted">${esc(b.oleh || "—")}</td><td class="muted">${dtfmt(b.uploaded_at)}</td></tr>`).join("")
+    + `</tbody></table></div>` : `<div class="muted" style="padding:10px 0">Belum ada unggahan.</div>`;
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+/* ================= UNGGAH ================= */
+async function renderUpload(){
+  const el = $("uploadRoot");
+  el.innerHTML = '<div class="loading"><span class="spin"></span> Memuat…</div>';
+  const r = await authFetch("/api/branchops/batches");
+  if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Gagal memuat.</div>'; return; }
+  const d = await r.json();
+  const masterN = d.master_n || 0;
+  /* Kotak Master cabang hanya digambar bila akun ini punya hak "master".
+     Ini semata tampilan — rute /api/branchops/master tetap dijaga backend. */
+  const bolehMaster = !window.MENUS || window.MENUS.includes("master");
+  el.innerHTML = `
+  <div style="padding-top:22px"><h1>Unggah data</h1>
+  <div class="sub">Berkas diperiksa lebih dulu. Tidak ada yang masuk ke dashboard sebelum Anda menekan Komit.</div></div>
+  ${bolehMaster ? `
+  <div class="card" style="margin-top:14px;border-color:${masterN ? "var(--line)" : "rgba(230,126,34,.45)"}">
+    <h3>Langkah 0 — Master cabang
+      ${masterN ? `<span class="tag t-ok" style="margin-left:6px">${masterN} cabang terisi</span>`
+                : '<span class="tag t-warn" style="margin-left:6px">belum diisi</span>'}</h3>
+    <div class="h-note">Unggah <code>01. Kode dan Nama Cabang.xlsx</code>. Wajib lebih dulu —
+      tanpa master, seluruh baris berkas transaksi ditolak. Mengunggah ulang hanya memperbarui.</div>
+    <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+      <input type="file" id="fMaster" accept=".xlsx" style="max-width:420px">
+      <button class="btn primary" id="bMaster">${masterN ? "Perbarui master" : "Unggah master cabang"}</button>
+    </div><div id="mOut" style="margin-top:11px"></div></div>` : `
+  <div class="card" style="margin-top:14px">
+    <h3>Langkah 0 — Master cabang
+      ${masterN ? `<span class="tag t-ok" style="margin-left:6px">${masterN} cabang terisi</span>`
+                : '<span class="tag t-warn" style="margin-left:6px">belum diisi</span>'}</h3>
+    <div class="h-note">Master cabang hanya boleh diubah oleh akun yang diberi hak
+      &quot;Master Cabang&quot;. Hubungi admin bila daftar cabang perlu diperbarui.</div></div>`}
+
+  <div class="card" style="margin-top:14px"><h3>Berkas transaksi</h3>
+    <div class="h-note">Format .xlsx, nama sheet sesuai template. Alur: pilih jenis → periksa → komit.</div>
+    <div style="margin-bottom:12px"><label>Jenis berkas</label>
+      <select id="jenis">
+        <option value="it_break">Data Transaksi dari IT (break deposito)</option>
+        <option value="pencairan">Data dari Cabang — Pencairan Deposito</option>
+        <option value="tbo">Data dari Cabang — Buka Rekening TBO</option>
+      </select></div>
+    <div class="drop" id="drop"><div id="dropTxt">Klik untuk memilih berkas</div>
+      <input type="file" id="file" accept=".xlsx,.xlsm" hidden></div>
+    <button class="btn primary" id="bUp" style="margin-top:12px">Periksa berkas</button>
+    <div id="upOut" style="margin-top:14px"></div></div>
+
+  <h2>Riwayat unggahan</h2>
+  <div class="card" style="padding:14px 16px"><div class="tbl-wrap" style="max-height:420px;margin-top:0">
+  <table><thead><tr><th>#</th><th>Jenis</th><th>Berkas</th><th class="num">Baris</th>
+    <th class="num">Ditolak</th><th class="num">Peringatan</th><th>Status</th><th>Oleh</th><th>Aksi</th></tr></thead>
+  <tbody>` + (d.batches || []).map(b => `<tr>
+    <td class="muted">${b.id}</td><td>${JENIS_LABEL[b.jenis] || b.jenis}</td>
+    <td style="max-width:260px;word-break:break-word">${esc(b.nama_file)}</td>
+    <td class="num">${b.baris_total}</td>
+    <td class="num ${b.baris_ditolak ? "" : "muted"}">${b.baris_ditolak}</td>
+    <td class="num ${b.baris_warning ? "" : "muted"}">${b.baris_warning}</td>
+    <td><span class="tag ${ST_BATCH[b.status]}">${b.status}</span></td>
+    <td class="muted">${esc(b.oleh || "—")}</td>
+    <td style="white-space:nowrap"><button class="btn sm" onclick="dlCsv(${b.id})">Catatan</button>
+      ${b.status === "draft" ? `<button class="btn sm primary" onclick="boCommit(${b.id})">Komit</button>
+      <button class="btn sm danger" onclick="boBatal(${b.id})">Batal</button>` : ""}</td>
+  </tr>`).join("") + `</tbody></table></div></div>`;
+
+  $("drop").onclick = () => $("file").click();
+  $("file").onchange = () => { const f = $("file").files[0];
+    $("dropTxt").textContent = f ? f.name : "Klik untuk memilih berkas"; };
+  /* Tombolnya tidak digambar kalau akun ini tidak punya hak "master",
+     jadi pemasangan handler harus dijaga agar tidak melempar galat. */
+  if (bolehMaster) $("bMaster").onclick = async () => {
+    const f = $("fMaster").files[0], out = $("mOut");
+    if (!f) { out.innerHTML = '<div class="err">Pilih berkas master dulu.</div>'; return; }
+    out.innerHTML = '<span class="spin"></span> Memproses…';
+    const fd = new FormData(); fd.append("file", f);
+    const rr = await authFetch("/api/branchops/master", { method: "POST", body: fd });
+    const j = await rr.json();
+    out.innerHTML = rr.ok ? '<div class="okmsg">' + j.jumlah + ' cabang tersimpan.</div>'
+                          : '<div class="err">' + esc(j.error || "Gagal") + '</div>';
+    if (rr.ok) setTimeout(renderUpload, 900);
+  };
+  $("bUp").onclick = async () => {
+    const f = $("file").files[0], out = $("upOut");
+    if (!f) { out.innerHTML = '<div class="err">Pilih berkas dulu.</div>'; return; }
+    out.innerHTML = '<span class="spin"></span> Membaca dan memvalidasi…';
+    $("bUp").disabled = true;
+    try {
+      const fd = new FormData(); fd.append("file", f); fd.append("jenis", $("jenis").value);
+      const rr = await authFetch("/api/branchops/upload", { method: "POST", body: fd });
+      const j = await rr.json();
+      if (!rr.ok) { out.innerHTML = '<div class="err">' + esc(j.error || "Gagal") + '</div>'; return; }
+      const errs = j.issues.filter(i => i.severity === "error");
+      const warns = j.issues.filter(i => i.severity === "warning");
+      const grup = arr => { const m = {}; arr.forEach(i => (m[i.kode] = m[i.kode] || []).push(i)); return m; };
+      const blok = (arr, judul, cls) => !arr.length ? "" :
+        `<h3 style="margin-top:14px">${judul} (${arr.length})</h3>` +
+        Object.entries(grup(arr)).sort((a, b) => b[1].length - a[1].length).map(([k, v]) =>
+          `<div class="qrow"><span class="qn">${esc(v[0].pesan.replace(/;.*$/, ""))}
+            <span class="muted">· baris ${v.slice(0, 6).map(x => x.baris).join(", ")}${v.length > 6 ? ", …" : ""}</span></span>
+            <span class="qv"><span class="tag ${cls}">${v.length}</span></span></div>`).join("");
+      out.innerHTML =
+        `<div class="banner ${j.ditolak ? "b-warn" : "b-ok"}"><b>Batch #${j.batch_id} siap ditinjau.</b><br>
+         ${j.total} baris terbaca · <b>${j.valid} akan masuk</b> · ${j.ditolak} ditolak · ${j.warning} berperingatan.</div>`
+        + (j.file_kembar ? `<div class="banner b-warn">${esc(j.file_kembar)}</div>` : "")
+        + blok(errs, "Ditolak — perbaiki di berkas sumber", "t-bad")
+        + blok(warns, "Peringatan — tetap masuk, ditandai", "t-warn")
+        + `<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+           <button class="btn primary" onclick="boCommit(${j.batch_id})">Komit ${j.valid} baris</button>
+           <button class="btn danger" onclick="boBatal(${j.batch_id})">Batalkan</button>
+           <button class="btn" onclick="dlCsv(${j.batch_id})">Unduh catatan (CSV)</button></div>`;
+    } finally { $("bUp").disabled = false; }
+  };
+}
+window.boCommit = async id => {
+  if (!confirm("Komit batch #" + id + "? Data tampil di dashboard dan rekonsiliasi dijalankan ulang.")) return;
+  const r = await authFetch("/api/branchops/batch/" + id + "/commit", { method: "POST" });
+  const j = await r.json();
+  if (!r.ok) { alert(j.error || "Gagal"); return; }
+  alert("Batch #" + id + " dikomit.\nRekonsiliasi: " + j.rekonsiliasi.cocok + " cocok · "
+    + j.rekonsiliasi.selisih + " selisih · " + j.rekonsiliasi.tak_lapor + " tak dilaporkan.");
+  renderUpload();
+};
+window.boBatal = async id => {
+  if (!confirm("Batalkan batch #" + id + "?")) return;
+  await authFetch("/api/branchops/batch/" + id + "/batal", { method: "POST" });
+  renderUpload();
+};
+
+/* ================= PENGGUNA ================= */
+async function renderUsers(){
+  const el = $("usersRoot");
+  el.innerHTML = '<div class="loading"><span class="spin"></span> Memuat…</div>';
+  const r = await authFetch("/api/branchops/users");
+  if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Hanya admin yang boleh membuka halaman ini.</div>'; return; }
+  const users = await r.json();
+  el.innerHTML = `
+  <div style="padding-top:22px"><h1>Pengguna</h1>
+  <div class="sub">Akun modul ini terpisah dari dashboard lain. viewer melihat · editor unggah &amp; menandai · admin semua.</div></div>
+  <div class="grid g3" style="margin-top:14px">
+  <div class="card"><h3>Daftar pengguna</h3><div class="tbl-wrap" style="max-height:460px">
+    <table><thead><tr><th>Email</th><th>Peran</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>` +
+    users.map(u => `<tr><td><b>${esc(u.email)}</b></td>
+      <td><select class="role-sel" data-id="${u.id}" style="width:auto;padding:3px 7px;font-size:11.5px">
+        ${["viewer", "editor", "admin"].map(x => `<option ${u.role === x ? "selected" : ""}>${x}</option>`).join("")}</select></td>
+      <td class="muted">${tgl(u.created_at)}</td>
+      <td style="white-space:nowrap"><button class="btn sm" onclick="boPw(${u.id},'${esc(u.email)}')">Reset sandi</button>
+        <button class="btn sm danger" onclick="boDelUser(${u.id},'${esc(u.email)}')">Hapus</button></td></tr>`).join("")
+    + `</tbody></table></div></div>
+  <div class="card"><h3>Tambah pengguna</h3>
+    <div style="margin-bottom:11px"><label>Email</label><input id="nuEmail" type="email"></div>
+    <div style="margin-bottom:11px"><label>Kata sandi awal</label><input id="nuPw" type="text"></div>
+    <div style="margin-bottom:11px"><label>Peran</label><select id="nuRole">
+      <option>viewer</option><option>editor</option><option>admin</option></select></div>
+    <button class="btn primary" id="bAddUser">Tambah</button><div id="uOut" style="margin-top:12px"></div></div></div>
+  <div class="card" style="margin-top:14px"><h3>Hak menu</h3>
+    <div class="h-note">Centang menu yang boleh dilihat DAN diakses tiap PERAN. Berlaku untuk semua pengguna
+      dengan peran itu. Perubahan
+      langsung tersimpan dan tercatat di jejak audit. Pembatasan ini ditegakkan di server,
+      bukan sekadar disembunyikan di layar. Hak menu hanya bisa MEMPERSEMPIT: memberi
+      &quot;Unggah&quot; kepada viewer tetap tidak membuatnya bisa mengunggah, karena
+      pemeriksaan peran berjalan lebih dulu. Peran admin selalu mendapat semua menu.</div>
+    <div id="menuMatrix"><div class="loading"><span class="spin"></span> Memuat…</div></div>
+  </div>`;
+  renderMenuMatrix();
+  document.querySelectorAll(".role-sel").forEach(s => s.onchange = async e => {
+    const rr = await J("/api/branchops/users/" + e.target.dataset.id, "PUT", { role: e.target.value });
+    if (!rr.ok) { const j = await rr.json(); alert(j.error || "Gagal"); renderUsers(); }
+  });
+  $("bAddUser").onclick = async () => {
+    const out = $("uOut");
+    const rr = await J("/api/branchops/users", "POST",
+      { email: $("nuEmail").value.trim(), password: $("nuPw").value, role: $("nuRole").value });
+    const j = await rr.json();
+    if (rr.ok) renderUsers(); else out.innerHTML = '<div class="err">' + esc(j.error || "Gagal") + '</div>';
+  };
+}
+/* ---- matriks hak menu, PER PERAN (hanya admin) -------------------------
+   Baris = peran (admin/editor/viewer), kolom = menu. Hak menu melekat pada
+   peran, jadi seluruh pengguna berperan sama memakai pengaturan yang sama.
+   Baris admin terkunci: backend selalu memberi admin semua menu. */
+async function renderMenuMatrix(){
+  const el = $("menuMatrix");
+  const r = await authFetch("/api/branchops/menus");
+  if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Gagal memuat hak menu.</div>'; return; }
+  const d = await r.json();
+  const kunci = d.kunci || [], label = d.label || {}, batas = d.batas_peran || {};
+  const bawaan = d.bawaan_peran || {};
+  const tersimpan = d.tersimpan || {}, peran = d.peran || [];
+
+  el.innerHTML = `<div class="tbl-wrap" style="max-height:340px">
+    <table><thead><tr><th>Peran</th>` +
+    kunci.map(k => `<th style="text-align:center">${esc(label[k] || k)}</th>`).join("") +
+    `<th></th></tr></thead><tbody>` +
+    peran.map(pr => {
+      if (pr === "admin")
+        return `<tr><td><span class="tag t-grey">admin</span></td>
+          <td colspan="${kunci.length + 1}" class="muted">Selalu mendapat semua menu — tidak bisa
+            dibatasi, agar admin tidak mengunci dirinya sendiri.</td></tr>`;
+      const izin = tersimpan[pr];                   // undefined = belum diatur
+      const bolehPeran = batas[pr] || kunci;
+      // Peran yang belum diatur memakai BAWAAN, bukan batas atas.
+      // Bedanya nyata: 'master' boleh dicentang untuk editor, tapi
+      // tidak aktif sampai admin mencentangnya.
+      const aktif = izin === undefined ? (bawaan[pr] || bolehPeran) : izin;
+      return `<tr><td><span class="tag t-grey">${esc(pr)}</span>${izin === undefined
+            ? ' <span class="fl">bawaan</span>' : ""}</td>` +
+        kunci.map(k => {
+          const bisa = bolehPeran.includes(k);
+          return `<td style="text-align:center">` + (bisa
+            ? `<input type="checkbox" class="mx" data-peran="${pr}" data-k="${k}"
+                 ${aktif.includes(k) ? "checked" : ""} style="width:auto">`
+            : `<span class="muted" title="Peran ${esc(pr)} memang tidak punya menu ini">—</span>`)
+            + `</td>`;
+        }).join("") +
+        `<td><button class="btn sm" onclick="boResetMenu('${esc(pr)}')">Bawaan</button></td></tr>`;
+    }).join("") + `</tbody></table></div>
+    <div id="mxOut" class="sub" style="margin-top:9px"></div>`;
+
+  document.querySelectorAll(".mx").forEach(c => c.onchange = async e => {
+    const pr = e.target.dataset.peran;
+    const dipilih = [...document.querySelectorAll('.mx[data-peran="' + pr + '"]')]
+      .filter(x => x.checked).map(x => x.dataset.k);
+    const rr = await J("/api/branchops/menus/" + pr, "PUT", { menus: dipilih });
+    const out = $("mxOut");
+    if (rr.ok) { out.textContent = "Tersimpan " + new Date().toLocaleTimeString("id-ID") +
+        ". Berlaku untuk semua pengguna berperan " + pr + " pada permintaan berikutnya."; }
+    else { const j = await rr.json().catch(() => ({}));
+           out.innerHTML = '<span style="color:var(--bad)">' + esc(j.error || "Gagal menyimpan") + '</span>';
+           renderMenuMatrix(); }
+  });
+}
+window.boResetMenu = async (pr) => {
+  if (!confirm("Kembalikan hak menu peran " + pr + " ke bawaan?")) return;
+  const r = await authFetch("/api/branchops/menus/" + pr, { method: "DELETE" });
+  if (r.ok) renderMenuMatrix(); else alert("Gagal mengembalikan ke bawaan.");
+};
+window.boPw = async (id, email) => {
+  const p = prompt("Kata sandi baru untuk " + email + ":");
+  if (!p) return;
+  const r = await J("/api/branchops/users/" + id, "PUT", { password: p });
+  alert(r.ok ? "Kata sandi diperbarui." : "Gagal.");
+};
+window.boDelUser = async (id, email) => {
+  if (!confirm("Hapus akun " + email + "?")) return;
+  const r = await J("/api/branchops/users/" + id, "DELETE");
+  if (!r.ok) { const j = await r.json(); alert(j.error || "Gagal"); }
+  renderUsers();
+};
+
+/* ================= PENGATURAN ================= */
+async function renderSettings(){
+  const el = $("settingsRoot");
+  el.innerHTML = '<div class="loading"><span class="spin"></span> Memuat…</div>';
+  const r = await authFetch("/api/branchops/settings");
+  const d = await r.json();
+  const fld = s => {
+    if (s.kunci === "validasi_nip")
+      return `<select data-k="${s.kunci}" class="set-in">
+        <option value="0" ${s.nilai === "0" ? "selected" : ""}>0 — abaikan NIP</option>
+        <option value="1" ${s.nilai === "1" ? "selected" : ""}>1 — periksa NIP</option></select>`;
+    if (s.kunci === "validasi_duplikat")
+      return `<select data-k="${s.kunci}" class="set-in">
+        ${["abaikan", "peringatan", "tolak"].map(x =>
+          `<option ${s.nilai === x ? "selected" : ""}>${x}</option>`).join("")}</select>`;
+    return `<input data-k="${s.kunci}" class="set-in" value="${esc(s.nilai)}">`;
+  };
+  el.innerHTML = `
+  <div style="padding-top:22px"><h1>Pengaturan</h1>
+  <div class="sub">Perubahan langsung menjalankan ulang rekonsiliasi. Aturan validasi berlaku untuk unggahan berikutnya.</div></div>
+  <div class="card" style="margin-top:14px;max-width:720px">` +
+    (d.settings || []).map(s => `<div style="margin-bottom:14px">
+      <label>${esc(s.kunci)}</label>${fld(s)}
+      <div class="h-note" style="margin:5px 0 0">${esc(s.deskripsi || "")}</div></div>`).join("")
+    + `<button class="btn primary" id="bSaveSet">Simpan dan hitung ulang</button>
+    <div id="setOut" style="margin-top:12px"></div></div>`;
+  $("bSaveSet").onclick = async () => {
+    const body = {};
+    document.querySelectorAll(".set-in").forEach(i => body[i.dataset.k] = i.value);
+    const rr = await J("/api/branchops/settings", "PUT", body);
+    $("setOut").innerHTML = rr.ok ? '<div class="okmsg">Tersimpan; rekonsiliasi dihitung ulang.</div>'
+                                  : '<div class="err">Gagal menyimpan.</div>';
+  };
+}
+
+/* ================= AUDIT ================= */
+async function renderAudit(){
+  const el = $("auditRoot");
+  el.innerHTML = '<div class="loading"><span class="spin"></span> Memuat…</div>';
+  const r = await authFetch("/api/branchops/audit");
+  if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Hanya admin.</div>'; return; }
+  const d = await r.json();
+  el.innerHTML = `<div style="padding-top:22px"><h1>Jejak audit</h1>
+  <div class="sub">300 aktivitas terakhir modul ini.</div></div>
+  <div class="card" style="padding:14px 16px;margin-top:12px"><div class="tbl-wrap" style="max-height:640px;margin-top:0">
+  <table><thead><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Objek</th><th>Detail</th></tr></thead><tbody>` +
+  (d.log || []).map(a => `<tr><td class="muted">${dtfmt(a.ts)}</td><td>${esc(a.user_email || "—")}</td>
+    <td><span class="tag t-acc">${esc(a.action)}</span></td>
+    <td class="muted">${esc(a.entity || "")}${a.entity_id ? " #" + esc(a.entity_id) : ""}</td>
+    <td class="muted" style="max-width:420px;word-break:break-word">${esc(JSON.stringify(a.detail) || "")}</td></tr>`).join("")
+  + `</tbody></table></div></div>`;
+}
+
+/* ================= NAVIGASI TAB ================= */
+const DASH_TITLES = { 1: "Data Break Deposito (dari IT Group)",
+  2: "Seluruh Pencairan Deposito (dari Cabang)",
+  3: "Pembukaan Rekening dengan TBO (dari Cabang)",
+  4: "Rekonsiliasi IT vs Cabang" };
+
+function switchTab(tab){
+  /* Pertahanan berlapis: hentikan perpindahan ke menu yang tidak berhak,
+     misalnya lewat kartu pintasan di Beranda. Backend tetap menolak juga —
+     ini hanya supaya pesannya ramah, bukan layar kosong berisi galat. */
+  if (window.MENUS && !window.MENUS.includes(tab)) {
+    alert("Menu ini tidak tersedia untuk akun Anda.");
+    return;
+  }
+  document.querySelectorAll("nav .item[data-tab]").forEach(a =>
+    a.classList.toggle("on", a.dataset.tab === tab));
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("on"));
+  const isDash = /^d[1-4]$/.test(tab);
+  if (isDash) {
+    $("view-dash").classList.add("on");
+    window.DASH = Number(tab[1]);
+    $("dashTitle").textContent = DASH_TITLES[window.DASH];
+    $("wrapStatus").classList.toggle("hidden", window.DASH !== 4);
+    $("wrapDup").classList.toggle("hidden", window.DASH !== 2);
+    $("bRerun").classList.toggle("hidden",
+      window.DASH !== 4 || window.ROLE === "viewer");
+    load();
+  } else {
+    $("view-" + tab).classList.add("on");
+    ({ home: renderHome, upload: renderUpload, users: renderUsers,
+       settings: renderSettings, audit: renderAudit }[tab])();
+  }
+}
+document.querySelectorAll("nav .item[data-tab]").forEach(a =>
+  a.onclick = e => { e.preventDefault(); switchTab(a.dataset.tab); });
+
+/* ================= INIT ================= */
+(async function init(){
+  const me = await authFetch("/api/branchops/me");
+  if (!me.ok) return;
+  const u = await me.json();
+  window.ROLE = u.role;
+  $("who").innerHTML = "<b>" + esc(u.email) + "</b><span class='role " + esc(u.role) + "'>" + esc(u.role) + "</span>";
+
+  /* Tab dibangun dari hak menu yang dikirim backend (/me -> menus).
+     INI HANYA TAMPILAN. Penegakan sesungguhnya ada di backend
+     (branchops/privileges.py) — menyembunyikan tab di sini saja bisa
+     dilewati siapa pun lewat tab Network atau curl.
+     Kalau backend tidak mengirim daftar menu (misalnya modul hak menu
+     bermasalah), kembali ke aturan peran lama supaya aplikasi tetap jalan. */
+  window.MENUS = Array.isArray(u.menus) ? u.menus : null;
+  if (window.MENUS) {
+    document.querySelectorAll('nav .tabs a.item[data-tab]').forEach(a =>
+      a.classList.toggle("hidden", !window.MENUS.includes(a.dataset.tab)));
+  } else {
+    if (u.role === "admin" || u.role === "editor") $("tabUpload").classList.remove("hidden");
+    if (u.role === "admin") { $("tabUsers").classList.remove("hidden");
+      $("tabSettings").classList.remove("hidden"); $("tabAudit").classList.remove("hidden"); }
+  }
+  // isi filter cabang + periode sekali
+  try {
+    const r = await authFetch("/api/branchops/cabang");
+    const d = await r.json();
+    (d.cabang || []).forEach(c => $("fCab").add(new Option(
+      c.branch_code.replace(/^0/, "") + " — " + c.branch_name, c.branch_code)));
+    if (d.periode && d.periode.awal) { $("fA").value = tgl(d.periode.awal); $("fB").value = tgl(d.periode.akhir); }
+  } catch (e) {}
+  renderHome();
+})();
+</script>
+</body>
+</html>

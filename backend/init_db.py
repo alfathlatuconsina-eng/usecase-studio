@@ -16,7 +16,8 @@ from sqlalchemy import select, func
 from app import (Base, engine, Session, User, Project,
                  PeopleTraining, PeopleEvaluation, PeopleCertification, PeopleUser,
                  QualityUser, QualityBranch,
-                 ElibraryUser, ElibrarySubject, ElibraryCategory)
+                 ElibraryUser, ElibrarySubject, ElibraryCategory,
+                 BranchopsUser)
 
 DEFAULT_EMAIL = "admin@mncbank.co.id"
 DEFAULT_PASSWORD = "pmo2026"   # change this — or pass args
@@ -203,6 +204,17 @@ def main():
         else:
             s.add(ElibraryUser(email=email.lower(), pw_hash=pw_hash, role="super_admin"))
             print(f"Created E-Library super admin {email} (role: super_admin)")
+        s.commit()
+
+        # Branch Operations admin (independent credential set, same pattern)
+        bouser = s.scalar(select(BranchopsUser).where(BranchopsUser.email == email.lower()))
+        if bouser:
+            bouser.pw_hash = pw_hash
+            bouser.role = "admin"
+            print(f"Updated Branch Operations admin {email}")
+        else:
+            s.add(BranchopsUser(email=email.lower(), pw_hash=pw_hash, role="admin"))
+            print(f"Created Branch Operations admin {email}")
         s.commit()
 
         # seed projects only if empty

@@ -328,6 +328,21 @@ class ElibraryDocument(Base):
         }
 
 
+class BranchopsUser(Base):
+    """Separate credential table for the Branch Operations dashboard.
+    Mirrors QualityUser: an independent set of accounts, module-scoped JWT."""
+    __tablename__ = "branchops_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    pw_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="viewer")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "email": self.email, "role": self.role,
+                "created_at": self.created_at.isoformat() if self.created_at else None}
+
+
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = ELIB_MAX_BYTES
 CORS(app)
@@ -374,6 +389,8 @@ def require(*allowed_roles):
                 expected_module = "quality"
             elif request.path.startswith("/api/elibrary/"):
                 expected_module = "elibrary"
+            elif request.path.startswith("/api/branchops/"):
+                expected_module = "branchops"
             else:
                 expected_module = "pmo"
             if claims.get("module") != expected_module:
@@ -442,6 +459,11 @@ def elibrary_login_api():
     return _do_login(ElibraryUser, "elibrary")
 
 
+@app.post("/api/branchops/login")
+def branchops_login_api():
+    return _do_login(BranchopsUser, "branchops")
+
+
 # legacy alias — old PMO clients posted here
 @app.post("/api/login")
 def login():
@@ -470,6 +492,25 @@ def quality_me():
 @require()
 def elibrary_me():
     return jsonify({"email": request.user["email"], "role": request.user["role"]})
+
+
+@app.get("/api/branchops/me")
+@require()
+def branchops_me():
+    """Selain email dan peran, kirim juga daftar menu yang boleh diakses.
+
+    Frontend membangun tab dari daftar ini. Ini SEMATA untuk tampilan —
+    penegakan sesungguhnya ada di backend (branchops/privileges.py), karena
+    menyembunyikan tab di JavaScript saja bisa dilewati begitu saja."""
+    menus = None
+    try:
+        from branchops import privileges as _priv
+        menus = _priv.allowed_menus(request.user["role"])
+    except Exception as _e:                                           # noqa: BLE001
+        # Kalau modul hak menu bermasalah, jangan sampai login ikut rusak.
+        print(f"[branchops] gagal membaca hak menu: {_e}")
+    return jsonify({"email": request.user["email"], "role": request.user["role"],
+                    "menus": menus})
 
 
 # ---------------------------------------------------------------------------
@@ -1078,6 +1119,81 @@ def delete_quality_user(uid):
 
 
 # ---------------------------------------------------------------------------
+# Branch Operations — user management (mirrors the Quality pattern)
+# ---------------------------------------------------------------------------
+@app.get("/api/branchops/users")
+@require("admin")
+def list_branchops_users():
+    with Session() as s:
+        rows = s.scalars(select(BranchopsUser).order_by(BranchopsUser.id)).all()
+        return jsonify([u.to_dict() for u in rows])
+
+
+@app.post("/api/branchops/users")
+@require("admin")
+def create_branchops_user():
+    data = request.get_json(force=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pw = data.get("password") or ""
+    role = data.get("role") or "viewer"
+    if not email or not pw:
+        return jsonify({"error": "email and password are required"}), 400
+    if role not in ROLES:
+        return jsonify({"error": "role must be admin, editor, or viewer"}), 400
+    with Session() as s:
+        if s.scalar(select(BranchopsUser).where(BranchopsUser.email == email)):
+            return jsonify({"error": "a user with that email already exists"}), 409
+        u = BranchopsUser(email=email, role=role,
+                          pw_hash=bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode())
+        s.add(u); s.commit()
+        return jsonify(u.to_dict()), 201
+
+
+@app.put("/api/branchops/users/<int:uid>")
+@require("admin")
+def update_branchops_user(uid):
+    data = request.get_json(force=True) or {}
+    with Session() as s:
+        u = s.get(BranchopsUser, uid)
+        if not u:
+            return jsonify({"error": "not found"}), 404
+        if "role" in data:
+            if data["role"] not in ROLES:
+                return jsonify({"error": "invalid role"}), 400
+            if u.role == "admin" and data["role"] != "admin":
+                admins = s.scalar(select(func.count(BranchopsUser.id))
+                                  .where(BranchopsUser.role == "admin"))
+                if admins <= 1:
+                    return jsonify({"error": "cannot demote the last admin"}), 400
+            u.role = data["role"]
+        if data.get("password"):
+            u.pw_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt()).decode()
+        s.commit()
+        return jsonify(u.to_dict())
+
+
+@app.delete("/api/branchops/users/<int:uid>")
+@require("admin")
+def delete_branchops_user(uid):
+    with Session() as s:
+        u = s.get(BranchopsUser, uid)
+        if not u:
+            return jsonify({"error": "not found"}), 404
+        if u.email == request.user["email"]:
+            return jsonify({"error": "you cannot delete your own account"}), 400
+        if u.role == "admin":
+            admins = s.scalar(select(func.count(BranchopsUser.id))
+                              .where(BranchopsUser.role == "admin"))
+            if admins <= 1:
+                return jsonify({"error": "cannot delete the last admin"}), 400
+        s.delete(u); s.commit()
+        # Tidak ada hak menu yang perlu dibersihkan: hak menu melekat pada
+        # PERAN, bukan pada pengguna, jadi menghapus akun tidak meninggalkan
+        # baris yatim di branchops_role_menus.
+        return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # E-Library — Subjects, Categories, Documents (with file upload)
 # ---------------------------------------------------------------------------
 def _elib_ext_ok(filename):
@@ -1433,9 +1549,49 @@ def elibrary_login():
     return send_from_directory(FRONTEND_DIR, "elibrary-login.html")
 
 
+@app.get("/branchops")
+def branchops_page():
+    return send_from_directory(FRONTEND_DIR, "branchops.html")
+
+
+@app.get("/branchops/login")
+def branchops_login():
+    return send_from_directory(FRONTEND_DIR, "branchops-login.html")
+
+
 @app.get("/<path:path>")
 def static_files(path):
     return send_from_directory(FRONTEND_DIR, path)
+
+
+# ---------------------------------------------------------------------------
+# Branch Operations module (backend/branchops/) — data API on /api/branchops/*
+# Its tables are all prefixed branchops_ in the same database; auth reuses the
+# platform's module-scoped JWT via the require() decorator above.
+# ---------------------------------------------------------------------------
+# The whole block is guarded: if this module can't load (missing dependency,
+# database not reachable, syntax error), the four original dashboards MUST keep
+# working. A new module is never allowed to take the platform down.
+try:
+    import branchops as _branchops                                    # noqa: E402
+    app.register_blueprint(_branchops.create_blueprint(require))
+    try:
+        _branchops.ensure_schema()
+    except Exception as _e:                                           # noqa: BLE001
+        print(f"[branchops] schema init failed: {_e}")
+        print("[branchops] Module loaded but tables may be missing; "
+              "its API will error until the database is reachable.")
+except ImportError as _e:                                             # noqa: BLE001
+    print("=" * 70)
+    print(f"[branchops] MODULE DISABLED - missing dependency: {_e}")
+    print("[branchops] Fix with:  py -3 -m pip install -r requirements.txt")
+    print("[branchops] The other four dashboards are unaffected and will run.")
+    print("=" * 70)
+except Exception as _e:                                               # noqa: BLE001
+    print("=" * 70)
+    print(f"[branchops] MODULE DISABLED - failed to load: {_e}")
+    print("[branchops] The other four dashboards are unaffected and will run.")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

@@ -52,8 +52,12 @@
     letter-spacing: -.2px; margin-top: 2px;
   }
   .hero-desc {
-    font-size: 15px; color: #475569; line-height: 1.75;
-    max-width: 660px; margin: 12px auto 0;
+    font-size: 15px; color: #475569; line-height: 1.7;
+    max-width: 900px; margin: 12px auto 0;
+  }
+  .section-tagline {
+    text-align: center; font-size: 22px; font-weight: 800; color: #1a3c6b;
+    letter-spacing: -.2px; margin: 18px 0 2px;
   }
   .hero p#greeting {
     font-size: 13px; color: #8a94a3; margin: 16px auto 0;
@@ -134,6 +138,19 @@
   .card-elibrary .card-cta { color: #d97706; }
   .card-elibrary           { border-bottom: 4px solid #d97706; }
 
+  .card-branchops .card-cta { color: #be123c; }
+  .card-branchops           { border-bottom: 4px solid #e11d48; }
+  /* illustration (transparent PNG) shown whole, centred, not cropped */
+  .card-branchops .card-img {
+    display: flex; align-items: center; justify-content: center;
+    background: #f4f6f8; padding: 14px;
+  }
+  .card-branchops .card-img img {
+    width: auto; height: 100%; max-width: 100%;
+    object-fit: contain; transition: transform .25s ease;
+  }
+  .card-branchops:hover .card-img img { transform: scale(1.05); }
+
   /* icon-style card image (no photo needed) */
   .card-img-icon {
     position: relative; height: 260px; overflow: hidden;
@@ -205,9 +222,12 @@
   <div class="hero-lead">Visualising your future with Real-Life Use Cases</div>
   <p class="hero-desc">USECASE-STUDIO.xyz<sup>™</sup> is a digital showcase platform presenting hands-on solutions
     across project governance, people development, service quality, and knowledge management —
-    each module built to demonstrate structured execution and measurable impact.</p>
+    leveraging latest technology and Generative Artificial Intelligence (AI) to promote
+    structured execution and measurable impact.</p>
   <div class="hero-divider"></div>
 </section>
+
+<div class="section-tagline">Use Cases to Explore</div>
 
 <!-- Cards -->
 <div class="cards-container">
@@ -257,6 +277,18 @@
     <div class="card-body">
       <div class="card-title">E-Library</div>
       <div class="card-desc">Central document repository — organize files by Subject and Category, upload, version, and access policies, memos, and technical documents.</div>
+      <div class="card-cta">Click to Access <span class="card-cta-arrow">→</span></div>
+    </div>
+  </a>
+
+  <!-- Branch Operations -->
+  <a href="/branchops" class="card card-branchops">
+    <div class="card-img">
+      <img src="img-branchops.png" alt="Branch Operations Monitoring">
+    </div>
+    <div class="card-body">
+      <div class="card-title">Branch Operations Monitoring</div>
+      <div class="card-desc">Dashboard and Monitor Branch Transactions — Deposit Breaks, Disbursements, TBO Account Openings, and IT-vs-Branch Reconciliation with data-quality controls.</div>
       <div class="card-cta">Click to Access <span class="card-cta-arrow">→</span></div>
     </div>
   </a>

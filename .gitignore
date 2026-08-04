@@ -1,0 +1,47 @@
+# ============================================================
+#  .gitignore — UseCase Studio dashboards
+#
+#  Daftar berkas yang TIDAK boleh ikut tersimpan ke git.
+#  (List of files git must never save.)
+#
+#  Alasan utama: berkas .env berisi kata sandi database dan
+#  kunci JWT. Berkas .sql berisi salinan isi database.
+#  Keduanya pernah ikut terkirim ke GitHub publik.
+# ============================================================
+
+# --- Rahasia. Jangan pernah dihapus dari daftar ini. ---
+.env
+.env.*
+!.env.example
+backend/.env
+
+# --- Salinan database (cadangan / tarikan dari VPS) ---
+# Ukurannya ratusan MB dan isinya data internal.
+*.sql
+!backend/branchops/schema.sql
+!migrations/*.sql
+
+# --- Berkas sementara Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+
+# --- Lingkungan virtual Python ---
+venv/
+.venv/
+env/
+
+# --- Cadangan bertanggal yang dibuat manual ---
+*.bak
+*.bak-*
+*.orig
+xxx*
+
+# --- Berkas yang diunggah pengguna lewat modul E-Library ---
+uploads/elibrary/*
+!uploads/elibrary/.gitkeep
+
+# --- Berkas sistem ---
+Thumbs.db
+desktop.ini
+.DS_Store
