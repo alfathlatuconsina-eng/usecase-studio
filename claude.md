@@ -83,7 +83,9 @@ All five share the single `pmo` database, so the boundary between them is the TA
 
 - Frontend: frontend/quality.html (login: quality-login.html)  
 - API: /api/quality/\*  
-- Tables: quality\_branches, quality\_users
+- Tables: quality\_branches, quality\_users  
+- The database ALSO contains quality\_survey (120 rows). It is orphaned on
+  purpose — see "Dead tables" below. Do not wire it up without asking.
 
 ### 4\. E-Library — repository of internal and external documents
 
@@ -91,6 +93,31 @@ All five share the single `pmo` database, so the boundary between them is the TA
 - API: /api/elibrary/\*  
 - Tables: elibrary\_documents, elibrary\_subjects, elibrary\_categories, elibrary\_users  
 - Uploaded files live in uploads/elibrary/ — never delete these without asking
+
+### Dead tables — checked Aug 2026, leave them alone
+
+The `pmo` database contains tables that NO code reads or writes. They were
+investigated on 4 Aug 2026 and deliberately left in place. If you find one of
+these and think something is missing, it is not — stop and ask before acting.
+
+- **quality\_survey** — 120 rows of branch survey data. An abandoned feature.
+  There is no QualitySurvey model in app.py, and no /api/quality endpoint
+  touches it; the Service Quality dashboard reads quality\_branches instead.
+  Beware: an older copy of init\_db.py on the VPS still does
+  `from app import (... QualitySurvey ...)`. That file CANNOT RUN — the model
+  does not exist, so it fails with ImportError on import. Do not merge that
+  version into the local init\_db.py; doing so breaks a working file.
+  Reviving the feature means writing the model, endpoint and UI from scratch.
+  The data is ready if that is ever wanted.
+- **branchops\_user\_menus** — empty, 0 rows, referenced nowhere in the code.
+  Left over from an earlier design where menu privileges attached to the
+  individual USER. That was replaced by the per-ROLE design in
+  branchops\_role\_menus (see "User privilege menu" below). Per-role is the
+  intended behaviour; this table is not a half-finished per-user feature.
+
+Also present and NOT documented per-module above: pd\_training, pd\_ikatan\_dinas,
+pd\_evaluate\_event, pd\_evaluate\_facilitator. These belong to People Development
+and are live — do not confuse them with the dead tables listed here.
 
 ### 5\. Branch Operations and Transactions Monitoring
 
