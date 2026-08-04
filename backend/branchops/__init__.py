@@ -23,7 +23,7 @@ import tempfile
 
 from flask import Blueprint, jsonify, request, send_file
 
-from . import analytics, db, ingest, masking, privileges, storage
+from . import analytics, db, ingest, masking, privileges, scoping, storage
 
 MAX_UPLOAD_MB = int(os.environ.get("BRANCHOPS_MAX_UPLOAD_MB", "25"))
 
@@ -89,11 +89,21 @@ def create_blueprint(require):
     # data dashboard
     # ---------------------------------------------------------------- #
     def _f():
+        """Filter dari request + jatah wilayah dari sesi login.
+
+        Perhatikan bedanya: kunci-kunci pertama diambil dari request.args
+        dan memang boleh diatur pengguna. "_scope" TIDAK — nilainya selalu
+        dari scoping.scope_aktif(), yang membacanya dari basis data
+        berdasarkan siapa yang sedang masuk.
+
+        Kalau "_scope" pernah diambil dari request.args, pengguna cukup
+        menambah ?_scope=... di URL untuk melihat wilayah lain."""
         return {"tgl_awal": request.args.get("tgl_awal") or None,
                 "tgl_akhir": request.args.get("tgl_akhir") or None,
                 "branch_code": request.args.get("branch_code") or None,
                 "branch_type": request.args.get("branch_type") or None,
-                "status": request.args.get("status") or None}
+                "status": request.args.get("status") or None,
+                "_scope": scoping.scope_aktif()}
 
     @bp.get("/dash/<int:no>")
     @require()
@@ -120,13 +130,26 @@ def create_blueprint(require):
     @bp.get("/summary")
     @require()
     def summary():
-        return _out(analytics.ringkasan())
+        return _out(analytics.ringkasan(scoping.scope_aktif()))
 
     @bp.get("/cabang")
     @require()
     def cabang():
-        return _out({"cabang": analytics.daftar_cabang(),
+        return _out({"cabang": analytics.daftar_cabang(scoping.scope_aktif()),
                      "periode": analytics.periode_tersedia()})
+
+    @bp.get("/region-class")
+    @require()
+    def region_class_list():
+        """Daftar Region Class yang ada di master cabang.
+
+        Dipakai layar admin (tab Pengguna) untuk mengisi kotak pilihan, dan
+        oleh layar mana pun yang perlu menampilkan jatah wilayah sendiri.
+        Bukan data nasabah, jadi aman dibuka untuk semua yang sudah masuk."""
+        return _out({"kelas": scoping.pilihan_kelas(),
+                     "kelas_semua": scoping.KELAS_SEMUA,
+                     "milik_saya": scoping.kelas_pengguna(),
+                     "lihat_semua": scoping.boleh_semua()})
 
     # ---------------------------------------------------------------- #
     # unggah
@@ -226,9 +249,19 @@ def create_blueprint(require):
     @require()
     @privileges.require_menu("upload")
     def issues_csv(bid):
-        rows = db.q("""SELECT baris_no, severity, kode, kolom, nilai, pesan
-                       FROM branchops_issues WHERE batch_id=%s
-                       ORDER BY severity, baris_no""", (bid,))
+        # Ikut dibatasi jatah wilayah. Baris masalah menyimpan branch_code,
+        # jadi bisa disaring. Akibatnya editor wilayah A yang mengunggah
+        # berkas nasional hanya melihat baris bermasalah cabang wilayahnya —
+        # itu memang yang diinginkan. Baris tanpa branch_code (kesalahan
+        # tingkat berkas) ikut tersaring; sengaja gagal-tertutup.
+        swh, sp = scoping.klausa(scoping.scope_aktif(), "br")
+        rows = db.q(f"""SELECT i.baris_no, i.severity, i.kode, i.kolom,
+                               i.nilai, i.pesan
+                        FROM branchops_issues i
+                        LEFT JOIN branchops_branches br
+                               ON br.branch_code = i.branch_code
+                        WHERE i.batch_id=%s{swh}
+                        ORDER BY i.severity, i.baris_no""", [bid] + sp)
         buf = io.StringIO()
         w = csv.writer(buf, delimiter=";")
         w.writerow(["Baris Excel", "Tingkat", "Kode", "Kolom", "Nilai", "Pesan"])

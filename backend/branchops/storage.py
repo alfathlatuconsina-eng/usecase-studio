@@ -121,17 +121,29 @@ def hapus_batch(batch_id):
 
 
 def upsert_branches(rows):
+    """Simpan master cabang. Kode yang sudah ada diperbarui, bukan digandakan.
+
+    region_class SENGAJA ditimpa apa adanya, termasuk bila kolomnya kosong di
+    Excel. Alasannya: itulah cara admin mencabut wilayah sebuah cabang —
+    kosongkan kolomnya lalu unggah ulang. Kalau nilai kosong diabaikan,
+    wilayah lama akan menempel selamanya dan tidak bisa dihapus lewat aplikasi.
+
+    Konsekuensi yang perlu diingat: mengunggah master TANPA kolom Region Class
+    akan mengosongkan wilayah SEMUA cabang, dan pengguna non-admin langsung
+    tidak melihat baris apa pun sampai masternya diunggah ulang dengan benar."""
     with db.conn() as c:
         with c.cursor() as k:
             psycopg2.extras.execute_values(
-                k, """INSERT INTO branchops_branches (branch_code, branch_name, branch_type, region, core_alias)
+                k, """INSERT INTO branchops_branches (branch_code, branch_name, branch_type, region, core_alias, region_class)
                       VALUES %s
                       ON CONFLICT (branch_code) DO UPDATE SET
                         branch_name=EXCLUDED.branch_name,
                         branch_type=EXCLUDED.branch_type,
-                        region=EXCLUDED.region""",
+                        region=EXCLUDED.region,
+                        region_class=EXCLUDED.region_class""",
                 [(r["branch_code"], r["branch_name"], r["branch_type"],
-                  r["region"], r.get("core_alias")) for r in rows])
+                  r["region"], r.get("core_alias"), r.get("region_class"))
+                 for r in rows])
     return len(rows)
 
 

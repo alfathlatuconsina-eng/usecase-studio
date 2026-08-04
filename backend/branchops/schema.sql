@@ -322,4 +322,54 @@ INSERT INTO branchops_ref_values (kategori, nilai, urutan) VALUES
  ('mata_uang','IDR',1),('mata_uang','USD',2),('mata_uang','EUR',3),('mata_uang','SGD',4)
 ON CONFLICT (kategori, nilai) DO NOTHING;
 
+
+-- =====================================================================
+--  MIGRASI Agustus 2026 - Region Class (jatah wilayah per pengguna)
+-- =====================================================================
+--  Region Class menentukan cabang mana yang boleh DILIHAT seorang
+--  pengguna. Nilainya diisi dari berkas Excel master cabang.
+--
+--  Kolom 'region' yang lama TIDAK diubah. Kolom itu tetap terisi
+--  otomatis dari digit pertama kode cabang dan masih dipakai tampilan.
+--  region_class adalah kolom terpisah yang diisi manual.
+--
+--  Blok di bawah aman dijalankan berulang - ensure_schema() memanggil
+--  berkas ini setiap aplikasi start.
+-- ---------------------------------------------------------------------
+
+ALTER TABLE branchops_branches
+  ADD COLUMN IF NOT EXISTS region_class VARCHAR(60);
+
+CREATE INDEX IF NOT EXISTS ix_branches_region_class
+  ON branchops_branches (region_class);
+
+-- Tabel branchops_users dibuat oleh SQLAlchemy di app.py, bukan berkas ini.
+-- IF EXISTS dipakai supaya tidak gagal bila urutan startup berbeda.
+ALTER TABLE IF EXISTS branchops_users
+  ADD COLUMN IF NOT EXISTS region_class VARCHAR(60);
+
+-- SEKALI SAJA: pengguna yang sudah ada sebelum fitur ini dipasang diberi
+-- kelas 'SEMUA' supaya pemasangan tidak mengunci siapa pun.
+--
+-- Penjaga 'region_class_migrasi' penting. Tanpa itu, blok ini akan jalan
+-- lagi setiap aplikasi restart, dan setiap pengguna BARU yang belum
+-- dijatah wilayah akan diam-diam diberi akses ke semua cabang.
+DO $migrasi$
+BEGIN
+  IF to_regclass('public.branchops_users') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM branchops_settings
+                     WHERE kunci = 'region_class_migrasi') THEN
+
+    UPDATE branchops_users SET region_class = 'SEMUA'
+     WHERE region_class IS NULL;
+
+    INSERT INTO branchops_settings (kunci, nilai, deskripsi) VALUES
+     ('region_class_migrasi', '1',
+      'Penanda bahwa pengguna lama sudah diberi kelas SEMUA saat fitur Region Class dipasang. JANGAN dihapus - menghapusnya membuat semua pengguna tanpa jatah wilayah mendapat akses penuh saat aplikasi restart.')
+    ON CONFLICT (kunci) DO NOTHING;
+
+  END IF;
+END
+$migrasi$;
+
 COMMIT;

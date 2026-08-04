@@ -5,13 +5,22 @@ Filter yang didukung: tgl_awal, tgl_akhir, branch_code, branch_type.
 """
 from __future__ import annotations
 
-from . import db
+from . import db, scoping
 
 _AKTIF = "JOIN branchops_batches b ON b.id=%s.batch_id AND b.status='committed'"
 
 
 def _filter(alias, tgl_kol, f):
-    """Bangun potongan WHERE + parameter dari dict filter."""
+    """Bangun potongan WHERE + parameter dari dict filter.
+
+    Kunci "_scope" berbeda sifatnya dari kunci lain. Kunci lain berasal dari
+    parameter request (tanggal, kode cabang, tipe cabang) dan memang boleh
+    diatur pengguna. "_scope" adalah jatah wilayah pengguna, diisi HANYA oleh
+    _f() di __init__.py dari sesi login — tidak pernah dari request.args.
+
+    Bawaannya "" (tidak melihat apa pun), bukan None (melihat semua). Jadi
+    kalau suatu saat ada pemanggil baru yang lupa mengisi "_scope", akibatnya
+    tabel kosong — bukan kebocoran data ke seluruh cabang."""
     w, p = [], []
     if f.get("tgl_awal"):
         w.append(f"{alias}.{tgl_kol} >= %s"); p.append(f["tgl_awal"])
@@ -21,7 +30,10 @@ def _filter(alias, tgl_kol, f):
         w.append(f"{alias}.branch_code = %s"); p.append(f["branch_code"])
     if f.get("branch_type"):
         w.append("br.branch_type = %s"); p.append(f["branch_type"])
-    return (" AND " + " AND ".join(w)) if w else "", p
+    sql = (" AND " + " AND ".join(w)) if w else ""
+
+    swh, sp = scoping.klausa(f.get("_scope", ""), "br")
+    return sql + swh, p + sp
 
 
 def periode_tersedia():
@@ -32,9 +44,17 @@ def periode_tersedia():
         SELECT periode_akhir FROM branchops_batches WHERE status='committed') s""") or {}
 
 
-def daftar_cabang():
-    return db.q("""SELECT br.branch_code, br.branch_name, br.branch_type, br.region
-                   FROM branchops_branches br ORDER BY br.branch_name""")
+def daftar_cabang(scope=""):
+    """Daftar cabang untuk isi kotak filter di layar.
+
+    Ikut dibatasi jatah wilayah. Kalau tidak, pengguna wilayah A masih
+    melihat nama seluruh cabang di daftar pilihan — dan bisa menebak
+    keberadaan cabang yang seharusnya tidak ia ketahui."""
+    swh, sp = scoping.klausa(scope, "br")
+    return db.q(f"""SELECT br.branch_code, br.branch_name, br.branch_type,
+                           br.region, br.region_class
+                    FROM branchops_branches br WHERE 1=1{swh}
+                    ORDER BY br.branch_name""", sp)
 
 
 # ==========================================================================
@@ -266,21 +286,37 @@ def dash_rekon(f):
 # ==========================================================================
 # beranda
 # ==========================================================================
-def ringkasan():
+def ringkasan(scope=""):
+    """Angka untuk tab Beranda.
+
+    Ikut dibatasi jatah wilayah — kalau tidak, pengguna wilayah A melihat
+    tabel kosong di dashboard tapi angka nasional di Beranda, yang
+    membocorkan besaran data wilayah lain."""
+    swh, sp = scoping.klausa(scope, "br")
     return {
         "batch": db.q("""SELECT b.id, b.jenis, b.nama_file, b.status, b.baris_total, b.baris_valid,
                            b.baris_ditolak, b.baris_warning, b.periode_awal, b.periode_akhir,
                            b.uploaded_at, b.uploaded_by AS oleh
                          FROM branchops_batches b
                          ORDER BY b.id DESC LIMIT 10"""),
-        "hitung": db.q1("""
-          SELECT (SELECT count(*) FROM branchops_it_break f JOIN branchops_batches b ON b.id=f.batch_id
-                    AND b.status='committed') AS it,
-                 (SELECT count(*) FROM branchops_pencairan f JOIN branchops_batches b ON b.id=f.batch_id
-                    AND b.status='committed') AS pencairan,
-                 (SELECT count(*) FROM branchops_tbo f JOIN branchops_batches b ON b.id=f.batch_id
-                    AND b.status='committed') AS tbo,
-                 (SELECT count(*) FROM branchops_rekon WHERE status<>'Cocok') AS rekon_bermasalah,
-                 (SELECT count(*) FROM branchops_branches WHERE is_active) AS cabang"""),
+        "hitung": db.q1(f"""
+          SELECT (SELECT count(*) FROM branchops_it_break f
+                    JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
+                    JOIN branchops_branches br ON br.branch_code=f.branch_code
+                   WHERE 1=1{swh}) AS it,
+                 (SELECT count(*) FROM branchops_pencairan f
+                    JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
+                    JOIN branchops_branches br ON br.branch_code=f.branch_code
+                   WHERE 1=1{swh}) AS pencairan,
+                 (SELECT count(*) FROM branchops_tbo f
+                    JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
+                    JOIN branchops_branches br ON br.branch_code=f.branch_code
+                   WHERE 1=1{swh}) AS tbo,
+                 (SELECT count(*) FROM branchops_rekon r
+                    LEFT JOIN branchops_branches br ON br.branch_code=r.branch_code
+                   WHERE r.status<>'Cocok'{swh}) AS rekon_bermasalah,
+                 (SELECT count(*) FROM branchops_branches br
+                   WHERE br.is_active{swh}) AS cabang""",
+                        sp * 5),
         "periode": periode_tersedia(),
     }

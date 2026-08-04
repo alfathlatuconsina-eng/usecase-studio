@@ -336,10 +336,15 @@ class BranchopsUser(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     pw_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="viewer")
+    # Jatah wilayah (Region Class). Menentukan cabang mana yang boleh DILIHAT
+    # pengguna ini. Kosong = tidak melihat baris apa pun. 'SEMUA' = seluruh
+    # cabang. Penegakannya ada di branchops/scoping.py, bukan di sini.
+    region_class: Mapped[str] = mapped_column(String(60), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     def to_dict(self):
         return {"id": self.id, "email": self.email, "role": self.role,
+                "region_class": self.region_class,
                 "created_at": self.created_at.isoformat() if self.created_at else None}
 
 
@@ -1129,6 +1134,25 @@ def list_branchops_users():
         return jsonify([u.to_dict() for u in rows])
 
 
+def _cek_region_class(nilai):
+    """Periksa sebuah Region Class terhadap master cabang.
+
+    Mengembalikan (nilai_bersih, pesan_error). Nilai kosong sah — artinya
+    pengguna belum dijatah wilayah dan tidak melihat baris apa pun.
+
+    Salah ketik ditolak dengan pesan, bukan diterima diam-diam. Kalau
+    diterima, pengguna akan mengira sudah dijatah padahal layarnya kosong
+    dan tidak ada petunjuk kenapa."""
+    from branchops import scoping as _sc
+    nilai = (nilai or "").strip()
+    if not nilai:
+        return None, None
+    if nilai != _sc.KELAS_SEMUA and nilai not in _sc.daftar_kelas():
+        return None, (f"Region Class '{nilai}' tidak ada di master cabang. "
+                      f"Pilihan: {', '.join(_sc.pilihan_kelas())}")
+    return nilai, None
+
+
 @app.post("/api/branchops/users")
 @require("admin")
 def create_branchops_user():
@@ -1140,10 +1164,13 @@ def create_branchops_user():
         return jsonify({"error": "email and password are required"}), 400
     if role not in ROLES:
         return jsonify({"error": "role must be admin, editor, or viewer"}), 400
+    kelas, salah = _cek_region_class(data.get("region_class"))
+    if salah:
+        return jsonify({"error": salah}), 400
     with Session() as s:
         if s.scalar(select(BranchopsUser).where(BranchopsUser.email == email)):
             return jsonify({"error": "a user with that email already exists"}), 409
-        u = BranchopsUser(email=email, role=role,
+        u = BranchopsUser(email=email, role=role, region_class=kelas,
                           pw_hash=bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode())
         s.add(u); s.commit()
         return jsonify(u.to_dict()), 201
@@ -1166,6 +1193,11 @@ def update_branchops_user(uid):
                 if admins <= 1:
                     return jsonify({"error": "cannot demote the last admin"}), 400
             u.role = data["role"]
+        if "region_class" in data:
+            kelas, salah = _cek_region_class(data.get("region_class"))
+            if salah:
+                return jsonify({"error": salah}), 400
+            u.region_class = kelas
         if data.get("password"):
             u.pw_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt()).decode()
         s.commit()

@@ -1105,6 +1105,12 @@ async function renderUpload(){
                 : '<span class="tag t-warn" style="margin-left:6px">belum diisi</span>'}</h3>
     <div class="h-note">Unggah <code>01. Kode dan Nama Cabang.xlsx</code>. Wajib lebih dulu —
       tanpa master, seluruh baris berkas transaksi ditolak. Mengunggah ulang hanya memperbarui.</div>
+    <div class="h-note" style="margin-top:8px">Susunan kolom, data mulai <b>baris 3</b>:
+      <b>B</b> kode cabang · <b>C</b> nama cabang · <b>D</b> Region Class <span class="muted">(baru)</span>.
+      Kolom D menentukan cabang mana yang dilihat tiap pengguna, dan isinya menjadi pilihan
+      wilayah di tab Pengguna. Berkas lama berkolom dua tetap bisa diunggah.
+      <b>Perhatikan:</b> kolom D yang dikosongkan akan MENGHAPUS wilayah cabang itu — begitulah
+      cara mencabutnya — sehingga pengguna non-admin tidak lagi melihat cabang tersebut.</div>
     <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
       <input type="file" id="fMaster" accept=".xlsx" style="max-width:420px">
       <button class="btn primary" id="bMaster">${masterN ? "Perbarui master" : "Unggah master cabang"}</button>
@@ -1216,24 +1222,44 @@ async function renderUsers(){
   const r = await authFetch("/api/branchops/users");
   if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Hanya admin yang boleh membuka halaman ini.</div>'; return; }
   const users = await r.json();
+  /* Daftar Region Class diambil dari master cabang, bukan ditulis tetap di
+     sini — supaya begitu master diunggah ulang, pilihannya ikut berubah. */
+  let KELAS = [], KELAS_SEMUA = "SEMUA";
+  try {
+    const rk = await authFetch("/api/branchops/region-class");
+    if (rk.ok) { const j = await rk.json(); KELAS = j.kelas || []; KELAS_SEMUA = j.kelas_semua || "SEMUA"; }
+  } catch (e) { /* dibiarkan: kotak wilayah tetap tampil, isinya saja kosong */ }
+  const optKelas = (dipilih) =>
+    `<option value=""${!dipilih ? " selected" : ""}>— tanpa wilayah —</option>` +
+    KELAS.map(k => `<option value="${esc(k)}"${dipilih === k ? " selected" : ""}>${esc(k)}</option>`).join("");
   el.innerHTML = `
   <div style="padding-top:22px"><h1>Pengguna</h1>
   <div class="sub">Akun modul ini terpisah dari dashboard lain. viewer melihat · editor unggah &amp; menandai · admin semua.</div></div>
   <div class="grid g3" style="margin-top:14px">
   <div class="card"><h3>Daftar pengguna</h3><div class="tbl-wrap" style="max-height:460px">
-    <table><thead><tr><th>Email</th><th>Peran</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>` +
+    <table><thead><tr><th>Email</th><th>Peran</th><th>Wilayah</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>` +
     users.map(u => `<tr><td><b>${esc(u.email)}</b></td>
       <td><select class="role-sel" data-id="${u.id}" style="width:auto;padding:3px 7px;font-size:11.5px">
         ${["viewer", "editor", "admin"].map(x => `<option ${u.role === x ? "selected" : ""}>${x}</option>`).join("")}</select></td>
+      <td>${u.role === "admin"
+            ? '<span class="muted" style="font-size:11.5px">semua (admin)</span>'
+            : `<select class="wil-sel" data-id="${u.id}" style="width:auto;padding:3px 7px;font-size:11.5px">
+                 ${optKelas(u.region_class)}</select>`}</td>
       <td class="muted">${tgl(u.created_at)}</td>
       <td style="white-space:nowrap"><button class="btn sm" onclick="boPw(${u.id},'${esc(u.email)}')">Reset sandi</button>
         <button class="btn sm danger" onclick="boDelUser(${u.id},'${esc(u.email)}')">Hapus</button></td></tr>`).join("")
-    + `</tbody></table></div></div>
+    + `</tbody></table></div>
+    <div class="h-note" style="margin-top:10px">Wilayah menentukan cabang mana yang DILIHAT pengguna.
+      Kosong berarti tidak melihat baris apa pun. <b>${esc(KELAS_SEMUA)}</b> berarti seluruh cabang.
+      Peran admin selalu melihat semua, apa pun isian wilayahnya. Pembatasan ini ditegakkan di
+      server, bukan disembunyikan di layar — mengubah alamat di browser tidak menembusnya.</div></div>
   <div class="card"><h3>Tambah pengguna</h3>
     <div style="margin-bottom:11px"><label>Email</label><input id="nuEmail" type="email"></div>
     <div style="margin-bottom:11px"><label>Kata sandi awal</label><input id="nuPw" type="text"></div>
     <div style="margin-bottom:11px"><label>Peran</label><select id="nuRole">
       <option>viewer</option><option>editor</option><option>admin</option></select></div>
+    <div style="margin-bottom:11px"><label>Wilayah (Region Class)</label><select id="nuWil">
+      ${optKelas(null)}</select></div>
     <button class="btn primary" id="bAddUser">Tambah</button><div id="uOut" style="margin-top:12px"></div></div></div>
   <div class="card" style="margin-top:14px"><h3>Hak menu</h3>
     <div class="h-note">Centang menu yang boleh dilihat DAN diakses tiap PERAN. Berlaku untuk semua pengguna
@@ -1247,12 +1273,19 @@ async function renderUsers(){
   renderMenuMatrix();
   document.querySelectorAll(".role-sel").forEach(s => s.onchange = async e => {
     const rr = await J("/api/branchops/users/" + e.target.dataset.id, "PUT", { role: e.target.value });
+    if (!rr.ok) { const j = await rr.json(); alert(j.error || "Gagal"); }
+    renderUsers();   // muat ulang: berubah jadi admin menghilangkan kotak wilayah
+  });
+  document.querySelectorAll(".wil-sel").forEach(s => s.onchange = async e => {
+    const rr = await J("/api/branchops/users/" + e.target.dataset.id, "PUT",
+                       { region_class: e.target.value });
     if (!rr.ok) { const j = await rr.json(); alert(j.error || "Gagal"); renderUsers(); }
   });
   $("bAddUser").onclick = async () => {
     const out = $("uOut");
     const rr = await J("/api/branchops/users", "POST",
-      { email: $("nuEmail").value.trim(), password: $("nuPw").value, role: $("nuRole").value });
+      { email: $("nuEmail").value.trim(), password: $("nuPw").value,
+        role: $("nuRole").value, region_class: $("nuWil").value });
     const j = await rr.json();
     if (rr.ok) renderUsers(); else out.innerHTML = '<div class="err">' + esc(j.error || "Gagal") + '</div>';
   };

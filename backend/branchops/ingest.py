@@ -552,7 +552,17 @@ def _tandai_duplikat(res: ParseResult, kunci, label, mode="peringatan"):
 # master cabang
 # --------------------------------------------------------------------------
 def parse_master(path):
-    """File 01. Kode dan Nama Cabang -> list dict siap upsert ke tabel branches."""
+    """File 01. Kode dan Nama Cabang -> list dict siap upsert ke tabel branches.
+
+    Susunan kolom (baris 1-2 dianggap judul, data mulai baris 3):
+        kolom B (r[1]) : kode cabang
+        kolom C (r[2]) : nama cabang
+        kolom D (r[3]) : Region Class   <- BARU, boleh kosong
+
+    Kolom D bersifat opsional supaya berkas master LAMA (yang hanya punya
+    dua kolom) tetap bisa diunggah tanpa error. Berkas lama akan membuat
+    region_class kosong untuk semua cabang — dan pengguna non-admin tidak
+    akan melihat baris apa pun sampai master baru diunggah."""
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
     ws = wb.worksheets[0]
     out = []
@@ -565,8 +575,11 @@ def parse_master(path):
             continue
         tipe = ("KC" if "(KC)" in nama else "KCP" if "(KCP)" in nama
                 else "Pusat" if kode.startswith("000") else "Lainnya")
+        # Kolom D. len(r) diperiksa supaya berkas berkolom dua tidak error.
+        kelas = clean(r[3]) if len(r) > 3 else None
         out.append({"branch_code": kode, "branch_name": nama, "branch_type": tipe,
-                    "region": _region(kode), "core_alias": None})
+                    "region": _region(kode), "core_alias": None,
+                    "region_class": kelas or None})
     wb.close()
     return out
 
