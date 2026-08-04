@@ -35,7 +35,7 @@ from . import db
 # di dalam tab Unggah. Dijadikan kunci terpisah supaya haknya bisa diatur
 # terpisah dari hak mengunggah berkas transaksi biasa.
 MENU_KEYS = ["home", "d1", "d2", "d3", "d4",
-             "upload", "master", "users", "settings", "audit"]
+             "upload", "master", "masterdata", "users", "settings", "audit"]
 
 # Label untuk layar admin (agar backend jadi satu sumber kebenaran)
 MENU_LABEL = {
@@ -46,6 +46,7 @@ MENU_LABEL = {
     "d4":       "Rekonsiliasi",
     "upload":   "Unggah",
     "master":   "Master Cabang",
+    "masterdata": "Master Data",
     "users":    "Pengguna",
     "settings": "Pengaturan",
     "audit":    "Audit",
@@ -56,6 +57,10 @@ MENU_LABEL = {
 MENU_MIN_ROLE = {
     "upload":   ("admin", "editor"),
     "master":   ("admin", "editor"),
+    # Master Data mengatur daftar wilayah, dan wilayah menentukan siapa
+    # melihat cabang mana. Mengubahnya = mengubah hak lihat orang lain,
+    # jadi admin saja - setara dengan layar Pengguna.
+    "masterdata": ("admin",),
     "users":    ("admin",),
     "settings": ("admin",),
     "audit":    ("admin",),

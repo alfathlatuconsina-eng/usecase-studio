@@ -356,6 +356,16 @@ ALTER TABLE IF EXISTS branchops_users
 -- Penjaga 'region_class_migrasi' penting. Tanpa itu, blok ini akan jalan
 -- lagi setiap aplikasi restart, dan setiap pengguna BARU yang belum
 -- dijatah wilayah akan diam-diam diberi akses ke semua cabang.
+-- Daftar wilayah tinggal di branchops_ref_values (kategori 'wilayah').
+-- Isi awalnya diambil dari region_class yang sudah ada di master cabang,
+-- supaya memasang layar Master Data tidak dimulai dari daftar kosong
+-- padahal cabangnya sudah berwilayah.
+INSERT INTO branchops_ref_values (kategori, nilai, urutan)
+SELECT 'wilayah', b.region_class, 0
+  FROM (SELECT DISTINCT region_class FROM branchops_branches
+         WHERE region_class IS NOT NULL AND region_class <> '') b
+ON CONFLICT (kategori, nilai) DO NOTHING;
+
 DO $migrasi$
 BEGIN
   IF to_regclass('public.branchops_users') IS NOT NULL

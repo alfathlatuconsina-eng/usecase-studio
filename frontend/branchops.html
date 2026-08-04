@@ -211,6 +211,7 @@ nav .brand small{display:block;font-size:10px;color:rgba(255,255,255,.55);letter
     <a class="item" data-tab="d3" href="#">TBO</a>
     <a class="item" data-tab="d4" href="#">Rekonsiliasi</a>
     <a class="item hidden" data-tab="upload" id="tabUpload" href="#">Unggah</a>
+    <a class="item hidden" data-tab="masterdata" id="tabMasterdata" href="#">Master Data</a>
     <a class="item hidden" data-tab="users"  id="tabUsers"  href="#">Pengguna</a>
     <a class="item hidden" data-tab="settings" id="tabSettings" href="#">Pengaturan</a>
     <a class="item hidden" data-tab="audit"  id="tabAudit"  href="#">Audit</a>
@@ -256,6 +257,7 @@ nav .brand small{display:block;font-size:10px;color:rgba(255,255,255,.55);letter
 <div class="view" id="view-upload"><div id="uploadRoot"></div></div>
 
 <!-- ======================= PENGGUNA ======================= -->
+<div class="view" id="view-masterdata"><div id="masterdataRoot"></div></div>
 <div class="view" id="view-users"><div id="usersRoot"></div></div>
 
 <!-- ======================= PENGATURAN ======================= -->
@@ -1216,6 +1218,128 @@ window.boBatal = async id => {
 };
 
 /* ================= PENGGUNA ================= */
+/* ---- MASTER DATA: wilayah + penetapan wilayah cabang (hanya admin) ------
+   Dua bagian dalam satu tab. Bagian Wilayah mengelola daftarnya; bagian
+   Cabang menugaskan wilayah per baris tanpa perlu mengunggah ulang Excel.
+   Semua perubahan langsung tersimpan dan tercatat di jejak audit.        */
+async function renderMasterdata(){
+  const el = $("masterdataRoot");
+  el.innerHTML = '<div class="loading"><span class="spin"></span> Memuat…</div>';
+  const r = await authFetch("/api/branchops/masterdata");
+  if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Hanya admin yang boleh membuka halaman ini.</div>'; return; }
+  const d = await r.json();
+  const wil = d.wilayah || [], cab = d.cabang || [];
+  const aktif = wil.filter(w => w.aktif).map(w => w.nilai);
+
+  const optWil = (dipilih) =>
+    `<option value=""${!dipilih ? " selected" : ""}>— tanpa wilayah —</option>` +
+    aktif.map(k => `<option value="${esc(k)}"${dipilih === k ? " selected" : ""}>${esc(k)}</option>`).join("") +
+    /* Wilayah nonaktif yang terlanjur dipakai cabang ini tetap ditampilkan,
+       supaya nilainya tidak diam-diam berubah saat kotak digambar ulang. */
+    (dipilih && !aktif.includes(dipilih)
+      ? `<option value="${esc(dipilih)}" selected>${esc(dipilih)} (nonaktif)</option>` : "");
+
+  const tanpaWil = cab.filter(c => !c.region_class).length;
+
+  el.innerHTML = `
+  <div style="padding-top:22px"><h1>Master Data</h1>
+  <div class="sub">Wilayah menentukan cabang mana yang dilihat tiap pengguna. Perubahan di sini
+    langsung berlaku pada permintaan berikutnya, tanpa perlu login ulang.</div></div>
+
+  ${tanpaWil ? `<div class="banner b-warn" style="margin-top:14px"><b>${tanpaWil} cabang belum berwilayah.</b>
+    Cabang tanpa wilayah hanya terlihat oleh admin dan pengguna berkelas
+    <b>${esc(d.kelas_semua)}</b>.</div>` : ""}
+
+  <div class="card" style="margin-top:14px"><h3>Wilayah</h3>
+    <div class="h-note">Nonaktif = hilang dari pilihan untuk jatah baru, tapi pengguna yang
+      terlanjur memakainya TETAP melihat cabangnya. Itu cara berhenti memakai sebuah wilayah
+      tanpa mencabut akses siapa pun mendadak. Menghapus hanya bisa bila sudah tidak dipakai.</div>
+    <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:12px 0">
+      <input id="wilBaru" placeholder="Nama wilayah baru" style="max-width:320px">
+      <button class="btn primary" id="bWilTambah">Tambah wilayah</button>
+    </div>
+    <div id="wilOut" style="margin-bottom:10px"></div>
+    <div class="tbl-wrap" style="max-height:320px"><table>
+      <thead><tr><th>Wilayah</th><th>Cabang</th><th>Pengguna</th><th>Status</th><th>Aksi</th></tr></thead>
+      <tbody>${wil.length ? wil.map(w => `<tr>
+        <td><b>${esc(w.nilai)}</b></td>
+        <td>${w.jml_cabang}</td>
+        <td>${w.jml_pengguna}</td>
+        <td>${w.aktif ? '<span class="tag t-ok">aktif</span>'
+                      : '<span class="tag t-warn">nonaktif</span>'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn sm" onclick="wilGantiNama('${esc(w.nilai)}')">Ganti nama</button>
+          <button class="btn sm" onclick="wilAktif('${esc(w.nilai)}',${w.aktif ? "false" : "true"})">${w.aktif ? "Nonaktifkan" : "Aktifkan"}</button>
+          <button class="btn sm danger" onclick="wilHapus('${esc(w.nilai)}',${w.jml_cabang},${w.jml_pengguna})">Hapus</button>
+        </td></tr>`).join("")
+        : '<tr><td colspan="5" class="muted" style="padding:12px 0">Belum ada wilayah. Tambahkan di atas, atau unggah master cabang berisi kolom Region Class.</td></tr>'}
+      </tbody></table></div></div>
+
+  <div class="card" style="margin-top:14px"><h3>Cabang <span class="muted" style="font-weight:400">(${cab.length})</span></h3>
+    <div class="h-note">Ubah wilayah satu cabang tanpa mengunggah ulang Excel. Tersimpan seketika.
+      Untuk perubahan banyak sekaligus, unggah master cabang di tab Unggah.</div>
+    <div style="margin:12px 0"><input id="cabCari" placeholder="Cari kode atau nama cabang…" style="max-width:340px"></div>
+    <div class="tbl-wrap" style="max-height:460px"><table>
+      <thead><tr><th>Kode</th><th>Nama</th><th>Tipe</th><th>Wilayah</th></tr></thead>
+      <tbody id="cabBody">${cab.map(c => `<tr data-cari="${esc((c.branch_code + " " + c.branch_name).toLowerCase())}">
+        <td><code>${esc(c.branch_code)}</code></td>
+        <td>${esc(c.branch_name)}</td>
+        <td class="muted">${esc(c.branch_type || "")}</td>
+        <td><select class="cab-wil" data-kode="${esc(c.branch_code)}"
+              style="width:auto;padding:3px 7px;font-size:11.5px">${optWil(c.region_class)}</select></td>
+      </tr>`).join("")}</tbody></table></div>
+    <div id="cabOut" style="margin-top:10px"></div></div>`;
+
+  $("bWilTambah").onclick = async () => {
+    const nilai = $("wilBaru").value.trim();
+    if (!nilai) return;
+    const rr = await J("/api/branchops/masterdata/wilayah", "POST", { nilai });
+    const j = await rr.json();
+    if (rr.ok) renderMasterdata();
+    else $("wilOut").innerHTML = '<div class="err">' + esc(j.error || "Gagal") + '</div>';
+  };
+  document.querySelectorAll(".cab-wil").forEach(s => s.onchange = async e => {
+    const rr = await J("/api/branchops/masterdata/cabang/" + encodeURIComponent(e.target.dataset.kode),
+                       "PUT", { region_class: e.target.value });
+    const j = await rr.json();
+    $("cabOut").innerHTML = rr.ok
+      ? '<div class="muted" style="font-size:12px">Tersimpan: ' + esc(e.target.dataset.kode) + ' → ' + esc(e.target.value || "tanpa wilayah") + '</div>'
+      : '<div class="err">' + esc(j.error || "Gagal") + '</div>';
+    if (!rr.ok) renderMasterdata();
+  });
+  $("cabCari").oninput = e => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll("#cabBody tr").forEach(tr =>
+      tr.style.display = (!q || tr.dataset.cari.includes(q)) ? "" : "none");
+  };
+}
+async function wilGantiNama(lama){
+  const baru = prompt("Nama baru untuk wilayah \"" + lama + "\":\n\n" +
+    "Cabang dan pengguna yang memakainya ikut diperbarui.", lama);
+  if (baru === null || baru.trim() === "" || baru === lama) return;
+  const rr = await J("/api/branchops/masterdata/wilayah/" + encodeURIComponent(lama),
+                     "PUT", { nilai: baru.trim() });
+  if (!rr.ok) { const j = await rr.json(); alert(j.error || "Gagal"); }
+  renderMasterdata();
+}
+async function wilAktif(nilai, jadikanAktif){
+  const rr = await J("/api/branchops/masterdata/wilayah/" + encodeURIComponent(nilai),
+                     "PUT", { aktif: jadikanAktif });
+  if (!rr.ok) { const j = await rr.json(); alert(j.error || "Gagal"); }
+  renderMasterdata();
+}
+async function wilHapus(nilai, nCabang, nPengguna){
+  if (nCabang || nPengguna) {
+    alert("Wilayah \"" + nilai + "\" masih dipakai " + nCabang + " cabang dan " +
+          nPengguna + " pengguna.\n\nPindahkan dulu, atau nonaktifkan saja.");
+    return;
+  }
+  if (!confirm("Hapus wilayah \"" + nilai + "\"?")) return;
+  const rr = await J("/api/branchops/masterdata/wilayah/" + encodeURIComponent(nilai), "DELETE");
+  if (!rr.ok) { const j = await rr.json(); alert(j.error || "Gagal"); }
+  renderMasterdata();
+}
+
 async function renderUsers(){
   const el = $("usersRoot");
   el.innerHTML = '<div class="loading"><span class="spin"></span> Memuat…</div>';
@@ -1446,6 +1570,7 @@ function switchTab(tab){
   } else {
     $("view-" + tab).classList.add("on");
     ({ home: renderHome, upload: renderUpload, users: renderUsers,
+       masterdata: renderMasterdata,
        settings: renderSettings, audit: renderAudit }[tab])();
   }
 }
@@ -1473,6 +1598,7 @@ document.querySelectorAll("nav .item[data-tab]").forEach(a =>
   } else {
     if (u.role === "admin" || u.role === "editor") $("tabUpload").classList.remove("hidden");
     if (u.role === "admin") { $("tabUsers").classList.remove("hidden");
+      $("tabMasterdata").classList.remove("hidden");
       $("tabSettings").classList.remove("hidden"); $("tabAudit").classList.remove("hidden"); }
   }
   // isi filter cabang + periode sekali

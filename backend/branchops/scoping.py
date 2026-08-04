@@ -114,17 +114,160 @@ def klausa(scope, alias="br"):
     return f" AND {alias}.region_class = %s", [scope]
 
 
-def daftar_kelas():
-    """Region Class yang benar-benar ada di master cabang.
+# --------------------------------------------------------------------- #
+#  Daftar wilayah (master)
+#
+#  Rumahnya branchops_ref_values dengan kategori 'wilayah'. Tabel itu sudah
+#  ada sejak awal (kategori, nilai, urutan, aktif) tapi belum pernah dipakai
+#  kode mana pun, dan bentuknya persis yang dibutuhkan di sini.
+#
+#  Kenapa punya daftar sendiri, bukan sekadar DISTINCT dari master cabang:
+#  supaya sebuah wilayah bisa DIBUAT LEBIH DULU, sebelum ada satu pun cabang
+#  yang memakainya. Dengan DISTINCT, wilayah baru tidak akan pernah muncul
+#  di layar sampai ada cabang yang terlanjur diberi nama itu.
+# --------------------------------------------------------------------- #
+KATEGORI = "wilayah"
 
-    Sumbernya kolom region_class di branchops_branches, jadi daftarnya
-    ikut berubah begitu master cabang diunggah ulang."""
-    baris = db.q("""SELECT DISTINCT region_class AS k
-                      FROM branchops_branches
-                     WHERE region_class IS NOT NULL
-                       AND region_class <> ''
-                  ORDER BY region_class""")
-    return [b["k"] for b in baris]
+
+def daftar_kelas():
+    """Wilayah AKTIF — dipakai untuk memeriksa jatah pengguna."""
+    baris = db.q("""SELECT nilai FROM branchops_ref_values
+                     WHERE kategori=%s AND aktif
+                  ORDER BY urutan, nilai""", (KATEGORI,))
+    return [b["nilai"] for b in baris]
+
+
+def daftar_kelas_lengkap():
+    """Semua wilayah + berapa cabang dan pengguna yang memakainya.
+
+    Dipakai layar Master Data. Jumlah pemakai ditampilkan supaya admin tahu
+    akibatnya sebelum menonaktifkan atau menghapus."""
+    return db.q("""
+      SELECT r.nilai, r.urutan, r.aktif,
+             (SELECT count(*) FROM branchops_branches b
+               WHERE b.region_class = r.nilai) AS jml_cabang,
+             (SELECT count(*) FROM branchops_users u
+               WHERE u.region_class = r.nilai) AS jml_pengguna
+        FROM branchops_ref_values r
+       WHERE r.kategori=%s
+    ORDER BY r.urutan, r.nilai""", (KATEGORI,))
+
+
+def daftarkan_kelas(nilai_list):
+    """Daftarkan wilayah baru yang muncul dari unggahan Excel master.
+
+    Tanpa ini, kolom D boleh diisi wilayah baru tapi wilayah itu tidak akan
+    pernah muncul di kotak pilihan — dua jalur input jadi bertengkar.
+    Wilayah yang sudah ada tidak diubah (urutan dan status aktifnya dijaga)."""
+    bersih = sorted({(n or "").strip() for n in nilai_list
+                     if (n or "").strip() and (n or "").strip() != KELAS_SEMUA})
+    if not bersih:
+        return []
+    baru = [n for n in bersih if n not in daftar_kelas_nama_semua()]
+    for n in baru:
+        db.execute("""INSERT INTO branchops_ref_values (kategori, nilai, urutan)
+                      VALUES (%s,%s,0) ON CONFLICT (kategori, nilai) DO NOTHING""",
+                   (KATEGORI, n))
+    return baru
+
+
+def daftar_kelas_nama_semua():
+    """Nama wilayah termasuk yang nonaktif. Untuk memeriksa keberadaan."""
+    return [b["nilai"] for b in db.q(
+        "SELECT nilai FROM branchops_ref_values WHERE kategori=%s", (KATEGORI,))]
+
+
+def tambah_kelas(nilai):
+    nilai = (nilai or "").strip()
+    if not nilai:
+        raise ValueError("Nama wilayah tidak boleh kosong")
+    if nilai == KELAS_SEMUA:
+        raise ValueError(f"'{KELAS_SEMUA}' adalah kelas khusus sistem, "
+                         f"tidak boleh dipakai sebagai nama wilayah")
+    if nilai in daftar_kelas_nama_semua():
+        raise ValueError(f"Wilayah '{nilai}' sudah ada")
+    db.execute("""INSERT INTO branchops_ref_values (kategori, nilai, urutan)
+                  VALUES (%s,%s,0)""", (KATEGORI, nilai))
+    return nilai
+
+
+def ubah_nama_kelas(lama, baru):
+    """Ganti nama wilayah, ikut memperbarui cabang dan pengguna yang memakainya.
+
+    Ketiganya harus berubah bersamaan. Kalau hanya daftarnya yang diganti,
+    cabang dan pengguna akan menunjuk nama yang tidak ada lagi, dan pengguna
+    itu diam-diam tidak melihat baris apa pun."""
+    baru = (baru or "").strip()
+    if not baru:
+        raise ValueError("Nama wilayah tidak boleh kosong")
+    if baru == KELAS_SEMUA:
+        raise ValueError(f"'{KELAS_SEMUA}' adalah kelas khusus sistem")
+    if lama not in daftar_kelas_nama_semua():
+        raise ValueError(f"Wilayah '{lama}' tidak ada")
+    if baru != lama and baru in daftar_kelas_nama_semua():
+        raise ValueError(f"Wilayah '{baru}' sudah ada")
+    with db.conn() as c:
+        with c.cursor() as k:
+            k.execute("""UPDATE branchops_ref_values SET nilai=%s
+                          WHERE kategori=%s AND nilai=%s""", (baru, KATEGORI, lama))
+            k.execute("UPDATE branchops_branches SET region_class=%s WHERE region_class=%s",
+                      (baru, lama))
+            k.execute("UPDATE branchops_users SET region_class=%s WHERE region_class=%s",
+                      (baru, lama))
+    return baru
+
+
+def pemakai_kelas(nilai):
+    """(jumlah_cabang, jumlah_pengguna) yang memakai wilayah ini."""
+    r = db.q1("""SELECT (SELECT count(*) FROM branchops_branches
+                          WHERE region_class=%s) AS cabang,
+                        (SELECT count(*) FROM branchops_users
+                          WHERE region_class=%s) AS pengguna""", (nilai, nilai))
+    return int(r["cabang"]), int(r["pengguna"])
+
+
+def hapus_kelas(nilai):
+    """Hapus wilayah. DITOLAK bila masih dipakai.
+
+    Sengaja menolak, bukan menghapus beruntun. Menghapus wilayah yang masih
+    dipakai akan membuat cabangnya tidak terlihat siapa pun dan penggunanya
+    kehilangan seluruh akses — tanpa pesan apa pun di layar mereka."""
+    if nilai not in daftar_kelas_nama_semua():
+        raise ValueError(f"Wilayah '{nilai}' tidak ada")
+    cabang, pengguna = pemakai_kelas(nilai)
+    if cabang or pengguna:
+        raise ValueError(
+            f"Wilayah '{nilai}' masih dipakai {cabang} cabang dan "
+            f"{pengguna} pengguna. Pindahkan dulu, atau nonaktifkan saja.")
+    db.execute("DELETE FROM branchops_ref_values WHERE kategori=%s AND nilai=%s",
+               (KATEGORI, nilai))
+    return nilai
+
+
+def set_aktif_kelas(nilai, aktif):
+    """Nonaktifkan/aktifkan wilayah.
+
+    Wilayah nonaktif hilang dari pilihan saat menjatah pengguna baru, TAPI
+    pengguna yang terlanjur memakainya tetap melihat cabangnya. Ini disengaja:
+    menonaktifkan adalah cara berhenti memakai tanpa mencabut akses siapa pun
+    secara mendadak."""
+    if nilai not in daftar_kelas_nama_semua():
+        raise ValueError(f"Wilayah '{nilai}' tidak ada")
+    db.execute("""UPDATE branchops_ref_values SET aktif=%s
+                   WHERE kategori=%s AND nilai=%s""", (bool(aktif), KATEGORI, nilai))
+    return bool(aktif)
+
+
+def set_wilayah_cabang(branch_code, nilai):
+    """Ubah wilayah SATU cabang, tanpa perlu mengunggah ulang Excel."""
+    nilai = (nilai or "").strip()
+    if nilai and nilai not in daftar_kelas_nama_semua():
+        raise ValueError(f"Wilayah '{nilai}' tidak ada di master wilayah")
+    n = db.execute("""UPDATE branchops_branches SET region_class=%s
+                       WHERE branch_code=%s""", (nilai or None, branch_code))
+    if not n:
+        raise ValueError(f"Cabang '{branch_code}' tidak ada di master cabang")
+    return nilai or None
 
 
 def pilihan_kelas():
@@ -140,7 +283,8 @@ def set_kelas(uid, kelas):
     membuat pengguna kehilangan seluruh akses tanpa pesan apa pun."""
     kelas = (kelas or "").strip()
     if kelas and kelas != KELAS_SEMUA and kelas not in daftar_kelas():
-        raise ValueError(f"Region Class '{kelas}' tidak ada di master cabang")
+        raise ValueError(f"Wilayah '{kelas}' tidak ada atau sedang nonaktif. "
+                         f"Kelola daftarnya di tab Master Data.")
     db.execute("UPDATE branchops_users SET region_class=%s WHERE id=%s",
                (kelas or None, uid))
     return kelas or None

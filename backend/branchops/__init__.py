@@ -138,6 +138,80 @@ def create_blueprint(require):
         return _out({"cabang": analytics.daftar_cabang(scoping.scope_aktif()),
                      "periode": analytics.periode_tersedia()})
 
+    # ---------------------------------------------------------------- #
+    # master data: wilayah + penetapan wilayah cabang  (tab Master Data)
+    # ---------------------------------------------------------------- #
+    @bp.get("/masterdata")
+    @require("admin")
+    @privileges.require_menu("masterdata")
+    def masterdata_get():
+        """Isi tab Master Data: daftar wilayah + seluruh cabang.
+
+        Daftar cabang di sini sengaja TIDAK dibatasi jatah wilayah — hanya
+        admin yang bisa membuka layar ini, dan admin memang harus melihat
+        semua cabang untuk bisa menugaskan wilayahnya."""
+        return _out({
+            "wilayah": scoping.daftar_kelas_lengkap(),
+            "cabang": db.q("""SELECT branch_code, branch_name, branch_type,
+                                     region_class, is_active
+                                FROM branchops_branches
+                            ORDER BY branch_code"""),
+            "kelas_semua": scoping.KELAS_SEMUA,
+        })
+
+    @bp.post("/masterdata/wilayah")
+    @require("admin")
+    @privileges.require_menu("masterdata")
+    def wilayah_tambah():
+        try:
+            nilai = scoping.tambah_kelas((request.get_json(silent=True) or {}).get("nilai"))
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
+        db.audit(_email(), "wilayah_ditambah", "branchops_ref_values", None, {"nilai": nilai})
+        return jsonify(ok=True, nilai=nilai)
+
+    @bp.put("/masterdata/wilayah/<path:nama>")
+    @require("admin")
+    @privileges.require_menu("masterdata")
+    def wilayah_ubah(nama):
+        body = request.get_json(silent=True) or {}
+        try:
+            if "aktif" in body:
+                aktif = scoping.set_aktif_kelas(nama, body["aktif"])
+                db.audit(_email(), "wilayah_status_diubah", "branchops_ref_values",
+                         None, {"nilai": nama, "aktif": aktif})
+                return jsonify(ok=True, nilai=nama, aktif=aktif)
+            baru = scoping.ubah_nama_kelas(nama, body.get("nilai"))
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
+        db.audit(_email(), "wilayah_diganti_nama", "branchops_ref_values",
+                 None, {"lama": nama, "baru": baru})
+        return jsonify(ok=True, nilai=baru)
+
+    @bp.delete("/masterdata/wilayah/<path:nama>")
+    @require("admin")
+    @privileges.require_menu("masterdata")
+    def wilayah_hapus(nama):
+        try:
+            scoping.hapus_kelas(nama)
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
+        db.audit(_email(), "wilayah_dihapus", "branchops_ref_values", None, {"nilai": nama})
+        return jsonify(ok=True, nilai=nama)
+
+    @bp.put("/masterdata/cabang/<kode>")
+    @require("admin")
+    @privileges.require_menu("masterdata")
+    def cabang_set_wilayah(kode):
+        """Ubah wilayah satu cabang, tanpa mengunggah ulang Excel."""
+        try:
+            nilai = scoping.set_wilayah_cabang(kode, (request.get_json(silent=True) or {}).get("region_class"))
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
+        db.audit(_email(), "wilayah_cabang_diubah", "branchops_branches",
+                 None, {"branch_code": kode, "region_class": nilai})
+        return jsonify(ok=True, branch_code=kode, region_class=nilai)
+
     @bp.get("/region-class")
     @require()
     def region_class_list():
@@ -288,12 +362,19 @@ def create_blueprint(require):
             tmp.write(f.read()); tmp.close()
             rows = ingest.parse_master(tmp.name)
             n = storage.upsert_branches(rows)
+            # Wilayah baru di kolom D langsung didaftarkan ke master wilayah.
+            # Tanpa ini, kolom D boleh diisi nama baru tapi nama itu tidak
+            # akan pernah muncul di kotak pilihan tab Pengguna — dua jalur
+            # input (Excel dan layar Master Data) jadi bertengkar.
+            kelas_baru = scoping.daftarkan_kelas(
+                [r.get("region_class") for r in rows])
         except Exception as e:                            # noqa: BLE001
             return jsonify(error=f"Master cabang gagal dibaca: {e}"), 400
         finally:
             os.unlink(tmp.name)
-        db.audit(_email(), "master_cabang_diperbarui", detail={"jumlah": n})
-        return jsonify(ok=True, jumlah=n)
+        db.audit(_email(), "master_cabang_diperbarui",
+                 detail={"jumlah": n, "wilayah_baru": kelas_baru})
+        return jsonify(ok=True, jumlah=n, wilayah_baru=kelas_baru)
 
     # ---------------------------------------------------------------- #
     # tindakan
