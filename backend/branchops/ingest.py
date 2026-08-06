@@ -366,17 +366,64 @@ def parse_pencairan(path, branches: dict, settings: dict) -> ParseResult:
             i.branch_code = kode
         res.issues.extend(err)
 
+        # --- Tiga kolom tambahan di UJUNG KANAN (Agustus 2026) -------------
+        # No. CIF (17), No. Rekening (18), Target Pemenuhan TBO (19).
+        #
+        # Ditaruh di ujung kanan dengan sengaja: pemetaan r[0]..r[16] di
+        # atas dipakai apa adanya, jadi tidak ada satu pun indeks yang
+        # bergeser. Kalau kolom ini disisipkan di TENGAH berkas Excel,
+        # seluruh pemetaan di atas salah baca DIAM-DIAM - tanpa error,
+        # hanya data yang keliru masuk ke kolom yang salah.
+        #
+        # Ketiganya TIDAK WAJIB. Berkas lama yang hanya punya 17 kolom
+        # tetap terbaca: len(r) lebih pendek, nilainya None, dan tidak ada
+        # baris yang ditolak. Ketiganya juga TIDAK masuk daftar `wajib`
+        # di bawah, supaya skor kelengkapan berkas lama tidak jatuh hanya
+        # karena kolom yang memang belum ada.
+        ambil = lambda i: clean(r[i]) if len(r) > i else None
+        no_cif_pc = ambil(17)
+        no_rek_pc = ambil(18)
+
+        target_pc = None
+        if len(r) > 19 and r[19] is not None:
+            target_pc = as_date(r[19])
+            if target_pc is None:
+                res.issues.append(Issue(n, "warning", "target_tbo_tak_terbaca",
+                                        "Target Pemenuhan TBO tidak bisa dibaca sebagai "
+                                        "tanggal; dikosongkan",
+                                        "Target Pemenuhan TBO", str(r[19]), kode))
+            elif tgl_input and target_pc < tgl_input:
+                res.issues.append(Issue(n, "warning", "target_tbo_sebelum_input",
+                                        f"Target Pemenuhan TBO ({target_pc}) lebih awal "
+                                        f"daripada tanggal input ({tgl_input})",
+                                        "Target Pemenuhan TBO", str(r[19]), kode))
+
+        # Baris tanpa Data TBO tidak pernah "menggantung", jadi langsung
+        # Dikecualikan - sama seperti parse_tbo. Aturan _TIDAK_ADA dipakai
+        # ulang supaya layar Edit dan laporan sepakat baris mana yang
+        # dianggap punya TBO.
+        dtbo = clean(r[12])
+        ada_tbo_pc = bool(dtbo) and not _TIDAK_ADA.match(dtbo)
+        if target_pc is not None and not ada_tbo_pc:
+            res.issues.append(Issue(n, "warning", "target_tbo_tanpa_data_tbo",
+                                    "Target Pemenuhan TBO diisi tetapi kolom Data TBO "
+                                    "kosong; baris ini tidak akan dilacak sebagai TBO",
+                                    "Target Pemenuhan TBO", str(r[19]), kode))
+
         wajib = [r[2], r[3], r[4], r[5], r[6], r[8], r[9], r[10], r[11]]
         res.rows.append({
             "_ditolak": bool(err), "baris_no": n,
             "branch_code": kode if kode in branches else None,
             "tgl_input": tgl_input,
             "no_deposito": clean(r[4]), "no_deposito_norm": digits(r[4]),
+            "no_cif": no_cif_pc, "no_rekening": no_rek_pc,
             "nama_pemilik": clean(r[5]),
             "tgl_penempatan": tgl_tempat, "tgl_bilyet": as_date(r[7]), "tgl_pencairan": tgl_cair,
             "tenor_hari": tenor, "nominal": nominal,
             "jenis_pencairan": clean(r[10]), "jenis_penarikan": clean(r[11]),
-            "data_tbo": clean(r[12]),
+            "data_tbo": dtbo,
+            "target_pemenuhan_tbo": target_pc,
+            "status_tbo": "Outstanding" if ada_tbo_pc else "Dikecualikan",
             "arus_dana": arus, "arus_keyakinan": yakin, "arus_manual": False,
             "nip_maker": clean(r[13]), "nip_checker": clean(r[14]), "nip_approver": clean(r[15]),
             "checker_eq_approver": bool(r[14] is not None and str(r[14]).strip() == str(r[15]).strip()),
@@ -474,6 +521,31 @@ def parse_tbo(path, branches: dict, settings: dict) -> ParseResult:
         dok = clean(r[13])
         ada_tbo = bool(dok) and not _TIDAK_ADA.match(dok)
 
+        # --- Target Pemenuhan TBO (kolom PALING KANAN, ditambah Agu 2026) ---
+        # Sengaja dibaca dari indeks 18, di ujung kanan, supaya penambahan
+        # ini tidak menggeser satu pun indeks kolom yang sudah dipakai di
+        # atas. Kalau kolomnya disisipkan di tengah berkas Excel, seluruh
+        # pemetaan r[0]..r[17] ikut bergeser dan parser ini salah baca
+        # DIAM-DIAM - tanpa error, hanya data yang keliru.
+        #
+        # Berkas lama yang belum punya kolom ini tetap terbaca: len(r)
+        # lebih pendek, target jadi None, dan tidak ada baris yang ditolak.
+        target = None
+        if len(r) > 18 and r[18] is not None:
+            target = as_date(r[18])
+            if target is None:
+                res.issues.append(Issue(n, "warning", "target_tbo_tak_terbaca",
+                                        "Target Pemenuhan TBO tidak bisa dibaca sebagai "
+                                        "tanggal; dikosongkan",
+                                        "Target Pemenuhan TBO", str(r[18])))
+            elif tgl_input and target < tgl_input:
+                # Bukan error: target boleh saja diisi mundur. Tapi hampir
+                # selalu salah ketik tahun, jadi perlu terlihat.
+                res.issues.append(Issue(n, "warning", "target_tbo_sebelum_input",
+                                        f"Target Pemenuhan TBO ({target}) lebih awal "
+                                        f"daripada tanggal input ({tgl_input})",
+                                        "Target Pemenuhan TBO", str(r[18])))
+
         if r[12] is None:
             flags.append("Jenis setoran kosong")
 
@@ -494,6 +566,7 @@ def parse_tbo(path, branches: dict, settings: dict) -> ParseResult:
             "dokumen_tbo": dok, "ada_tbo": ada_tbo,
             # status TBO selalu mulai Outstanding; dilengkapi lewat aplikasi
             "status_tbo": "Outstanding" if ada_tbo else "Dikecualikan",
+            "target_pemenuhan_tbo": target,
             "nip_maker": clean(r[14]), "nip_checker": clean(r[15]), "nip_approver": clean(r[16]),
             "keterangan": ket or None,
             "flags": flags,

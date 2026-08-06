@@ -23,6 +23,19 @@ backend/.env
 # Skrip migrasi manual - kode, bukan salinan data. Wajib ikut tersimpan.
 !hapus-kolom-region-lama.sql
 
+# Skrip di deploy/ juga kode, bukan salinan data - wajib ikut tersimpan.
+# Aman: pola tanpa tanda bintang bersarang TIDAK menembus subfolder, jadi
+# baris ini tidak bisa membocorkan deploy/masuk/ atau deploy/keluaran/.
+!deploy/*.sql
+
+# Salinan data yang ditarik dari / didorong ke VPS. Isinya nama nasabah
+# asli - penyamaran "***" terjadi di API, bukan di basis data.
+# Diabaikan per-folder, bukan hanya lewat *.sql di atas, supaya berkas
+# .csv atau .dump di dalamnya juga tidak pernah ikut ter-commit.
+deploy/masuk/
+deploy/keluaran/
+deploy/cadangan/
+
 # --- Arsip berkas yang ditarik dari VPS ---
 vps-berkas-*.tar.gz
 *.tar.gz

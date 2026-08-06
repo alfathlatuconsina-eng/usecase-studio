@@ -26,7 +26,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from sqlalchemy import (create_engine, Integer, String, Numeric, Text,
-                        DateTime, ForeignKey, ARRAY, select, func)
+                        DateTime, ForeignKey, select, func)
 from sqlalchemy.orm import (DeclarativeBase, Mapped, mapped_column,
                             sessionmaker)
 from dotenv import load_dotenv
@@ -336,27 +336,10 @@ class BranchopsUser(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     pw_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="viewer")
-    # Jatah wilayah (Region Class). Menentukan cabang mana yang boleh DILIHAT
-    # pengguna ini. Kosong = tidak melihat baris apa pun. 'SEMUA' = seluruh
-    # cabang. Penegakannya ada di branchops/scoping.py, bukan di sini.
-    region_class: Mapped[str] = mapped_column(String(60), nullable=True)
-    # Jatah beberapa cabang tertentu, alternatif dari region_class. Keduanya
-    # SALING MENIADAKAN — hanya satu yang boleh terisi, dijaga oleh CHECK
-    # ck_bo_users_satu_jatah di branchops/schema.sql. Untuk pengguna yang
-    # hanya boleh melihat cabangnya sendiri, atau beberapa cabang dalam
-    # satu kota. Tidak dijatah ditulis NULL, tidak pernah larik kosong.
-    # ARRAY(Text) supaya cocok dengan TEXT[] di schema.sql — kalau tipenya
-    # beda, tabel yang dibuat SQLAlchemy di basis data baru tidak akan sama
-    # dengan yang dibuat schema.sql di basis data lama.
-    branch_codes: Mapped[list] = mapped_column(ARRAY(Text), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     def to_dict(self):
         return {"id": self.id, "email": self.email, "role": self.role,
-                "region_class": self.region_class,
-                # selalu list di JSON, walau di basis data NULL — layar tidak
-                # perlu membedakan "belum dijatah" dari "dijatah nol cabang"
-                "branch_codes": list(self.branch_codes or []),
                 "created_at": self.created_at.isoformat() if self.created_at else None}
 
 
@@ -1146,25 +1129,6 @@ def list_branchops_users():
         return jsonify([u.to_dict() for u in rows])
 
 
-def _cek_jatah(kelas, kode_list):
-    """Periksa sepasang (region_class, branch_codes) untuk seorang pengguna.
-
-    Mengembalikan (kelas, daftar_kode, pesan_error). Paling banyak SATU dari
-    keduanya terisi — saling meniadakan. Dua-duanya kosong sah: artinya
-    pengguna belum dijatah dan tidak melihat baris apa pun.
-
-    Aturannya tidak ditulis ulang di sini; semuanya dititipkan ke
-    scoping.periksa_jatah() supaya jalur ini dan set_jatah() tidak bisa
-    berbeda pendapat. Salah ketik ditolak dengan pesan, bukan diterima
-    diam-diam — kalau diterima, pengguna mengira sudah dijatah padahal
-    layarnya kosong dan tidak ada petunjuk kenapa."""
-    from branchops import scoping as _sc
-    try:
-        return (*_sc.periksa_jatah(kelas, kode_list), None)
-    except ValueError as e:
-        return None, None, str(e)
-
-
 @app.post("/api/branchops/users")
 @require("admin")
 def create_branchops_user():
@@ -1176,14 +1140,10 @@ def create_branchops_user():
         return jsonify({"error": "email and password are required"}), 400
     if role not in ROLES:
         return jsonify({"error": "role must be admin, editor, or viewer"}), 400
-    kelas, kode, salah = _cek_jatah(data.get("region_class"), data.get("branch_codes"))
-    if salah:
-        return jsonify({"error": salah}), 400
     with Session() as s:
         if s.scalar(select(BranchopsUser).where(BranchopsUser.email == email)):
             return jsonify({"error": "a user with that email already exists"}), 409
-        u = BranchopsUser(email=email, role=role, region_class=kelas,
-                          branch_codes=kode,
+        u = BranchopsUser(email=email, role=role,
                           pw_hash=bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode())
         s.add(u); s.commit()
         return jsonify(u.to_dict()), 201
@@ -1206,18 +1166,6 @@ def update_branchops_user(uid):
                 if admins <= 1:
                     return jsonify({"error": "cannot demote the last admin"}), 400
             u.role = data["role"]
-        # Jatah ditulis sebagai SATU kesatuan. Mengirim salah satu kunci saja
-        # berarti "jatahnya sekarang ini" — kunci yang tidak dikirim dianggap
-        # kosong, sehingga menetapkan cabang otomatis mencabut wilayah dan
-        # sebaliknya. Menyisakan nilai lama di kolom satunya hanya akan
-        # ditolak CHECK ck_bo_users_satu_jatah di basis data.
-        if "region_class" in data or "branch_codes" in data:
-            kelas, kode, salah = _cek_jatah(data.get("region_class"),
-                                            data.get("branch_codes"))
-            if salah:
-                return jsonify({"error": salah}), 400
-            u.region_class = kelas
-            u.branch_codes = kode
         if data.get("password"):
             u.pw_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt()).decode()
         s.commit()

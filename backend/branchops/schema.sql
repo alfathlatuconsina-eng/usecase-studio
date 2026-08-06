@@ -345,6 +345,97 @@ ALTER TABLE branchops_branches
 CREATE INDEX IF NOT EXISTS ix_branches_region_class
   ON branchops_branches (region_class);
 
+-- ---------------------------------------------------------------------
+--  Target Pemenuhan TBO (Agustus 2026)
+--
+--  Tenggat kapan dokumen TBO seharusnya sudah lengkap. Diisi dari kolom
+--  paling kanan berkas Excel unggahan, atau lewat layar Edit TBO.
+--
+--  "Jumlah Hari Terlambat" SENGAJA TIDAK disimpan sebagai kolom. Nilainya
+--  berubah setiap hari, dan aplikasi ini tidak punya penjadwal yang bisa
+--  menghitung ulang tiap malam - kolom tersimpan akan salah mulai besok.
+--  Jadi dihitung saat dibaca, di analytics.dash_tbo().
+-- ---------------------------------------------------------------------
+ALTER TABLE branchops_tbo
+  ADD COLUMN IF NOT EXISTS target_pemenuhan_tbo DATE;
+
+CREATE INDEX IF NOT EXISTS ix_bo_tbo_target
+  ON branchops_tbo (target_pemenuhan_tbo);
+
+-- ---------------------------------------------------------------------
+--  Pelacakan TBO pada PENCAIRAN (Agustus 2026)
+--
+--  Sebagian baris pencairan membawa kolom "Data TBO" dari cabang. Baris
+--  itu perlu dilacak seperti pembukaan rekening ber-TBO: punya tenggat,
+--  punya status, dan bisa disunting.
+--
+--  no_cif dan no_rekening SENGAJA boleh kosong. Keduanya kolom tambahan
+--  di ujung kanan berkas Excel, dan berkas lama tidak memilikinya sama
+--  sekali - menjadikannya wajib akan menolak seluruh unggahan lama.
+--
+--  Sama seperti di branchops_tbo, "Jumlah Hari Terlambat" TIDAK disimpan.
+--  Nilainya berubah tiap hari dan tidak ada penjadwal yang menghitung
+--  ulang; jadi dihitung saat dibaca, di analytics.py.
+-- ---------------------------------------------------------------------
+ALTER TABLE branchops_pencairan
+  ADD COLUMN IF NOT EXISTS no_cif               VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS no_rekening          VARCHAR(40),
+  ADD COLUMN IF NOT EXISTS target_pemenuhan_tbo DATE,
+  ADD COLUMN IF NOT EXISTS tgl_tbo_lengkap      DATE,
+  ADD COLUMN IF NOT EXISTS tbo_updated_by       VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS tbo_updated_at       TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS status_tbo           VARCHAR(16)
+      NOT NULL DEFAULT 'Outstanding';
+
+-- CHECK dipasang terpisah dan dijaga, karena ADD CONSTRAINT tidak punya
+-- IF NOT EXISTS - menjalankannya dua kali akan gagal.
+DO $pc_status$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conname = 'ck_bo_pencairan_status_tbo') THEN
+    ALTER TABLE branchops_pencairan
+      ADD CONSTRAINT ck_bo_pencairan_status_tbo
+      CHECK (status_tbo IN ('Outstanding', 'Lengkap', 'Dikecualikan'));
+  END IF;
+END
+$pc_status$;
+
+CREATE INDEX IF NOT EXISTS ix_bo_pc_target ON branchops_pencairan (target_pemenuhan_tbo);
+CREATE INDEX IF NOT EXISTS ix_bo_pc_status ON branchops_pencairan (status_tbo);
+
+-- SEKALI SAJA: baris lama semuanya dapat 'Outstanding' dari DEFAULT di
+-- atas, termasuk baris yang tidak punya Data TBO sama sekali. Baris itu
+-- seharusnya 'Dikecualikan' - kalau dibiarkan, laporan "TBO pencairan
+-- yang masih terbuka" akan menghitung ribuan baris yang memang tidak
+-- pernah punya TBO.
+--
+-- Penjaga di branchops_settings WAJIB ada. Tanpa itu blok ini jalan lagi
+-- setiap aplikasi start, dan keputusan editor yang mengubah status
+-- kembali ke 'Outstanding' akan diam-diam ditimpa tiap kali server hidup.
+DO $pc_backfill$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM branchops_settings
+                  WHERE kunci = 'pencairan_status_tbo_migrasi') THEN
+
+    UPDATE branchops_pencairan
+       SET status_tbo = 'Dikecualikan'
+     WHERE data_tbo IS NULL
+        OR btrim(data_tbo) = ''
+        -- Aturan yang SAMA dengan _TIDAK_ADA di ingest.py. Kalau salah
+        -- satu diubah, ubah keduanya, atau layar Edit dan laporan akan
+        -- tidak sepakat baris mana yang punya TBO.
+        OR btrim(lower(data_tbo)) ~ '^(tidak\s*ada|tdk\s*ada|tidak\s*ad|-)$';
+
+    INSERT INTO branchops_settings (kunci, nilai, deskripsi) VALUES
+      ('pencairan_status_tbo_migrasi', '1',
+       'Penanda bahwa status_tbo pada branchops_pencairan sudah diisi '
+       'sekali untuk baris lama. JANGAN dihapus - menghapusnya membuat '
+       'migrasi berjalan lagi dan menimpa status yang sudah disunting.')
+    ON CONFLICT (kunci) DO NOTHING;
+  END IF;
+END
+$pc_backfill$;
+
 -- Tabel branchops_users dibuat oleh SQLAlchemy di app.py, bukan berkas ini.
 -- IF EXISTS dipakai supaya tidak gagal bila urutan startup berbeda.
 ALTER TABLE IF EXISTS branchops_users
@@ -383,5 +474,74 @@ BEGIN
   END IF;
 END
 $migrasi$;
+
+
+-- =====================================================================
+--  MIGRASI Agustus 2026 - jatah CABANG (beberapa cabang per pengguna)
+-- =====================================================================
+--  Lapisan kedua di samping region_class. Sebagian pengguna tidak
+--  memegang satu wilayah penuh, melainkan sekumpulan kecil cabang -
+--  misalnya beberapa cabang dalam satu kota.
+--
+--  SALING MENIADAKAN dengan region_class: seorang pengguna memegang
+--  SATU jenis jatah saja, bukan dua. Aturan itu ditegakkan oleh CHECK di
+--  bawah, bukan hanya oleh kode Python. Alasannya: kalau hanya kode yang
+--  menjaganya, satu endpoint baru yang lupa memeriksa sudah cukup untuk
+--  menyimpan baris bermakna ganda, dan yang mana yang berlaku menjadi
+--  bergantung pada urutan pemeriksaan di scoping.py.
+--
+--  RIWAYAT. Versi pertama memakai kolom tunggal branch_code (tepat satu
+--  cabang). Blok di bawah memindahkan isinya menjadi larik satu unsur
+--  lalu MEMBUANG kolom lama, supaya tidak tertinggal kolom mati yang
+--  disangka fitur setengah jadi. Urutannya penting: CHECK lama menyebut
+--  branch_code, jadi ia harus dibuang lebih dulu daripada kolomnya.
+--
+--  "Tidak dijatah" SELALU ditulis NULL, tidak pernah larik kosong '{}'.
+--  Dua cara menulis hal yang sama akan membuat setiap pembacaan harus
+--  memeriksa dua bentuk, dan cepat atau lambat ada satu yang lupa.
+--  cardinality(...) > 0 di CHECK yang menegakkannya.
+--
+--  Sengaja TANPA foreign key ke branchops_branches, mengikuti pola
+--  region_class yang juga diperiksa di Python. Akibat yang perlu diingat:
+--  bila sebuah cabang hilang dari master, pengguna yang tertambat padanya
+--  tidak melihat baris cabang itu - gagal-tertutup, bukan gagal-terbuka.
+-- ---------------------------------------------------------------------
+
+ALTER TABLE IF EXISTS branchops_users
+  ADD COLUMN IF NOT EXISTS branch_codes TEXT[];
+
+DO $jatah$
+BEGIN
+  IF to_regclass('public.branchops_users') IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- Pindahkan jatah lama (satu cabang) lalu buang kolomnya. Seluruhnya
+  -- dijaga IF EXISTS, jadi aman dijalankan berulang: sesudah kolom lama
+  -- hilang, blok ini tidak melakukan apa-apa lagi.
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'branchops_users'
+                AND column_name = 'branch_code') THEN
+
+    UPDATE branchops_users
+       SET branch_codes = ARRAY[branch_code]
+     WHERE branch_code IS NOT NULL
+       AND branch_codes IS NULL;
+
+    ALTER TABLE branchops_users DROP CONSTRAINT IF EXISTS ck_bo_users_satu_jatah;
+    ALTER TABLE branchops_users DROP COLUMN branch_code;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conname = 'ck_bo_users_satu_jatah') THEN
+
+    ALTER TABLE branchops_users
+      ADD CONSTRAINT ck_bo_users_satu_jatah
+      CHECK ((region_class IS NULL OR branch_codes IS NULL)
+         AND (branch_codes IS NULL OR cardinality(branch_codes) > 0));
+
+  END IF;
+END
+$jatah$;
 
 COMMIT;

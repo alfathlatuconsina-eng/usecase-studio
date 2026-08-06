@@ -190,13 +190,103 @@ nav .brand small{display:block;font-size:10px;color:rgba(255,255,255,.55);letter
   nav .tabs{order:3;width:100%}      /* paksa tab turun ke baris kedua */
 }
 
+/* ---- Layar Edit TBO (Agustus 2026) -------------------------------- */
+/* Satu-satunya dialog di modul ini, jadi kelasnya sengaja diberi awalan
+   ed- supaya tidak bentrok dengan apa pun yang sudah ada. */
+.ed-bg{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:60;
+  display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px}
+.ed-box{background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:10px;
+  width:100%;max-width:720px;box-shadow:0 18px 48px rgba(0,0,0,.22)}
+.ed-hd{padding:14px 18px;border-bottom:1px solid var(--line,#e2e8f0);
+  display:flex;align-items:flex-start;gap:12px;justify-content:space-between}
+.ed-hd h3{margin:0 0 3px;font-size:15px}
+.ed-bd{padding:16px 18px}
+.ed-ft{padding:12px 18px;border-top:1px solid var(--line,#e2e8f0);
+  display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.ed-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.ed-grid .full{grid-column:1/-1}
+.ed-f label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--mut,#64748b);margin-bottom:4px}
+.ed-f input,.ed-f select,.ed-f textarea{width:100%}
+.ed-f textarea{min-height:62px;resize:vertical}
+/* Kolom yang tidak boleh diubah: ditampilkan, tapi jelas mati. Menyembunyikannya
+   akan membuat orang mengira datanya hilang. */
+.ed-ro{background:var(--bg2,#f1f5f9);border:1px dashed var(--line,#cbd5e1);border-radius:6px;
+  padding:7px 9px;font-size:12.5px;color:var(--mut,#475569);min-height:34px;word-break:break-word}
+.ed-lock{font-size:10px;text-transform:none;letter-spacing:0;color:var(--mut,#94a3b8)}
+.ed-err{color:var(--bad,#c0392b);font-size:12px;margin-right:auto}
+.ed-late{font-weight:600}
+.ed-late.on{color:var(--bad,#c0392b)}
+
+/* ---- Bagian yang bisa dibuka-tutup (Agustus 2026) ------------------ */
+/* Dipakai untuk bagian sekunder yang tertutup saat halaman dibuka.
+   <details> bawaan peramban: tanpa JavaScript, ikut bekerja dengan papan
+   ketik dan pembaca layar. Dibuat menyerupai <h2> supaya urutan bacanya
+   tetap terasa seperti judul bagian, bukan tombol yang tercecer. */
+details.sect{margin:22px 0 0}
+details.sect>summary{
+  list-style:none;cursor:pointer;user-select:none;
+  display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  padding:9px 12px;border:1px solid var(--line,#e2e8f0);border-radius:8px;
+  background:var(--bg2,#f8fafc)}
+details.sect>summary::-webkit-details-marker{display:none}
+details.sect>summary::before{
+  content:"▸";color:var(--mut,#94a3b8);font-size:12px;
+  transition:transform .15s ease;display:inline-block}
+details.sect[open]>summary::before{transform:rotate(90deg)}
+details.sect>summary:hover{border-color:var(--acc,#2563eb)}
+details.sect>summary:focus-visible{outline:2px solid var(--acc,#2563eb);outline-offset:2px}
+.sect-t{font-size:13px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.sect-n{font-size:11.5px;color:var(--mut,#64748b);font-weight:400}
+/* Isyarat bahwa masih ada yang bisa dibuka - tanpa ini bagian tertutup
+   mudah disangka tidak ada sama sekali. */
+details.sect>summary::after{
+  content:"klik untuk membuka";margin-left:auto;font-size:10.5px;
+  color:var(--mut,#94a3b8);text-transform:none;letter-spacing:0}
+details.sect[open]>summary::after{content:"klik untuk menutup"}
+
+/* ---- Tabel lebar di layar sempit (Agustus 2026) --------------------- */
+/* Tabel Pencairan kini 14 kolom, TBO 13, Beranda 11. Dengan
+   table{width:100%} tabel MEMAKSA dirinya muat di lebar layar, jadi di
+   ponsel kolomnya terhimpit sampai satu-dua huruf per baris — dan
+   .tbl-wrap{overflow:auto} tidak menolong sama sekali, karena tidak ada
+   yang meluap untuk digulir.
+   min-width:max-content membuat tabel selebar isinya, barulah
+   pembungkusnya menggulir mendatar. Hanya di layar sempit; di desktop
+   tetap width:100% seperti semula. */
+@media(max-width:900px){
+  .tbl-wrap > table{min-width:max-content}
+  .tbl-wrap > table td,
+  .tbl-wrap > table th{padding-left:9px;padding-right:9px}
+  /* Kolom teks bebas tetap dibatasi. Tanpa ini satu catatan panjang
+     membuat tabel selebar layar berkali-kali lipat. */
+  .tbl-wrap > table td[style*="max-width"]{max-width:150px !important}
+  .tbl-wrap{-webkit-overflow-scrolling:touch}
+}
+
 /* Ponsel: perbesar sasaran sentuh dan rapatkan teks yang tidak penting */
 @media(max-width:560px){
+  details.sect>summary{padding:11px 12px}
+  details.sect>summary::after{display:none}
+  /* Penyaring: dua per baris. min-width:150px bawaan membuat kotak tanggal
+     terpotong di layar 360px. */
+  .filters{gap:7px}
+  .filters > div{min-width:0;flex:1 1 calc(50% - 4px)}
+  .filters .btn{flex:1 1 auto}
+  /* Tombol di dalam tabel harus cukup besar untuk jari, bukan kursor. */
+  .btn.sm{padding:7px 11px;font-size:12px}
+  /* Biar HALAMAN yang menggulir tegak, bukan kotak setinggi 520px di
+     dalam layar yang tingginya sendiri sekitar 600px. */
+  .tbl-wrap{max-height:none}
   nav .inner{padding:8px 12px}
   nav .brand{font-size:13.5px}
   nav .brand small{font-size:9px;letter-spacing:1.1px}
   nav .who{font-size:11px}
   nav .tabs a.item{padding:10px 14px;font-size:12.5px}
+  .ed-bg{padding:0}
+  .ed-box{max-width:none;border-radius:0;min-height:100%}
+  .ed-grid{grid-template-columns:1fr}
+  .ed-ft{position:sticky;bottom:0;background:var(--card,#fff)}
 }
 
 </style>
@@ -528,7 +618,7 @@ function renderPencairan() {
   </div>
 
   <h2>Detail transaksi</h2>
-  ${tabel(["No deposito","Cabang","Tgl cair","Nasabah","Nominal","Tenor","Arus dana","Yakin","Jenis","Catatan mutu"])}`;
+  ${tabel(["No deposito","No rekening","Cabang","Tanggal Pencairan","Nasabah","Nominal","Tenor","Arus dana","Yakin","Jenis","Target TBO","Terlambat","Catatan mutu","Aksi"])}`;
 
   const cats = ["Arus Keluar","Rollover / DOC","Penempatan Kembali"];
   const map = Object.fromEntries(DATA.per_arus.map(a => [a.arus_dana, N(a.rp)]));
@@ -613,16 +703,35 @@ function renderPencairan() {
   }).join("");
 
   const AR = {"Arus Keluar":"t-bad","Rollover / DOC":"t-roll","Penempatan Kembali":"t-acc"};
-  CSV = [["No deposito","Cabang","Kode","Tgl input","Tgl cair","Nasabah","Nominal","Tenor","Arus dana","Keyakinan","Jenis pencairan","Catatan"]];
+  CSV = [["No deposito","No rekening","No CIF","Cabang","Kode","Tgl input","Tanggal Pencairan","Nasabah",
+          "Nominal","Tenor","Arus dana","Keyakinan","Jenis pencairan","Data TBO",
+          "Target Pemenuhan TBO","Jumlah Hari Terlambat","Status TBO","Catatan"]];
+  /* Baris disimpan supaya layar Edit bisa mengisi formulir tanpa memanggil
+     server lagi. Isinya sudah tersamar oleh _out() di backend. */
+  PC_ROWS = {};
   $("tb").innerHTML = rows.map(r => {
-    CSV.push([r.no_deposito, r.branch_name, r.branch_code, tgl(r.tgl_input), tgl(r.tgl_pencairan),
-      r.nama_pemilik, N(r.nominal), r.tenor_hari, r.arus_dana, r.arus_keyakinan, r.jenis_pencairan, r.catatan]);
+    PC_ROWS[r.id] = r;
+    CSV.push([r.no_deposito, r.no_rekening, r.no_cif, r.branch_name, r.branch_code,
+      tgl(r.tgl_input), tgl(r.tgl_pencairan),
+      r.nama_pemilik, N(r.nominal), r.tenor_hari, r.arus_dana, r.arus_keyakinan, r.jenis_pencairan,
+      r.data_tbo, tgl(r.target_pemenuhan_tbo), r.hari_terlambat, r.status_tbo, r.catatan]);
     const sel = window.ROLE !== "viewer"
       ? `<select class="arus-sel" data-id="${r.id}" style="width:auto;padding:2px 5px;font-size:10.5px">
            ${cats.map(c=>`<option ${c===r.arus_dana?"selected":""}>${c}</option>`).join("")}</select>`
       : `<span class="tag ${AR[r.arus_dana]}">${r.arus_dana}</span>`;
+    /* Tombol Ubah HANYA untuk baris yang punya Data TBO. Baris pencairan
+       biasa tidak disunting di sini — angkanya adalah apa yang dilaporkan
+       cabang. punya_tbo datang dari backend, bukan ditebak di sini, supaya
+       layar dan API tidak berbeda pendapat. Backend tetap menolak sendiri
+       kalau ada yang memanggil langsung. */
+    const bolehUbah = (window.ROLE === "admin" || window.ROLE === "editor") && r.punya_tbo;
+    const aksi = bolehUbah
+      ? `<button class="btn sm" onclick="pcEdit(${r.id})">Ubah</button>`
+      : `<span class="muted" title="${r.punya_tbo ? "" : "Baris ini tidak punya Data TBO"}">—</span>`;
+    const lt = r.hari_terlambat;
     return `<tr>
       <td class="muted" style="font-size:11.5px">${esc(r.no_deposito||"—")}</td>
+      <td class="muted" style="font-size:11.5px">${esc(r.no_rekening||"—")}</td>
       <td>${esc(r.branch_name)}</td>
       <td class="muted">${tgl(r.tgl_pencairan)}</td>
       <td>${esc((r.nama_pemilik||"—").slice(0,28))}</td>
@@ -631,15 +740,200 @@ function renderPencairan() {
       <td>${sel}${r.arus_manual?' <span class="fl">manual</span>':""}</td>
       <td class="muted" style="font-size:11.5px">${r.arus_keyakinan}</td>
       <td class="muted" style="font-size:11.5px">${esc((r.jenis_pencairan||"—").replace(" dari Jatuh Tempo",""))}</td>
+      <td class="muted" style="font-size:11.5px">${r.target_pemenuhan_tbo?tgl(r.target_pemenuhan_tbo):(r.punya_tbo?'<span class="fl">belum diisi</span>':"—")}</td>
+      <td class="num ${lt>0?"":"muted"}">${lt==null?"—":(lt>0?`<span class="ed-late on">${lt} h</span>`:"0 h")}</td>
       <td><div class="flagdots">${(r.flags||[]).map(f=>`<span class="fl">${esc(f)}</span>`).join("")}</div></td>
+      <td>${aksi}</td>
     </tr>`;
-  }).join("") || emptyRow(10);
+  }).join("") || emptyRow(14);
 
   document.querySelectorAll(".arus-sel").forEach(s => s.onchange = async e => {
     const r = await patch("/api/branchops/pencairan/" + e.target.dataset.id + "/arus", {arus_dana: e.target.value});
     if (r) load();
   });
 }
+
+/* ================================================================== */
+/* Layar Edit PENCAIRAN (Agustus 2026)                                 */
+/*                                                                     */
+/* Hanya untuk baris yang kolom "Data TBO"-nya terisi.                 */
+/*                                                                     */
+/* Enam kolom terkunci: Kode Cabang, Tanggal Input Data, No. CIF,      */
+/* No. Rekening, Nama Pemilik, Tanggal Pencairan.                      */
+/*                                                                     */
+/* Penjagaan sebenarnya di BACKEND (_PENCAIRAN_EDITABLE di             */
+/* __init__.py). Yang di sini hanya tampilan.                          */
+/* ================================================================== */
+let PC_ROWS = {};
+
+window.pcEdit = async (id, sesudah) => {
+  const r = PC_ROWS[id] || await ambilSatu("pencairan", id);
+  if (!r) return;
+  sesudah = sesudah || load;
+
+  const d  = v => v ? String(v).slice(0,10) : "";
+  const ro = v => `<div class="ed-ro">${esc(v == null || v === "" ? "—" : v)}</div>`;
+  const opt = (nilai, kini) => nilai.map(v =>
+    `<option value="${esc(v)}"${v === kini ? " selected" : ""}>${esc(v)}</option>`).join("");
+
+  const bg = document.createElement("div");
+  bg.className = "ed-bg";
+  bg.innerHTML = `<div class="ed-box" role="dialog" aria-modal="true" aria-label="Ubah data pencairan">
+    <div class="ed-hd">
+      <div>
+        <h3>Ubah data pencairan</h3>
+        <div class="muted" style="font-size:11.5px">
+          ${esc(r.branch_name || "")} · deposito ${esc(r.no_deposito || "—")}
+        </div>
+      </div>
+      <button class="btn sm" id="pcX" type="button">Tutup</button>
+    </div>
+    <div class="ed-bd">
+      <div class="banner b-info" style="margin:0 0 14px">
+        Baris ini bisa disunting karena kolom <b>Data TBO</b> terisi.
+        Pencairan tanpa Data TBO tidak disunting di sini — angkanya adalah
+        apa yang dilaporkan cabang.
+      </div>
+      <div class="ed-grid">
+        <div class="ed-f"><label>Kode cabang <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(r.branch_code)}</div>
+        <div class="ed-f"><label>Tanggal input data <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(tgl(r.tgl_input))}</div>
+        <div class="ed-f"><label>No. CIF <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(r.no_cif)}</div>
+        <div class="ed-f"><label>No. rekening <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(r.no_rekening)}</div>
+        <div class="ed-f"><label>Nama pemilik <span class="ed-lock">— tersamar, tidak bisa diubah</span></label>
+          ${ro(r.nama_pemilik)}</div>
+        <div class="ed-f"><label>Tanggal Pencairan <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(tgl(r.tgl_pencairan))}</div>
+
+        <div class="ed-f full"><hr style="border:0;border-top:1px solid var(--line,#e2e8f0);margin:4px 0"></div>
+
+        <div class="ed-f"><label>Target pemenuhan TBO</label>
+          <input type="date" id="pcTarget" value="${d(r.target_pemenuhan_tbo)}"></div>
+        <div class="ed-f"><label>Jumlah hari terlambat <span class="ed-lock">— dihitung otomatis</span></label>
+          <div class="ed-ro" id="pcLate">—</div></div>
+
+        <div class="ed-f"><label>Status TBO</label>
+          <select id="pcStatus">${opt(["Outstanding","Lengkap","Dikecualikan"], r.status_tbo)}</select></div>
+        <div class="ed-f"><label>Tanggal TBO lengkap</label>
+          <input type="date" id="pcLengkap" value="${d(r.tgl_tbo_lengkap)}"></div>
+
+        <div class="ed-f full"><label>Data TBO</label>
+          <textarea id="pcDataTbo">${esc(r.data_tbo || "")}</textarea>
+          <div class="muted" style="font-size:11px;margin-top:3px">
+            Mengosongkan kolom ini membuat baris keluar dari daftar yang bisa disunting.
+          </div></div>
+
+        <div class="ed-f"><label>No. deposito</label>
+          <input type="text" id="pcDeposito" value="${esc(r.no_deposito || "")}" maxlength="40">
+          <div class="muted" style="font-size:11px;margin-top:3px">
+            Kunci rekonsiliasi terhadap data IT — ubah hanya bila memang salah ketik.
+          </div></div>
+        <div class="ed-f"><label>Tenor (hari)</label>
+          <input type="text" id="pcTenor" value="${esc(r.tenor_hari == null ? "" : r.tenor_hari)}"></div>
+
+        <div class="ed-f"><label>Tanggal penempatan</label>
+          <input type="date" id="pcTempat" value="${d(r.tgl_penempatan)}"></div>
+        <div class="ed-f"><label>Tanggal bilyet</label>
+          <input type="date" id="pcBilyet" value="${d(r.tgl_bilyet)}"></div>
+
+        <div class="ed-f"><label>Nominal</label>
+          <input type="text" id="pcNominal" value="${esc(r.nominal == null ? "" : r.nominal)}"></div>
+        <div class="ed-f"><label>Arus dana</label>
+          <select id="pcArus">${opt(["Arus Keluar","Rollover / DOC","Penempatan Kembali"], r.arus_dana)}</select>
+          <div class="muted" style="font-size:11px;margin-top:3px">
+            Mengubahnya menandai baris sebagai sudah ditinjau orang.
+          </div></div>
+
+        <div class="ed-f"><label>Jenis pencairan</label>
+          <input type="text" id="pcJPen" value="${esc(r.jenis_pencairan || "")}" maxlength="60"></div>
+        <div class="ed-f"><label>Jenis penarikan</label>
+          <input type="text" id="pcJTar" value="${esc(r.jenis_penarikan || "")}" maxlength="60"></div>
+
+        <div class="ed-f"><label>NIP maker</label>
+          <input type="text" id="pcMaker" value="${esc(r.nip_maker || "")}" maxlength="20"></div>
+        <div class="ed-f"><label>NIP checker</label>
+          <input type="text" id="pcChecker" value="${esc(r.nip_checker || "")}" maxlength="20"></div>
+
+        <div class="ed-f"><label>NIP approver</label>
+          <input type="text" id="pcApprover" value="${esc(r.nip_approver || "")}" maxlength="20"></div>
+        <div class="ed-f"></div>
+
+        <div class="ed-f full"><label>Catatan</label>
+          <textarea id="pcCatatan">${esc(r.catatan || "")}</textarea></div>
+      </div>
+    </div>
+    <div class="ed-ft">
+      <span class="ed-err" id="pcErr"></span>
+      <button class="btn" id="pcBatal" type="button">Batal</button>
+      <button class="btn primary" id="pcSimpan" type="button">Simpan</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+
+  /* Pratinjau memakai aturan yang SAMA dengan _HARI_TERLAMBAT_PC di
+     analytics.py, termasuk syarat Data TBO harus terisi. Kalau aturan di
+     sana berubah, ubah juga di sini. */
+  const adaTbo = s => {
+    const t = (s || "").trim().toLowerCase();
+    return !!t && !/^(tidak\s*ada|tdk\s*ada|tidak\s*ad|-)$/.test(t);
+  };
+  const hitungLate = () => {
+    const t = $("pcTarget").value, st = $("pcStatus").value, el = $("pcLate");
+    if (!t || st !== "Outstanding" || !adaTbo($("pcDataTbo").value)) {
+      el.textContent = "—"; el.className = "ed-ro"; return;
+    }
+    const hari = Math.max(0, Math.round(
+      (new Date().setHours(0,0,0,0) - new Date(t + "T00:00:00").getTime()) / 86400000));
+    el.textContent = hari + " hari";
+    el.className = "ed-ro ed-late" + (hari > 0 ? " on" : "");
+  };
+  ["pcTarget","pcStatus","pcDataTbo"].forEach(i => { $(i).onchange = hitungLate; });
+  hitungLate();
+
+  const tutup = () => bg.remove();
+  $("pcX").onclick = tutup;
+  $("pcBatal").onclick = tutup;
+  bg.onclick = e => { if (e.target === bg) tutup(); };
+  document.addEventListener("keydown", function esc3(e) {
+    if (e.key === "Escape") { tutup(); document.removeEventListener("keydown", esc3); }
+  });
+
+  $("pcSimpan").onclick = async () => {
+    const b = {
+      target_pemenuhan_tbo: $("pcTarget").value || null,
+      tgl_tbo_lengkap:      $("pcLengkap").value || null,
+      status_tbo:           $("pcStatus").value,
+      data_tbo:             $("pcDataTbo").value.trim() || null,
+      no_deposito:          $("pcDeposito").value.trim() || null,
+      tenor_hari:           $("pcTenor").value.trim() || null,
+      tgl_penempatan:       $("pcTempat").value || null,
+      tgl_bilyet:           $("pcBilyet").value || null,
+      nominal:              $("pcNominal").value.trim() || null,
+      arus_dana:            $("pcArus").value,
+      jenis_pencairan:      $("pcJPen").value.trim() || null,
+      jenis_penarikan:      $("pcJTar").value.trim() || null,
+      nip_maker:            $("pcMaker").value.trim() || null,
+      nip_checker:          $("pcChecker").value.trim() || null,
+      nip_approver:         $("pcApprover").value.trim() || null,
+      catatan:              $("pcCatatan").value.trim() || null,
+    };
+    $("pcSimpan").disabled = true;
+    $("pcErr").textContent = "";
+    const r2 = await authFetch("/api/branchops/pencairan/" + id, {
+      method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(b)});
+    if (!r2.ok) {
+      const j = await r2.json().catch(() => ({}));
+      $("pcErr").textContent = j.error || "Gagal menyimpan";
+      $("pcSimpan").disabled = false;
+      return;
+    }
+    tutup();
+    sesudah();
+  };
+};
 
 /* ================================================================== */
 /* DASHBOARD 3 - Pembukaan rekening TBO                                */
@@ -665,6 +959,12 @@ function renderTBO() {
       `${fmt(k.lengkap)} sudah dilengkapi dari ${fmt(k.dengan_tbo)} ber-TBO`, true)}
     ${kpi("c-warn","Aging rata-rata", fmt(Math.round(N(k.aging_rata))) + " hari",
       `Terlama ${fmt(k.aging_max)} hari<br>Dihitung dari tanggal input sampai hari ini`, true)}
+    ${kpi(N(k.terlambat) ? "c-bad" : "c-ok", "Lewat target TBO", fmt(k.terlambat),
+      N(k.ada_target)
+        ? `Rata-rata ${fmt(k.terlambat_rata)} hari · terlama ${fmt(k.terlambat_max)} hari<br>
+           Dari ${fmt(k.ada_target)} rekening yang punya target pemenuhan`
+        : `<b style="color:var(--tx2)">Belum ada Target Pemenuhan TBO yang diisi</b><br>
+           Isi lewat kolom paling kanan berkas unggahan, atau tombol Ubah di tabel`, true)}
   </div>
 
   <h2>Aging dokumen TBO</h2>
@@ -672,27 +972,42 @@ function renderTBO() {
     ${card("Umur TBO yang masih outstanding","Semakin ke kanan semakin lama menggantung. Ini alasan utama dashboard ini ada.","cAging")}
     ${card("Komposisi jenis produk","Diturunkan dari kolom keterangan yang formatnya masih bebas.","cProduk")}
   </div>
-
-  <h2>Per cabang</h2>
-  <div class="card">
-    <div class="h-note">Jumlah rekening dan TBO yang masih outstanding.</div>
-    <div id="cabList"></div>
-  </div>
-
-  <h2>Rincian pembukaan rekening</h2>
-  <div class="grid g2">
-    <div class="card" style="padding:14px 16px"><h3>Menurut jenis dokumen TBO</h3>
-      <div class="h-note">Kategori diturunkan dari teks bebas kolom dokumen. Setoran valas dihitung Rp 0. Mengikuti filter.</div>
-      <div id="tboDoc"></div></div>
-    <div class="card" style="padding:14px 16px"><h3>Menurut jenis rekening</h3>
-      <div class="h-note">Perorangan vs perusahaan, per cabang.</div>
-      <div id="tboJenis"></div></div>
-  </div>
   <div class="card" style="margin-top:14px"><h3>Perlu ditindaklanjuti</h3>
     <div id="tboFindings"></div></div>
 
-  <h2>Detail rekening ${window.ROLE !== "viewer" ? '<span class="sub" style="text-transform:none;font-weight:400">— tandai TBO selesai lewat tombol di kolom terakhir</span>' : ""}</h2>
-  ${tabel(["Cabang","Tgl input","Nasabah","No rekening","Nominal","Produk","Tipe","Dokumen TBO","Aging","Status","Aksi"])}`;
+  <h2>Detail rekening ${window.ROLE !== "viewer" ? '<span class="sub" style="text-transform:none;font-weight:400">— tandai selesai atau ubah rincian lewat kolom terakhir</span>' : ""}</h2>
+  ${tabel(["Cabang","Tgl input","Nasabah","No rekening","Nominal","Produk","Tipe","Dokumen TBO","Aging","Target TBO","Terlambat","Status","Aksi"])}
+
+  <!-- Dua bagian di bawah tertutup saat halaman dibuka.
+       Memakai <details>/<summary> bawaan peramban, bukan JavaScript:
+       tidak perlu penanganan klik, ikut bekerja dengan papan ketik dan
+       pembaca layar, dan isinya TETAP ADA di DOM meski tertutup - itu
+       penting, karena kode di bawah mengisi #cabList, #tboDoc dan
+       #tboJenis lewat innerHTML segera setelah ini digambar.
+       Tidak ada grafik Chart.js di dalamnya; kalau nanti ditambahkan,
+       grafik harus digambar ulang saat dibuka, sebab kanvas berukuran
+       nol selama tersembunyi. -->
+  <details class="sect">
+    <summary><span class="sect-t">Per cabang</span>
+      <span class="sect-n">Jumlah rekening dan TBO outstanding tiap cabang</span></summary>
+    <div class="card" style="margin-top:10px">
+      <div class="h-note">Jumlah rekening dan TBO yang masih outstanding.</div>
+      <div id="cabList"></div>
+    </div>
+  </details>
+
+  <details class="sect">
+    <summary><span class="sect-t">Rincian pembukaan rekening</span>
+      <span class="sect-n">Menurut jenis dokumen TBO dan jenis rekening</span></summary>
+    <div class="grid g2" style="margin-top:10px">
+      <div class="card" style="padding:14px 16px"><h3>Menurut jenis dokumen TBO</h3>
+        <div class="h-note">Kategori diturunkan dari teks bebas kolom dokumen. Setoran valas dihitung Rp 0. Mengikuti filter.</div>
+        <div id="tboDoc"></div></div>
+      <div class="card" style="padding:14px 16px"><h3>Menurut jenis rekening</h3>
+        <div class="h-note">Perorangan vs perusahaan, per cabang.</div>
+        <div id="tboJenis"></div></div>
+    </div>
+  </details>`;
 
   draw("cAging", {type:"bar",
     data:{labels: DATA.aging.map(a => a.bucket),
@@ -739,15 +1054,31 @@ function renderTBO() {
     : '<div class="muted" style="padding:8px 0">Tidak ada temuan menonjol pada filter ini.</div>';
 
   const ST = {"Outstanding":"t-bad","Lengkap":"t-ok","Dikecualikan":"t-grey"};
-  CSV = [["Cabang","Kode","Tgl input","Nasabah","No rekening","Nominal","Mata uang","Produk","Tipe","Dokumen TBO","Aging","Status TBO"]];
+  CSV = [["Cabang","Kode","Tgl input","Nasabah","No rekening","Nominal","Mata uang","Produk","Tipe","Dokumen TBO","Aging","Target Pemenuhan TBO","Jumlah Hari Terlambat","Status TBO"]];
+  /* Baris disimpan supaya layar edit bisa mengisi formulir tanpa memanggil
+     server lagi. Isinya sudah tersamar (nama nasabah "***") karena datang
+     lewat _out() di backend — jadi menyimpannya di sini tidak membocorkan
+     apa pun yang tidak sudah tampil di layar. */
+  TBO_ROWS = {};
   $("tb").innerHTML = rows.map(r => {
+    TBO_ROWS[r.id] = r;
     CSV.push([r.branch_name, r.branch_code, tgl(r.tgl_input), r.nama_pemilik, r.no_rekening,
-      N(r.nominal), r.mata_uang, r.jenis_produk, r.tipe_pembukaan, r.dokumen_tbo, r.aging, r.status_tbo]);
-    const aksi = (window.ROLE !== "viewer" && r.ada_tbo)
+      N(r.nominal), r.mata_uang, r.jenis_produk, r.tipe_pembukaan, r.dokumen_tbo, r.aging,
+      tgl(r.target_pemenuhan_tbo), r.hari_terlambat, r.status_tbo]);
+    const bolehUbah = window.ROLE === "admin" || window.ROLE === "editor";
+    const tandai = (bolehUbah && r.ada_tbo)
       ? (r.status_tbo === "Outstanding"
           ? `<button class="btn sm primary" onclick="tbo(${r.id},'Lengkap')">Tandai lengkap</button>`
           : `<button class="btn sm" onclick="tbo(${r.id},'Outstanding')">Buka lagi</button>`)
+      : "";
+    const ubah = bolehUbah
+      ? `<button class="btn sm" onclick="tboEdit(${r.id})">Ubah</button>` : "";
+    const aksi = (tandai || ubah)
+      ? `<div style="display:flex;gap:5px;flex-wrap:wrap">${tandai}${ubah}</div>`
       : '<span class="muted">—</span>';
+    /* hari_terlambat null = tidak ada target, atau TBO sudah selesai.
+       Sengaja "—", bukan 0: nol berarti "tepat waktu", bukan "tak berlaku". */
+    const lt = r.hari_terlambat;
     return `<tr>
       <td>${esc(r.branch_name)}</td>
       <td class="muted">${tgl(r.tgl_input)}</td>
@@ -758,15 +1089,203 @@ function renderTBO() {
       <td class="muted" style="font-size:11.5px">${r.tipe_pembukaan==="Baru"?"Baru":'<span class="fl">Penempatan kembali</span>'}</td>
       <td class="muted" style="font-size:11.5px;max-width:190px;word-break:break-word">${esc(r.dokumen_tbo||"—")}</td>
       <td class="num ${r.aging>14?"":"muted"}">${r.aging==null?"—":r.aging+" h"}</td>
+      <td class="muted" style="font-size:11.5px">${r.target_pemenuhan_tbo?tgl(r.target_pemenuhan_tbo):"—"}</td>
+      <td class="num ${lt>0?"":"muted"}">${lt==null?"—":(lt>0?`<span class="ed-late on">${lt} h</span>`:"0 h")}</td>
       <td><span class="tag ${ST[r.status_tbo]}">${r.status_tbo}</span>
         ${r.tgl_tbo_lengkap?`<div class="muted" style="font-size:10.5px">${tgl(r.tgl_tbo_lengkap)}</div>`:""}</td>
       <td>${aksi}</td>
     </tr>`;
-  }).join("") || emptyRow(11);
+  }).join("") || emptyRow(13);
 }
 
 window.tbo = async (id, status) => {
   if (await patch("/api/branchops/tbo/" + id, {status_tbo: status})) load();
+};
+
+/* ================================================================== */
+/* Layar Edit TBO (Agustus 2026)                                       */
+/*                                                                     */
+/* Enam kolom sengaja hanya bisa dibaca: Kode Cabang, Tanggal Input,    */
+/* No. CIF, No. Rekening, Nama Pemilik, Tanggal Penempatan. Keenamnya   */
+/* identitas baris — kalau bisa diubah, satu baris bisa berpindah       */
+/* cabang atau berganti nasabah dan rekonsiliasi kehilangan dasarnya.   */
+/*                                                                     */
+/* Penjagaan sebenarnya ada di BACKEND (daftar putih _TBO_EDITABLE di   */
+/* __init__.py). Yang di sini hanya tampilan — jangan pernah            */
+/* mengandalkannya sebagai kendali akses.                              */
+/* ================================================================== */
+let TBO_ROWS = {};
+
+/* Ambil satu baris utuh dari server.
+   Daftar di Beranda menggabungkan dua tabel, jadi hanya membawa kolom
+   yang sama-sama ada di keduanya — tidak cukup untuk mengisi formulir.
+   Dari dashboard, baris sudah lengkap di cache dan fungsi ini dilewati. */
+async function ambilSatu(jenis, id) {
+  const r = await authFetch(`/api/branchops/${jenis}/${id}`);
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    alert(j.error || "Gagal memuat baris");
+    return null;
+  }
+  return await r.json();
+}
+
+/* sesudah = apa yang dijalankan setelah simpan berhasil. Dari dashboard
+   itu load(); dari Beranda renderHome(). Tanpa parameter ini, menyimpan
+   dari Beranda akan memanggil load() dan menggambar ulang dashboard yang
+   sedang tidak terbuka. */
+window.tboEdit = async (id, sesudah) => {
+  const r = TBO_ROWS[id] || await ambilSatu("tbo", id);
+  if (!r) return;
+  sesudah = sesudah || load;
+
+  const d  = v => v ? String(v).slice(0,10) : "";
+  const ro = v => `<div class="ed-ro">${esc(v == null || v === "" ? "—" : v)}</div>`;
+  const opt = (nilai, kini) => nilai.map(v =>
+    `<option value="${esc(v)}"${v === kini ? " selected" : ""}>${esc(v)}</option>`).join("");
+
+  const bg = document.createElement("div");
+  bg.className = "ed-bg";
+  bg.innerHTML = `<div class="ed-box" role="dialog" aria-modal="true" aria-label="Ubah data TBO">
+    <div class="ed-hd">
+      <div>
+        <h3>Ubah data TBO</h3>
+        <div class="muted" style="font-size:11.5px">
+          ${esc(r.branch_name || "")} · ${esc(r.no_rekening || "")}
+        </div>
+      </div>
+      <button class="btn sm" id="edX" type="button">Tutup</button>
+    </div>
+    <div class="ed-bd">
+      <div class="ed-grid">
+        <div class="ed-f"><label>Kode cabang <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(r.branch_code)}</div>
+        <div class="ed-f"><label>Tanggal input data <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(tgl(r.tgl_input))}</div>
+        <div class="ed-f"><label>No. CIF <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(r.no_cif)}</div>
+        <div class="ed-f"><label>No. rekening <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(r.no_rekening)}</div>
+        <div class="ed-f"><label>Nama pemilik <span class="ed-lock">— tersamar, tidak bisa diubah</span></label>
+          ${ro(r.nama_pemilik)}</div>
+        <div class="ed-f"><label>Tanggal penempatan <span class="ed-lock">— tidak bisa diubah</span></label>
+          ${ro(tgl(r.tgl_penempatan))}</div>
+
+        <div class="ed-f full"><hr style="border:0;border-top:1px solid var(--line,#e2e8f0);margin:4px 0"></div>
+
+        <div class="ed-f"><label>Target pemenuhan TBO</label>
+          <input type="date" id="edTarget" value="${d(r.target_pemenuhan_tbo)}"></div>
+        <div class="ed-f"><label>Jumlah hari terlambat <span class="ed-lock">— dihitung otomatis</span></label>
+          <div class="ed-ro" id="edLate">—</div></div>
+
+        <div class="ed-f"><label>Tanggal jatuh tempo</label>
+          <input type="date" id="edJT" value="${d(r.tgl_jatuh_tempo)}"></div>
+        <div class="ed-f"><label>Status TBO</label>
+          <select id="edStatus">${opt(["Outstanding","Lengkap","Dikecualikan"], r.status_tbo)}</select></div>
+
+        <div class="ed-f"><label>Tanggal TBO lengkap</label>
+          <input type="date" id="edLengkap" value="${d(r.tgl_tbo_lengkap)}"></div>
+        <div class="ed-f"><label>Tipe pembukaan</label>
+          <select id="edTipe">${opt(["Baru","Penempatan Kembali"], r.tipe_pembukaan)}</select></div>
+
+        <div class="ed-f"><label>Nominal</label>
+          <input type="text" id="edNominal" value="${esc(r.nominal == null ? "" : r.nominal)}"></div>
+        <div class="ed-f"><label>Mata uang</label>
+          <input type="text" id="edMata" value="${esc(r.mata_uang || "")}" maxlength="8"></div>
+
+        <div class="ed-f"><label>Jenis rekening</label>
+          <input type="text" id="edJRek" value="${esc(r.jenis_rekening || "")}" maxlength="60"></div>
+        <div class="ed-f"><label>Jenis setoran</label>
+          <input type="text" id="edJSet" value="${esc(r.jenis_setoran || "")}" maxlength="60"></div>
+
+        <div class="ed-f"><label>Jenis produk</label>
+          <input type="text" id="edProduk" value="${esc(r.jenis_produk || "")}" maxlength="60"></div>
+        <div class="ed-f"><label>Ada dokumen TBO</label>
+          <select id="edAda">${opt(["Ya","Tidak"], r.ada_tbo ? "Ya" : "Tidak")}</select></div>
+
+        <div class="ed-f"><label>NIP maker</label>
+          <input type="text" id="edMaker" value="${esc(r.nip_maker || "")}" maxlength="20"></div>
+        <div class="ed-f"><label>NIP checker</label>
+          <input type="text" id="edChecker" value="${esc(r.nip_checker || "")}" maxlength="20"></div>
+
+        <div class="ed-f"><label>NIP approver</label>
+          <input type="text" id="edApprover" value="${esc(r.nip_approver || "")}" maxlength="20"></div>
+        <div class="ed-f"></div>
+
+        <div class="ed-f full"><label>Dokumen TBO</label>
+          <textarea id="edDok">${esc(r.dokumen_tbo || "")}</textarea></div>
+        <div class="ed-f full"><label>Keterangan</label>
+          <textarea id="edKet">${esc(r.keterangan || "")}</textarea></div>
+      </div>
+    </div>
+    <div class="ed-ft">
+      <span class="ed-err" id="edErr"></span>
+      <button class="btn" id="edBatal" type="button">Batal</button>
+      <button class="btn primary" id="edSimpan" type="button">Simpan</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+
+  /* Pratinjau hari terlambat, memakai aturan yang SAMA dengan backend:
+     tidak ada target -> "—"; status bukan Outstanding -> "—";
+     target belum lewat -> 0. Kalau aturan di analytics.py berubah,
+     ubah juga di sini, atau angka pratinjau akan berbohong. */
+  const hitungLate = () => {
+    const t = $("edTarget").value, st = $("edStatus").value, el = $("edLate");
+    if (!t || st !== "Outstanding") {
+      el.textContent = "—";
+      el.classList.remove("ed-late","on");
+      return;
+    }
+    const hari = Math.max(0, Math.round(
+      (new Date().setHours(0,0,0,0) - new Date(t + "T00:00:00").getTime()) / 86400000));
+    el.textContent = hari + " hari";
+    el.className = "ed-ro ed-late" + (hari > 0 ? " on" : "");
+  };
+  $("edTarget").onchange = hitungLate;
+  $("edStatus").onchange = hitungLate;
+  hitungLate();
+
+  const tutup = () => bg.remove();
+  $("edX").onclick = tutup;
+  $("edBatal").onclick = tutup;
+  bg.onclick = e => { if (e.target === bg) tutup(); };
+  document.addEventListener("keydown", function esc2(e) {
+    if (e.key === "Escape") { tutup(); document.removeEventListener("keydown", esc2); }
+  });
+
+  $("edSimpan").onclick = async () => {
+    const b = {
+      target_pemenuhan_tbo: $("edTarget").value || null,
+      tgl_jatuh_tempo:      $("edJT").value || null,
+      tgl_tbo_lengkap:      $("edLengkap").value || null,
+      status_tbo:           $("edStatus").value,
+      tipe_pembukaan:       $("edTipe").value,
+      nominal:              $("edNominal").value.trim() || null,
+      mata_uang:            $("edMata").value.trim() || null,
+      jenis_rekening:       $("edJRek").value.trim() || null,
+      jenis_setoran:        $("edJSet").value.trim() || null,
+      jenis_produk:         $("edProduk").value.trim() || null,
+      ada_tbo:              $("edAda").value === "Ya",
+      nip_maker:            $("edMaker").value.trim() || null,
+      nip_checker:          $("edChecker").value.trim() || null,
+      nip_approver:         $("edApprover").value.trim() || null,
+      dokumen_tbo:          $("edDok").value.trim() || null,
+      keterangan:           $("edKet").value.trim() || null,
+    };
+    $("edSimpan").disabled = true;
+    $("edErr").textContent = "";
+    const r2 = await authFetch("/api/branchops/tbo/" + id, {
+      method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(b)});
+    if (!r2.ok) {
+      const j = await r2.json().catch(() => ({}));
+      $("edErr").textContent = j.error || "Gagal menyimpan";
+      $("edSimpan").disabled = false;
+      return;
+    }
+    tutup();
+    sesudah();
+  };
 };
 
 /* ================================================================== */
@@ -992,13 +1511,27 @@ async function patch(url, body) {
 /* ------------------------------------------------------------------ */
 /* kendali halaman                                                     */
 /* ------------------------------------------------------------------ */
-["fA","fB","fCab","fTipe","fStatus"].forEach(id => { const e = $(id); if (e) e.onchange = load; });
+["fCab","fTipe","fStatus"].forEach(id => { const e = $(id); if (e) e.onchange = load; });
+/* Tanggal ditangani terpisah: pilihannya diingat per dashboard dulu,
+   baru memuat ulang. */
+["fA","fB"].forEach(id => {
+  const e = $(id);
+  if (e) e.onchange = () => {
+    PERIODE_PILIHAN[window.DASH] = {a: $("fA").value, b: $("fB").value};
+    load();
+  };
+});
 if ($("bDup")) $("bDup").onclick = e => {
   DUP = !DUP; e.target.classList.toggle("on", !DUP);
   e.target.textContent = DUP ? "Duplikat disertakan" : "Duplikat dikecualikan"; load();
 };
 $("bReset").onclick = () => {
   ["fCab","fTipe","fStatus"].forEach(id => { if ($(id)) $(id).value = ""; });
+  /* Reset juga mengembalikan tanggal ke rentang penuh dashboard ini.
+     Sebelumnya tanggal dibiarkan, jadi "Reset" tidak benar-benar
+     mengembalikan tampilan ke keadaan awal. */
+  delete PERIODE_PILIHAN[window.DASH];
+  setPeriodeDefault(true);
   DUP = false;
   if ($("bDup")) { $("bDup").classList.add("on"); $("bDup").textContent = "Duplikat dikecualikan"; }
   load();
@@ -1038,6 +1571,34 @@ async function dlCsv(bid){
 }
 const J = (u, m, b) => authFetch(u, { method: m,
   headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+
+/* ---- rentang tanggal bawaan, per dashboard --------------------------
+   window.DASH: 1 = Break Deposito, 2 = Pencairan, 3 = TBO, 4 = Rekonsiliasi.
+   Nama jenis harus sama dengan kunci _KOLOM_TGL di analytics.py.        */
+let PERIODE = {};
+const JENIS_DASH = {1: "it_break", 2: "pencairan", 3: "tbo", 4: "rekon"};
+
+/* Tanggal yang DIPILIH SENDIRI pengguna, disimpan per dashboard. Tanpa ini,
+   berpindah tab lalu kembali akan membuang penyempitan tanggal yang baru
+   saja diketik — terasa seperti aplikasi melawan. */
+const PERIODE_PILIHAN = {};
+
+function setPeriodeDefault(paksa) {
+  if (!$("fA")) return;
+  const d = window.DASH;
+  if (!paksa && PERIODE_PILIHAN[d]) {          // pilihan pengguna menang
+    $("fA").value = PERIODE_PILIHAN[d].a;
+    $("fB").value = PERIODE_PILIHAN[d].b;
+    return;
+  }
+  const per = (PERIODE.per_jenis || {})[JENIS_DASH[d]];
+  /* Kalau dashboard ini memang belum punya data, per.awal null. Jangan
+     jatuh ke rentang global — itu justru mengembalikan masalah 1984.
+     Dikosongkan saja: penyaring kosong berarti "semua tanggal". */
+  const r = per || (PERIODE.per_jenis ? null : PERIODE);
+  $("fA").value = r && r.awal ? tgl(r.awal) : "";
+  $("fB").value = r && r.akhir ? tgl(r.akhir) : "";
+}
 const JENIS_LABEL = { it_break: "Break IT", pencairan: "Pencairan", tbo: "TBO" };
 const ST_BATCH = { committed: "t-ok", draft: "t-warn", dibatalkan: "t-grey" };
 const dtfmt = s => s ? String(s).replace("T", " ").slice(0, 16) : "—";
@@ -1071,20 +1632,129 @@ async function renderHome(){
     <a class="m4" href="#" onclick="switchTab('d4');return false"><div class="mt">Rekonsiliasi IT vs Cabang</div>
       <div class="md">Break tak dilaporkan cabang dan selisih nominal antar sumber.</div>
       <div class="mn">${fmt(h.rekon_bermasalah || 0)} butir perlu ditinjau</div></a></div>`;
-  const rows = d.batch || [];
-  html += `<h2>Unggahan terakhir</h2><div class="card" style="padding:14px 16px">`;
-  html += rows.length ? `<div class="tbl-wrap" style="max-height:none;margin-top:0"><table><thead><tr>
-    <th>#</th><th>Jenis</th><th>Berkas</th><th>Periode</th><th class="num">Baris</th>
-    <th class="num">Ditolak</th><th>Status</th><th>Oleh</th><th>Waktu</th></tr></thead><tbody>` +
-    rows.map(b => `<tr><td class="muted">${b.id}</td><td>${JENIS_LABEL[b.jenis] || b.jenis}</td>
-      <td>${esc(b.nama_file)}</td><td class="muted">${tgl(b.periode_awal)} … ${tgl(b.periode_akhir)}</td>
-      <td class="num">${b.baris_total}</td><td class="num ${b.baris_ditolak ? "" : "muted"}">${b.baris_ditolak}</td>
-      <td><span class="tag ${ST_BATCH[b.status]}">${b.status}</span></td>
-      <td class="muted">${esc(b.oleh || "—")}</td><td class="muted">${dtfmt(b.uploaded_at)}</td></tr>`).join("")
-    + `</tbody></table></div>` : `<div class="muted" style="padding:10px 0">Belum ada unggahan.</div>`;
-  html += `</div>`;
+  /* ---- TBO yang masih terbuka -------------------------------------- *
+   * Menggantikan daftar "Unggahan terakhir" (Agustus 2026). Riwayat
+   * berkas sudah ada di tab Unggah; yang perlu terlihat begitu dashboard
+   * dibuka adalah pekerjaan yang belum selesai.
+   *
+   * Nama nasabah di sini sudah "***" — datang lewat _out() di backend,
+   * sama seperti di Dashboard 3. Jangan pernah menambah kolom nama dari
+   * sumber lain di layar ini.                                          */
+  const t  = d.tbo_terbuka || {};
+  const tk = t.kpi || {};
+  const tr = t.rows || [];
+  const nTerbuka = N(tk.total) || 0;
+  const nLewat   = N(tk.lewat_target) || 0;
+  /* Kedua tombol menulis ke basis data, jadi peran viewer tidak
+     mendapatkannya. Ini hanya tampilan — backend tetap menolak sendiri
+     lewat @require("admin","editor"). */
+  const bolehUbah = window.ROLE === "admin" || window.ROLE === "editor";
+
+  html += `<h2>TBO yang masih terbuka</h2>`;
+
+  if (!nTerbuka) {
+    html += `<div class="banner b-ok"><b>Tidak ada TBO yang masih menggantung.</b>
+      Baik pembukaan rekening maupun pencairan ber-TBO sudah berstatus
+      Lengkap atau Dikecualikan.</div>`;
+  } else {
+    /* Warna banner mengikuti ada-tidaknya yang LEWAT TARGET, bukan sekadar
+       ada-tidaknya yang terbuka. TBO terbuka yang belum jatuh tempo adalah
+       keadaan normal, bukan sesuatu yang perlu dibunyikan merah. */
+    const kelas = nLewat ? "b-bad" : "b-warn";
+    html += `<div class="banner ${kelas}">
+      <b>${fmt(nTerbuka)} TBO masih outstanding</b>
+      di ${fmt(tk.cabang || 0)} cabang, senilai ${rpS(N(tk.rp))}.
+      <br><span class="muted">${fmt(tk.dari_tbo || 0)} dari pembukaan rekening ·
+      ${fmt(tk.dari_pencairan || 0)} dari pencairan deposito</span>
+      ${nLewat
+        ? `<br><b>${fmt(nLewat)} di antaranya sudah lewat Target Pemenuhan TBO</b>
+           — paling lama ${fmt(tk.terlambat_max)} hari.`
+        : `<br>Belum ada yang lewat Target Pemenuhan TBO.`}
+      ${N(tk.tanpa_target)
+        ? `<br><span class="muted">${fmt(tk.tanpa_target)} belum punya Target Pemenuhan TBO,
+           jadi keterlambatannya tidak bisa dihitung.</span>`
+        : ""}
+    </div>`;
+
+    html += `<div class="card" style="padding:14px 16px">
+      <h3>Seluruh TBO yang masih terbuka</h3>
+      <div class="h-note">Dua sumber digabung: pembukaan rekening ber-TBO dan pencairan
+        yang membawa Data TBO. Diurutkan dari yang paling lama lewat target; yang belum
+        punya target menyusul, dari yang paling lama menggantung.</div>
+      <div class="tbl-wrap" style="max-height:none;margin-top:8px"><table><thead><tr>
+        <th>Sumber</th><th>Cabang</th><th>Tgl input</th><th>Nasabah</th><th>No rekening</th>
+        <th class="num">Nominal</th><th>Dokumen TBO</th><th>Target</th>
+        <th class="num">Terlambat</th><th class="num">Aging</th>
+        ${bolehUbah ? "<th>Aksi</th>" : ""}</tr></thead><tbody>`
+      + tr.map(r => {
+          const lt = r.hari_terlambat;
+          /* sumber menentukan endpoint mana yang dipanggil. id 7 dari
+             branchops_tbo dan id 7 dari branchops_pencairan adalah dua
+             baris berbeda — tanpa sumber, tombol akan menyunting yang salah. */
+          const src = r.sumber === "pencairan"
+            ? '<span class="tag t-roll">Pencairan</span>'
+            : '<span class="tag t-acc">Pembukaan</span>';
+          const aksi = bolehUbah ? `<td><div style="display:flex;gap:5px;flex-wrap:wrap">
+              <button class="btn sm primary" onclick="homeLengkap('${r.sumber}',${r.id})">Tandai lengkap</button>
+              <button class="btn sm" onclick="homeUbah('${r.sumber}',${r.id})">Ubah</button>
+            </div></td>` : "";
+          return `<tr>
+            <td>${src}</td>
+            <td>${esc(r.branch_name || r.branch_code || "—")}</td>
+            <td class="muted">${tgl(r.tgl_input)}</td>
+            <td>${esc((r.nama_pemilik || "—").slice(0, 26))}</td>
+            <td class="muted" style="font-size:11.5px">${esc(r.no_rekening || "—")}</td>
+            <td class="num">${fmt(N(r.nominal))}${r.mata_uang !== "IDR" ? ` <span class="fl">${esc(r.mata_uang)}</span>` : ""}</td>
+            <td class="muted" style="font-size:11.5px;max-width:190px;word-break:break-word">${esc(r.dokumen || "—")}</td>
+            <td class="muted" style="font-size:11.5px">${r.target_pemenuhan_tbo ? tgl(r.target_pemenuhan_tbo) : '<span class="fl">belum diisi</span>'}</td>
+            <td class="num ${lt > 0 ? "" : "muted"}">${lt == null ? "—" : (lt > 0 ? `<span class="ed-late on">${lt} h</span>` : "0 h")}</td>
+            <td class="num ${r.aging > 14 ? "" : "muted"}">${r.aging == null ? "—" : r.aging + " h"}</td>
+            ${aksi}
+          </tr>`;
+        }).join("")
+      + `</tbody></table></div>`;
+    if (nTerbuka > tr.length) {
+      html += `<div class="banner b-warn" style="margin:10px 0 0">
+        Menampilkan ${fmt(tr.length)} baris teratas dari ${fmt(nTerbuka)}.
+        Sisanya dipotong agar halaman tetap bisa dibuka — persempit lewat
+        dashboard <a href="#" onclick="switchTab('d3');return false">TBO</a> atau
+        <a href="#" onclick="switchTab('d2');return false">Pencairan</a>.</div>`;
+    }
+    html += `</div>`;
+  }
   el.innerHTML = html;
 }
+
+/* ---- tindakan dari Beranda ----------------------------------------- *
+ * Keduanya memakai endpoint yang SAMA dengan tombol di dashboard, jadi
+ * pemeriksaan peran, jatah cabang dan jejak audit berlaku persis sama.
+ * Tidak ada jalur khusus Beranda yang bisa melewatkan salah satunya.   */
+window.homeUbah = (sumber, id) => {
+  /* renderHome sebagai callback: setelah simpan, gambar ulang Beranda,
+     bukan dashboard yang sedang tidak terbuka. */
+  if (sumber === "pencairan") pcEdit(id, renderHome);
+  else tboEdit(id, renderHome);
+};
+
+window.homeLengkap = async (sumber, id) => {
+  if (!confirm("Tandai TBO ini sebagai Lengkap?\n\n"
+             + "Tanggal TBO lengkap diisi hari ini. Bisa dibuka lagi lewat layar Ubah.")) return;
+
+  /* Dua tabel, dua endpoint, dua kata kerja — tapi keduanya sudah
+     menyetel tgl_tbo_lengkap sendiri saat status menjadi Lengkap, jadi
+     tanggalnya tidak perlu dikirim dari sini. */
+  const ok = sumber === "pencairan"
+    ? await (async () => {
+        const r = await authFetch("/api/branchops/pencairan/" + id, {
+          method: "PUT", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({status_tbo: "Lengkap"})});
+        if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.error || "Gagal menyimpan"); }
+        return r.ok;
+      })()
+    : await patch("/api/branchops/tbo/" + id, {status_tbo: "Lengkap"});
+
+  if (ok) renderHome();
+};
 
 /* ================= UNGGAH ================= */
 async function renderUpload(){
@@ -1141,7 +1811,7 @@ async function renderUpload(){
   <div class="card" style="padding:14px 16px"><div class="tbl-wrap" style="max-height:420px;margin-top:0">
   <table><thead><tr><th>#</th><th>Jenis</th><th>Berkas</th><th class="num">Baris</th>
     <th class="num">Ditolak</th><th class="num">Peringatan</th><th>Status</th><th>Oleh</th><th>Aksi</th></tr></thead>
-  <tbody>` + (d.batches || []).map(b => `<tr>
+  <tbody>` + (window.BATCHES = d.batches || []).map(b => `<tr>
     <td class="muted">${b.id}</td><td>${JENIS_LABEL[b.jenis] || b.jenis}</td>
     <td style="max-width:260px;word-break:break-word">${esc(b.nama_file)}</td>
     <td class="num">${b.baris_total}</td>
@@ -1150,8 +1820,15 @@ async function renderUpload(){
     <td><span class="tag ${ST_BATCH[b.status]}">${b.status}</span></td>
     <td class="muted">${esc(b.oleh || "—")}</td>
     <td style="white-space:nowrap"><button class="btn sm" onclick="dlCsv(${b.id})">Catatan</button>
+      ${/* Sebelum Agustus 2026 tombol ini HANYA muncul untuk status draft,
+            sehingga batch committed yang isinya keliru tidak bisa ditarik
+            lewat aplikasi sama sekali - satu-satunya jalan adalah SQL
+            langsung. Endpoint /batal sendiri tidak pernah membatasi
+            status; yang membatasi hanya baris ini. */""}
       ${b.status === "draft" ? `<button class="btn sm primary" onclick="boCommit(${b.id})">Komit</button>
-      <button class="btn sm danger" onclick="boBatal(${b.id})">Batal</button>` : ""}</td>
+      <button class="btn sm danger" onclick="boBatal(${b.id})">Batal</button>` : ""}
+      ${b.status === "committed" ? `<button class="btn sm danger" onclick="boBatal(${b.id})">Batal</button>` : ""}
+      ${b.status === "dibatalkan" ? `<button class="btn sm" onclick="boCommit(${b.id})">Komit lagi</button>` : ""}</td>
   </tr>`).join("") + `</tbody></table></div></div>`;
 
   $("drop").onclick = () => $("file").click();
@@ -1212,8 +1889,26 @@ window.boCommit = async id => {
   renderUpload();
 };
 window.boBatal = async id => {
-  if (!confirm("Batalkan batch #" + id + "?")) return;
-  await authFetch("/api/branchops/batch/" + id + "/batal", { method: "POST" });
+  /* Membatalkan batch COMMITTED punya akibat yang jauh lebih besar daripada
+     membatalkan draft: barisnya langsung hilang dari keempat dashboard,
+     karena setiap query menyaring status='committed'. Pesannya dibedakan
+     supaya orang tidak menekannya sambil mengira sedang membuang draft. */
+  const b = (window.BATCHES || []).find(x => String(x.id) === String(id));
+  const committed = b && b.status === "committed";
+  const pesan = committed
+    ? `Batalkan batch #${id} yang sudah DIKOMIT?\n\n`
+      + `${b.baris_total} baris akan hilang dari seluruh dashboard dan dari rentang tanggal.\n`
+      + `Datanya TIDAK dihapus — status berubah jadi "dibatalkan" dan bisa dikomit lagi.\n\n`
+      + `Rekonsiliasi dijalankan ulang setelah ini.`
+    : `Batalkan batch #${id}?`;
+  if (!confirm(pesan)) return;
+
+  const r = await authFetch("/api/branchops/batch/" + id + "/batal", { method: "POST" });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    alert(j.error || "Gagal membatalkan batch");
+    return;
+  }
   renderUpload();
 };
 
@@ -1240,6 +1935,19 @@ async function renderMasterdata(){
       ? `<option value="${esc(dipilih)}" selected>${esc(dipilih)} (nonaktif)</option>` : "");
 
   const tanpaWil = cab.filter(c => !c.region_class).length;
+
+  /* Tipe cabang. Daftar ini harus sama dengan TIPE_CABANG di scoping.py dan
+     CHECK di schema.sql — kalau berbeda, pilihannya akan ditolak server.
+     Tidak ada pilihan kosong: kolomnya NOT NULL, "Lainnya" adalah isian
+     untuk cabang yang tidak masuk kategori mana pun.                     */
+  const TIPE = ["KC", "KCP", "Pusat", "Lainnya"];
+  const optTipe = (dipilih) => {
+    const t = dipilih || "Lainnya";
+    return TIPE.map(k => `<option value="${esc(k)}"${t === k ? " selected" : ""}>${esc(k)}</option>`).join("") +
+      /* Nilai lama di luar daftar tetap ditampilkan supaya tidak diam-diam
+         berubah saat kotak digambar ulang. */
+      (TIPE.includes(t) ? "" : `<option value="${esc(t)}" selected>${esc(t)}</option>`);
+  };
 
   el.innerHTML = `
   <div style="padding-top:22px"><h1>Master Data</h1>
@@ -1276,15 +1984,18 @@ async function renderMasterdata(){
       </tbody></table></div></div>
 
   <div class="card" style="margin-top:14px"><h3>Cabang <span class="muted" style="font-weight:400">(${cab.length})</span></h3>
-    <div class="h-note">Ubah wilayah satu cabang tanpa mengunggah ulang Excel. Tersimpan seketika.
-      Untuk perubahan banyak sekaligus, unggah master cabang di tab Unggah.</div>
+    <div class="h-note">Ubah tipe dan wilayah satu cabang tanpa mengunggah ulang Excel. Tersimpan seketika.
+      Untuk perubahan banyak sekaligus, unggah master cabang di tab Unggah.
+      <b>Perhatian:</b> mengunggah ulang master cabang akan menimpa Tipe kembali ke tebakan
+      dari nama cabang, sehingga perubahan Tipe di sini perlu diulang.</div>
     <div style="margin:12px 0"><input id="cabCari" placeholder="Cari kode atau nama cabang…" style="max-width:340px"></div>
     <div class="tbl-wrap" style="max-height:460px"><table>
       <thead><tr><th>Kode</th><th>Nama</th><th>Tipe</th><th>Wilayah</th></tr></thead>
       <tbody id="cabBody">${cab.map(c => `<tr data-cari="${esc((c.branch_code + " " + c.branch_name).toLowerCase())}">
         <td><code>${esc(c.branch_code)}</code></td>
         <td>${esc(c.branch_name)}</td>
-        <td class="muted">${esc(c.branch_type || "")}</td>
+        <td><select class="cab-tipe" data-kode="${esc(c.branch_code)}"
+              style="width:auto;padding:3px 7px;font-size:11.5px">${optTipe(c.branch_type)}</select></td>
         <td><select class="cab-wil" data-kode="${esc(c.branch_code)}"
               style="width:auto;padding:3px 7px;font-size:11.5px">${optWil(c.region_class)}</select></td>
       </tr>`).join("")}</tbody></table></div>
@@ -1298,15 +2009,27 @@ async function renderMasterdata(){
     if (rr.ok) renderMasterdata();
     else $("wilOut").innerHTML = '<div class="err">' + esc(j.error || "Gagal") + '</div>';
   };
-  document.querySelectorAll(".cab-wil").forEach(s => s.onchange = async e => {
-    const rr = await J("/api/branchops/masterdata/cabang/" + encodeURIComponent(e.target.dataset.kode),
-                       "PUT", { region_class: e.target.value });
+  /* Satu penolong dipakai dua kotak pilihan (Wilayah dan Tipe). Badan
+     permintaan hanya berisi kolom yang berubah, jadi mengubah salah satu
+     tidak menyentuh kolom yang lain di server.                           */
+  const simpanCabang = async (kode, isi, tampil) => {
+    const rr = await J("/api/branchops/masterdata/cabang/" + encodeURIComponent(kode), "PUT", isi);
     const j = await rr.json();
-    $("cabOut").innerHTML = rr.ok
-      ? '<div class="muted" style="font-size:12px">Tersimpan: ' + esc(e.target.dataset.kode) + ' → ' + esc(e.target.value || "tanpa wilayah") + '</div>'
-      : '<div class="err">' + esc(j.error || "Gagal") + '</div>';
-    if (!rr.ok) renderMasterdata();
-  });
+    if (rr.ok) {
+      $("cabOut").innerHTML = '<div class="muted" style="font-size:12px">Tersimpan: ' +
+                              esc(kode) + ' → ' + esc(tampil) + '</div>';
+    } else {
+      /* Gambar ulang supaya kotak pilihan kembali ke nilai yang benar-benar
+         tersimpan. Pesan lewat alert, karena gambar ulang menghapus cabOut. */
+      alert(j.error || "Gagal menyimpan");
+      renderMasterdata();
+    }
+  };
+  document.querySelectorAll(".cab-wil").forEach(s => s.onchange = e =>
+    simpanCabang(e.target.dataset.kode, { region_class: e.target.value },
+                 e.target.value || "tanpa wilayah"));
+  document.querySelectorAll(".cab-tipe").forEach(s => s.onchange = e =>
+    simpanCabang(e.target.dataset.kode, { branch_type: e.target.value }, e.target.value));
   $("cabCari").oninput = e => {
     const q = e.target.value.trim().toLowerCase();
     document.querySelectorAll("#cabBody tr").forEach(tr =>
@@ -1346,6 +2069,10 @@ async function renderUsers(){
   const r = await authFetch("/api/branchops/users");
   if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Hanya admin yang boleh membuka halaman ini.</div>'; return; }
   const users = await r.json();
+  /* Disimpan supaya panel pilih cabang tahu centangan awal tiap pengguna
+     tanpa harus meminta ulang ke server. */
+  BO_PENGGUNA = {};
+  users.forEach(u => { BO_PENGGUNA[u.id] = u.branch_codes || []; });
   /* Daftar Region Class diambil dari master cabang, bukan ditulis tetap di
      sini — supaya begitu master diunggah ulang, pilihannya ikut berubah. */
   let KELAS = [], KELAS_SEMUA = "SEMUA";
@@ -1353,37 +2080,91 @@ async function renderUsers(){
     const rk = await authFetch("/api/branchops/region-class");
     if (rk.ok) { const j = await rk.json(); KELAS = j.kelas || []; KELAS_SEMUA = j.kelas_semua || "SEMUA"; }
   } catch (e) { /* dibiarkan: kotak wilayah tetap tampil, isinya saja kosong */ }
-  const optKelas = (dipilih) =>
-    `<option value=""${!dipilih ? " selected" : ""}>— tanpa wilayah —</option>` +
-    KELAS.map(k => `<option value="${esc(k)}"${dipilih === k ? " selected" : ""}>${esc(k)}</option>`).join("");
+  /* Daftar cabang untuk pengguna yang dijatah per cabang. Memakai /cabang
+     yang sudah ada — layar ini admin saja, jadi daftarnya lengkap. Kalau
+     gagal dimuat, pilihan wilayah tetap jalan.                           */
+  try {
+    const rc = await authFetch("/api/branchops/cabang");
+    if (rc.ok) { const j = await rc.json(); BO_CABANG = j.cabang || []; }
+  } catch (e) { /* dibiarkan */ }
+  const CABANG = BO_CABANG;
+
+  /* SATU kotak pilihan untuk JENIS jatah, bukan dua kotak berdampingan.
+     Wilayah dan daftar cabang saling meniadakan di basis data, jadi dua
+     kotak akan membiarkan admin memilih keadaan yang pasti ditolak server.
+     Dengan satu kotak, aturannya mustahil dilanggar, bukan sekadar dilarang.
+
+     "Cabang tertentu" TIDAK memuat cabangnya satu per satu di sini: sebuah
+     <select> hanya bisa memegang satu nilai, dan <select multiple> nyaris
+     tidak bisa dipakai di layar sentuh. Memilihnya membuka panel bercentang
+     terpisah (pilihCabang di bawah).                                     */
+  const WIL = KELAS.filter(k => k !== KELAS_SEMUA);
+  const optJatah = (kelas, kodes) => {
+    const dipilih = (kodes && kodes.length) ? "c:" : (kelas ? "w:" + kelas : "");
+    const o = (v, t) => `<option value="${esc(v)}"${dipilih === v ? " selected" : ""}>${esc(t)}</option>`;
+    /* Wilayah lama yang sudah dinonaktifkan tetap ditampilkan apa adanya —
+       supaya kotak tidak diam-diam terbaca "tanpa jatah" padahal bukan. */
+    const dikenal = dipilih === "" || dipilih === "c:" || dipilih === "w:" + KELAS_SEMUA
+                    || WIL.some(k => "w:" + k === dipilih);
+    return o("", "— tanpa jatah —") +
+      o("w:" + KELAS_SEMUA, KELAS_SEMUA + " — seluruh cabang") +
+      (WIL.length ? `<optgroup label="Satu wilayah">` +
+        WIL.map(k => o("w:" + k, k)).join("") + `</optgroup>` : "") +
+      o("c:", "Cabang tertentu…") +
+      (dikenal ? "" : o(dipilih, kelas + " (tidak ada di daftar)"));
+  };
+  /* Ringkasan cabang yang dipegang, ditampilkan di bawah kotak pilihan.
+     Kode ditulis apa adanya, bukan hanya jumlahnya, supaya salah pilih
+     terlihat tanpa harus membuka panelnya dulu. */
+  const ringkasCabang = (kodes) => {
+    if (!kodes || !kodes.length) return "";
+    const nama = k => { const c = CABANG.find(x => x.branch_code === k); return c ? c.branch_name : "(tidak ada di master)"; };
+    const judul = kodes.map(k => k + " — " + nama(k)).join("\n");
+    return `<div class="muted" style="font-size:11px;margin-top:4px" title="${esc(judul)}">
+              ${kodes.length} cabang: ${esc(kodes.join(", "))}</div>`;
+  };
+  /* Kode layar -> dua kolom yang dimengerti server. Selalu mengirim KEDUA
+     kunci, supaya memilih satu jenis benar-benar mencabut yang lain dan
+     tidak menyisakan nilai lama. */
+  const bodyJatah = (v) =>
+    v.startsWith("w:") ? { region_class: v.slice(2), branch_codes: [] }
+  :                      { region_class: "", branch_codes: [] };
   el.innerHTML = `
   <div style="padding-top:22px"><h1>Pengguna</h1>
   <div class="sub">Akun modul ini terpisah dari dashboard lain. viewer melihat · editor unggah &amp; menandai · admin semua.</div></div>
   <div class="grid g3" style="margin-top:14px">
   <div class="card"><h3>Daftar pengguna</h3><div class="tbl-wrap" style="max-height:460px">
-    <table><thead><tr><th>Email</th><th>Peran</th><th>Wilayah</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>` +
+    <table><thead><tr><th>Email</th><th>Peran</th><th>Jatah (cabang yang dilihat)</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>` +
     users.map(u => `<tr><td><b>${esc(u.email)}</b></td>
       <td><select class="role-sel" data-id="${u.id}" style="width:auto;padding:3px 7px;font-size:11.5px">
         ${["viewer", "editor", "admin"].map(x => `<option ${u.role === x ? "selected" : ""}>${x}</option>`).join("")}</select></td>
       <td>${u.role === "admin"
             ? '<span class="muted" style="font-size:11.5px">semua (admin)</span>'
             : `<select class="wil-sel" data-id="${u.id}" style="width:auto;padding:3px 7px;font-size:11.5px">
-                 ${optKelas(u.region_class)}</select>`}</td>
+                 ${optJatah(u.region_class, u.branch_codes)}</select>`
+               + (u.branch_codes && u.branch_codes.length
+                  ? ringkasCabang(u.branch_codes) +
+                    `<button class="btn sm" style="margin-top:4px"
+                       onclick="pilihCabang(${u.id})">Ubah cabang</button>`
+                  : "")}</td>
       <td class="muted">${tgl(u.created_at)}</td>
       <td style="white-space:nowrap"><button class="btn sm" onclick="boPw(${u.id},'${esc(u.email)}')">Reset sandi</button>
         <button class="btn sm danger" onclick="boDelUser(${u.id},'${esc(u.email)}')">Hapus</button></td></tr>`).join("")
     + `</tbody></table></div>
-    <div class="h-note" style="margin-top:10px">Wilayah menentukan cabang mana yang DILIHAT pengguna.
-      Kosong berarti tidak melihat baris apa pun. <b>${esc(KELAS_SEMUA)}</b> berarti seluruh cabang.
-      Peran admin selalu melihat semua, apa pun isian wilayahnya. Pembatasan ini ditegakkan di
+    <div class="h-note" style="margin-top:10px">Jatah menentukan cabang mana yang DILIHAT pengguna.
+      Pilih salah satu saja: <b>${esc(KELAS_SEMUA)}</b> (seluruh cabang), satu wilayah, atau
+      daftar cabang tertentu — satu cabang untuk petugas cabang itu sendiri, atau beberapa
+      cabang sekaligus misalnya yang berada dalam satu kota. Tidak bisa dua jenis sekaligus.
+      Kosong berarti tidak melihat baris apa pun.
+      Peran admin selalu melihat semua, apa pun isian jatahnya. Pembatasan ini ditegakkan di
       server, bukan disembunyikan di layar — mengubah alamat di browser tidak menembusnya.</div></div>
   <div class="card"><h3>Tambah pengguna</h3>
     <div style="margin-bottom:11px"><label>Email</label><input id="nuEmail" type="email"></div>
     <div style="margin-bottom:11px"><label>Kata sandi awal</label><input id="nuPw" type="text"></div>
     <div style="margin-bottom:11px"><label>Peran</label><select id="nuRole">
       <option>viewer</option><option>editor</option><option>admin</option></select></div>
-    <div style="margin-bottom:11px"><label>Wilayah (Region Class)</label><select id="nuWil">
-      ${optKelas(null)}</select></div>
+    <div style="margin-bottom:11px"><label>Jatah (cabang yang boleh dilihat)</label><select id="nuWil">
+      ${optJatah(null, null)}</select></div>
     <button class="btn primary" id="bAddUser">Tambah</button><div id="uOut" style="margin-top:12px"></div></div></div>
   <div class="card" style="margin-top:14px"><h3>Hak menu</h3>
     <div class="h-note">Centang menu yang boleh dilihat DAN diakses tiap PERAN. Berlaku untuk semua pengguna
@@ -1401,17 +2182,126 @@ async function renderUsers(){
     renderUsers();   // muat ulang: berubah jadi admin menghilangkan kotak wilayah
   });
   document.querySelectorAll(".wil-sel").forEach(s => s.onchange = async e => {
+    /* "Cabang tertentu" belum berisi apa-apa sampai admin mencentang, jadi
+       jangan disimpan dulu — kalau disimpan sekarang, jatahnya jadi kosong
+       dan pengguna itu kehilangan akses sampai panelnya selesai diisi. */
+    if (e.target.value === "c:") { pilihCabang(e.target.dataset.id); return; }
     const rr = await J("/api/branchops/users/" + e.target.dataset.id, "PUT",
-                       { region_class: e.target.value });
-    if (!rr.ok) { const j = await rr.json(); alert(j.error || "Gagal"); renderUsers(); }
+                       bodyJatah(e.target.value));
+    if (!rr.ok) { const j = await rr.json(); alert(j.error || "Gagal"); }
+    renderUsers();   // muat ulang: ringkasan cabang ikut hilang/berubah
   });
   $("bAddUser").onclick = async () => {
     const out = $("uOut");
+    /* Kalau adminnya memilih "Cabang tertentu", pengguna dibuat dulu TANPA
+       jatah, lalu panel cabang dibuka untuk akun yang sudah ada. Cabang
+       tidak bisa dicentang sebelum pengguna punya id, dan membuat akun
+       tanpa jatah aman: tanpa jatah berarti tidak melihat apa pun. */
+    const pilihCabangDulu = $("nuWil").value === "c:";
     const rr = await J("/api/branchops/users", "POST",
       { email: $("nuEmail").value.trim(), password: $("nuPw").value,
-        role: $("nuRole").value, region_class: $("nuWil").value });
+        role: $("nuRole").value, ...bodyJatah($("nuWil").value) });
     const j = await rr.json();
-    if (rr.ok) renderUsers(); else out.innerHTML = '<div class="err">' + esc(j.error || "Gagal") + '</div>';
+    if (!rr.ok) { out.innerHTML = '<div class="err">' + esc(j.error || "Gagal") + '</div>'; return; }
+    if (pilihCabangDulu && j.id) pilihCabang(j.id); else renderUsers();
+  };
+}
+
+/* ---- panel pilih cabang (hanya admin) ----------------------------------
+   Dipakai untuk pengguna yang memegang beberapa cabang tertentu, misalnya
+   semua cabang dalam satu kota.
+
+   Sengaja panel terpisah, bukan <select multiple>: daftar cabang bisa
+   panjang, dan select bertingkat nyaris tidak bisa dipakai di layar sentuh
+   — padahal modul ini harus jalan di ponsel. Panel ini melebar penuh di
+   layar kecil dan punya kotak cari.
+
+   Aplikasi TIDAK tahu apa itu "kota"; yang disimpan hanyalah daftar cabang.
+   Tombol "Centang yang tampil" dipasang supaya cara kerjanya tetap enak:
+   cari nama kota, lalu centang semua hasilnya sekaligus.                */
+let BO_CABANG = [];       // master cabang, diisi renderUsers()
+let BO_PENGGUNA = {};     // id pengguna -> daftar cabangnya saat ini
+
+function pilihCabang(uid){
+  const semula = new Set(BO_PENGGUNA[uid] || []);
+  const dipilih = new Set(semula);
+
+  const bung = document.createElement("div");
+  bung.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;" +
+    "display:flex;align-items:center;justify-content:center;padding:12px";
+  bung.innerHTML = `
+    <div class="card" style="width:520px;max-width:100%;max-height:86vh;display:flex;
+         flex-direction:column;margin:0">
+      <h3>Cabang yang boleh dilihat</h3>
+      <div class="h-note">Centang satu atau beberapa cabang. Menyimpan daftar ini otomatis
+        mencabut jatah wilayah pengguna tersebut — satu pengguna hanya boleh punya satu jenis jatah.</div>
+      <input id="pcCari" placeholder="Cari kode atau nama cabang…" style="margin:10px 0">
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn sm" id="pcSemua">Centang yang tampil</button>
+        <button class="btn sm" id="pcKosong">Kosongkan semua</button>
+      </div>
+      <div class="tbl-wrap" style="flex:1;overflow:auto;min-height:120px"><table><tbody id="pcBody">
+        ${BO_CABANG.map(c => `<tr data-cari="${esc((c.branch_code + " " + c.branch_name).toLowerCase())}">
+          <td style="width:28px"><input type="checkbox" class="pc" value="${esc(c.branch_code)}"
+                ${dipilih.has(c.branch_code) ? "checked" : ""} style="width:auto"></td>
+          <td><code>${esc(c.branch_code)}</code></td>
+          <td>${esc(c.branch_name)}</td>
+          <td class="muted">${esc(c.region_class || "—")}</td></tr>`).join("")}
+      </tbody></table></div>
+      <div id="pcOut" style="margin-top:10px"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <b id="pcJml"></b><span class="muted" style="font-size:12px">dipilih</span>
+        <span style="flex:1"></span>
+        <button class="btn" id="pcBatal">Batal</button>
+        <button class="btn primary" id="pcSimpan">Simpan</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bung);
+
+  const q = (id) => bung.querySelector("#" + id);
+  const kotak = () => Array.from(bung.querySelectorAll(".pc"));
+  const hitung = () => { q("pcJml").textContent = dipilih.size; };
+  hitung();
+
+  kotak().forEach(k => k.onchange = () => {
+    k.checked ? dipilih.add(k.value) : dipilih.delete(k.value);
+    hitung();
+  });
+  q("pcCari").oninput = e => {
+    const s = e.target.value.trim().toLowerCase();
+    bung.querySelectorAll("#pcBody tr").forEach(tr =>
+      tr.style.display = (!s || tr.dataset.cari.includes(s)) ? "" : "none");
+  };
+  q("pcSemua").onclick = () => {
+    /* hanya baris yang sedang TAMPIL — itulah gunanya: cari "Bandung",
+       lalu centang semuanya sekaligus */
+    kotak().forEach(k => {
+      if (k.closest("tr").style.display === "none") return;
+      k.checked = true; dipilih.add(k.value);
+    });
+    hitung();
+  };
+  q("pcKosong").onclick = () => { kotak().forEach(k => k.checked = false); dipilih.clear(); hitung(); };
+
+  const tutup = () => { bung.remove(); renderUsers(); };
+  q("pcBatal").onclick = tutup;
+  /* Klik di luar kartu = batal. Klik DI DALAM kartu tidak menutup, supaya
+     centangan tidak hilang gara-gara salah sasaran. */
+  bung.onclick = e => { if (e.target === bung) tutup(); };
+
+  q("pcSimpan").onclick = async () => {
+    const kode = Array.from(dipilih);
+    if (!kode.length && semula.size &&
+        !confirm("Tidak ada cabang yang dicentang.\n\nPengguna ini akan menjadi TANPA JATAH " +
+                 "dan tidak melihat baris apa pun. Lanjutkan?")) return;
+    const rr = await J("/api/branchops/users/" + uid, "PUT",
+                       { region_class: "", branch_codes: kode });
+    if (!rr.ok) {
+      const j = await rr.json();
+      q("pcOut").innerHTML = '<div class="err">' + esc(j.error || "Gagal") + '</div>';
+      return;                      // panel dibiarkan terbuka: centangan tidak hilang
+    }
+    tutup();
   };
 }
 /* ---- matriks hak menu, PER PERAN (hanya admin) -------------------------
@@ -1566,6 +2456,10 @@ function switchTab(tab){
     $("wrapDup").classList.toggle("hidden", window.DASH !== 2);
     $("bRerun").classList.toggle("hidden",
       window.DASH !== 4 || window.ROLE === "viewer");
+    /* Tiap dashboard punya rentang tanggalnya sendiri, jadi harus disetel
+       ulang SEBELUM load() — kalau tidak, tanggal dari tab sebelumnya ikut
+       terbawa dan hasilnya disaring dengan rentang tabel yang berbeda. */
+    setPeriodeDefault();
     load();
   } else {
     $("view-" + tab).classList.add("on");
@@ -1607,7 +2501,15 @@ document.querySelectorAll("nav .item[data-tab]").forEach(a =>
     const d = await r.json();
     (d.cabang || []).forEach(c => $("fCab").add(new Option(
       c.branch_code.replace(/^0/, "") + " — " + c.branch_name, c.branch_code)));
-    if (d.periode && d.periode.awal) { $("fA").value = tgl(d.periode.awal); $("fB").value = tgl(d.periode.akhir); }
+    /* Rentang tanggal diambil per DASHBOARD, bukan satu nilai global.
+       Sebelum Agustus 2026 ketiganya memakai angka yang sama, sehingga
+       satu batch Break Deposito bertanggal 1984 membuat menu Pencairan
+       dan TBO ikut terbuka dari 1984 — padahal data paling awal keduanya
+       jauh lebih baru. Backend kini mengirim d.periode.per_jenis.
+       Kalau kunci itu tidak ada (backend versi lama), jatuh kembali ke
+       nilai global supaya layar tetap terisi, bukan kosong. */
+    PERIODE = d.periode || {};
+    setPeriodeDefault();
   } catch (e) {}
   renderHome();
 })();

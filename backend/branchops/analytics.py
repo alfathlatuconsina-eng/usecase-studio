@@ -36,12 +36,73 @@ def _filter(alias, tgl_kol, f):
     return sql + swh, p + sp
 
 
-def periode_tersedia():
-    return db.q1("""
-      SELECT min(p) AS awal, max(p) AS akhir FROM (
-        SELECT periode_awal p FROM branchops_batches WHERE status='committed'
-        UNION ALL
-        SELECT periode_akhir FROM branchops_batches WHERE status='committed') s""") or {}
+# Kolom tanggal yang benar-benar dipakai menyaring tiap dashboard.
+# Harus sama dengan yang diteruskan ke _filter() di dash_* (dan, untuk
+# rekon, dengan WHERE yang disusun sendiri di dash_rekon).
+_KOLOM_TGL = {
+    "it_break":  ("branchops_it_break",  "tgl_break"),
+    "pencairan": ("branchops_pencairan", "tgl_input"),
+    "tbo":       ("branchops_tbo",       "tgl_input"),
+}
+
+
+def periode_tersedia(scope=""):
+    """Rentang tanggal yang tersedia — GLOBAL dan per dashboard.
+
+    Diubah Agustus 2026. Sebelumnya satu nilai global saja, diambil dari
+    branchops_batches.periode_awal/akhir, dan dipakai bersama oleh keempat
+    menu. Dua akibatnya buruk:
+
+      1. Satu batch dengan tanggal keliru menggeser "Dari tanggal" di
+         SEMUA menu. Contoh nyata: batch 27 (Data Break Deposito) berisi
+         tgl_break 1984-05-24, dan gara-gara itu menu Pencairan dan TBO
+         pun terbuka dari 1984 — padahal data paling awal keduanya 2025
+         dan 2026.
+      2. periode_awal adalah ringkasan yang dihitung saat unggah. Kalau
+         ringkasan itu salah, tidak ada yang mengoreksinya.
+
+    Sekarang rentang diambil langsung dari TABEL FAKTA, dari kolom yang
+    memang dipakai menyaring dashboard bersangkutan — jadi "tanggal paling
+    awal" berarti benar-benar baris paling awal yang akan tampil.
+
+    Ikut dibatasi jatah, dengan alasan yang sama seperti ringkasan():
+    rentang yang tidak dibatasi membocorkan bahwa wilayah lain punya data
+    di periode yang tidak boleh dilihat pengguna ini.
+
+    Bentuk kembaliannya menjaga "awal"/"akhir" di tingkat atas supaya
+    pemakai lama (garis "Data termuat" di Beranda) tidak berubah arti."""
+    swh, sp = scoping.klausa(scope, "br")
+
+    bagian, par = [], []
+    for jenis, (tabel, kol) in _KOLOM_TGL.items():
+        bagian.append(f"""
+          SELECT '{jenis}' AS jenis, min(f.{kol}) AS awal, max(f.{kol}) AS akhir
+            FROM {tabel} f
+            JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
+            JOIN branchops_branches br ON br.branch_code=f.branch_code
+           WHERE 1=1{swh}""")
+        par += sp
+
+    # Dashboard 4 menyaring branchops_rekon.tgl_acuan, dan tabel itu tidak
+    # punya batch_id — barisnya hasil rekonsiliasi, bukan hasil unggah.
+    # Karena itu tidak ikut pola di atas dan ditulis terpisah.
+    bagian.append(f"""
+      SELECT 'rekon', min(r.tgl_acuan), max(r.tgl_acuan)
+        FROM branchops_rekon r
+        LEFT JOIN branchops_branches br ON br.branch_code=r.branch_code
+       WHERE 1=1{swh}""")
+    par += sp
+
+    baris = db.q(" UNION ALL ".join(bagian), par)
+    per = {r["jenis"]: {"awal": r["awal"], "akhir": r["akhir"]} for r in baris}
+
+    semua_awal = [r["awal"] for r in baris if r["awal"]]
+    semua_akhir = [r["akhir"] for r in baris if r["akhir"]]
+    return {
+        "awal": min(semua_awal) if semua_awal else None,
+        "akhir": max(semua_akhir) if semua_akhir else None,
+        "per_jenis": per,
+    }
 
 
 def daftar_cabang(scope=""):
@@ -112,6 +173,32 @@ def dash_it(f):
 # ==========================================================================
 # DASHBOARD 2 - Pencairan deposito dari cabang
 # ==========================================================================
+# Sebagian baris pencairan membawa kolom "Data TBO" dari cabang. Baris itu
+# dilacak seperti pembukaan rekening ber-TBO: punya tenggat dan status.
+#
+# _PUNYA_TBO harus SEPAKAT dengan tiga tempat lain, atau layar Edit,
+# parser dan laporan akan berbeda pendapat tentang baris mana yang punya
+# TBO: _TIDAK_ADA di ingest.py, _TIDAK_ADA_TBO di __init__.py, dan blok
+# backfill di schema.sql. Empat salinan aturan yang sama memang tidak
+# ideal — tapi masing-masing hidup di lapisan berbeda (SQL, parser, API),
+# dan menyatukannya berarti memanggil Python dari dalam query.
+_PUNYA_TBO = r"""
+        (f.data_tbo IS NOT NULL
+         AND btrim(f.data_tbo) <> ''
+         AND btrim(lower(f.data_tbo)) !~ '^(tidak\s*ada|tdk\s*ada|tidak\s*ad|-)$')"""
+
+# Aturan hari terlambat sama dengan TBO: tanpa target -> NULL; sudah
+# selesai -> NULL; target di depan -> 0; lewat -> selisih positif.
+# Bedanya hanya satu, dan itu penting: baris yang TIDAK punya Data TBO
+# tidak pernah terlambat, berapa pun tanggal targetnya.
+_HARI_TERLAMBAT_PC = f"""
+        CASE WHEN f.target_pemenuhan_tbo IS NOT NULL
+              AND f.status_tbo = 'Outstanding'
+              AND {_PUNYA_TBO}
+             THEN GREATEST(CURRENT_DATE - f.target_pemenuhan_tbo, 0)
+        END"""
+# ==========================================================================
+# ==========================================================================
 def dash_pencairan(f, sertakan_dup=False):
     wh, p = _filter("f", "tgl_input", f)
     dup = "" if sertakan_dup else " AND NOT f.dup_dikecualikan"
@@ -137,7 +224,23 @@ def dash_pencairan(f, sertakan_dup=False):
       {base}""", p)
 
     # cabang yang tidak mengirim laporan sama sekali pada periode terpilih
-    wh2, p2 = _filter("f", "tgl_input", {k: v for k, v in f.items() if k != "branch_code"})
+    #
+    # Jatah wilayah/cabang HARUS menempel pada daftar cabang di query LUAR,
+    # bukan ikut masuk ke dalam NOT EXISTS. Kalau ikut masuk, artinya
+    # terbalik: untuk cabang di luar jatah, anak query tidak menemukan apa
+    # pun, NOT EXISTS jadi benar, dan cabang itu justru MUNCUL di daftar
+    # "tidak melapor". Itulah yang terjadi sampai Agustus 2026 — pengguna
+    # wilayah A melihat seluruh nama cabang wilayah lain, dan semuanya
+    # tertulis tidak melapor.
+    #
+    # Karena itu "_scope" sengaja dimatikan (None, bukan dihapus) untuk
+    # potongan dalam. Menghapusnya tidak cukup: bawaan _filter() adalah ""
+    # = "tidak melihat apa pun", yang membuat anak query tidak pernah cocok
+    # dan SEMUA cabang terdaftar tidak melapor.
+    f_dalam = {k: v for k, v in f.items() if k != "branch_code"}
+    f_dalam["_scope"] = None
+    wh2, p2 = _filter("f", "tgl_input", f_dalam)
+    swh2, sp2 = scoping.klausa(f.get("_scope", ""), "br")
     tak_lapor = db.q(f"""
       SELECT br.branch_code, br.branch_name, br.branch_type,
              EXISTS (SELECT 1 FROM branchops_it_break i {_AKTIF % 'i'}
@@ -148,10 +251,10 @@ def dash_pencairan(f, sertakan_dup=False):
                         AND b2.status='committed' AND b2.jenis='pencairan'
                      WHERE v.branch_code=br.branch_code AND v.severity='error') AS kiriman_ditolak
       FROM branchops_branches br
-      WHERE br.is_active AND NOT EXISTS (
+      WHERE br.is_active{swh2} AND NOT EXISTS (
         SELECT 1 FROM branchops_pencairan f {_AKTIF % 'f'}
         WHERE f.branch_code=br.branch_code {wh2})
-      ORDER BY ada_di_it DESC, br.branch_code""", p2)
+      ORDER BY ada_di_it DESC, br.branch_code""", sp2 + p2)
 
     return {
         "kpi": kpi,
@@ -169,9 +272,18 @@ def dash_pencairan(f, sertakan_dup=False):
                              {base} GROUP BY 1""", p),
         "rows": db.q(f"""SELECT f.id, f.branch_code, br.branch_name, f.tgl_input, f.tgl_pencairan,
                            f.no_deposito, f.nama_pemilik, f.nominal, f.tenor_hari,
+                           f.no_cif, f.no_rekening,
+                           f.tgl_penempatan, f.tgl_bilyet,
                            f.jenis_pencairan, f.jenis_penarikan, f.arus_dana, f.arus_keyakinan,
                            f.arus_manual, f.checker_eq_approver, f.is_duplikat, f.dup_dikecualikan,
-                           f.skor_lengkap, f.catatan, f.flags
+                           f.skor_lengkap, f.catatan, f.flags,
+                           f.data_tbo, f.target_pemenuhan_tbo, f.status_tbo, f.tgl_tbo_lengkap,
+                           f.nip_maker, f.nip_checker, f.nip_approver,
+                           {_HARI_TERLAMBAT_PC} AS hari_terlambat,
+                           -- Satu tempat memutuskan baris mana yang "punya TBO",
+                           -- supaya layar tidak menebak sendiri dengan aturan
+                           -- yang lambat laun berbeda dari parser dan schema.
+                           {_PUNYA_TBO} AS punya_tbo
                          {base} ORDER BY f.tgl_input, f.id LIMIT 2000""", p),
     }
 
@@ -179,6 +291,25 @@ def dash_pencairan(f, sertakan_dup=False):
 # ==========================================================================
 # DASHBOARD 3 - Pembukaan rekening TBO
 # ==========================================================================
+# Jumlah Hari Terlambat - SATU tempat, dipakai ulang di KPI dan detail.
+#
+# Aturannya, sesuai keputusan Agustus 2026:
+#   - target kosong                  -> NULL (tampil "-"), bukan 0.
+#     0 akan terbaca "tepat waktu", padahal artinya "belum ada tenggat".
+#   - status Lengkap / Dikecualikan  -> NULL. TBO yang sudah selesai tidak
+#     boleh terus menghitung keterlambatan hanya karena tanggalnya lewat.
+#   - target masih di depan          -> 0, bukan angka minus.
+#   - target sudah lewat             -> selisih hari, selalu positif.
+#
+# GREATEST(...,0) yang menjaga poin ketiga. Tanpa itu, rata-rata
+# keterlambatan ikut ditarik turun oleh baris yang belum jatuh tempo.
+_HARI_TERLAMBAT = """
+        CASE WHEN f.target_pemenuhan_tbo IS NOT NULL
+              AND f.status_tbo = 'Outstanding'
+             THEN GREATEST(CURRENT_DATE - f.target_pemenuhan_tbo, 0)
+        END"""
+
+
 def dash_tbo(f):
     wh, p = _filter("f", "tgl_input", f)
     base = (f"FROM branchops_tbo f {_AKTIF % 'f'} "
@@ -198,7 +329,12 @@ def dash_tbo(f):
         COALESCE(avg(CASE WHEN f.status_tbo='Outstanding'
                      THEN CURRENT_DATE - f.tgl_input END),0)          AS aging_rata,
         COALESCE(max(CASE WHEN f.status_tbo='Outstanding'
-                     THEN CURRENT_DATE - f.tgl_input END),0)          AS aging_max
+                     THEN CURRENT_DATE - f.tgl_input END),0)          AS aging_max,
+        count(*) FILTER (WHERE f.target_pemenuhan_tbo IS NOT NULL)    AS ada_target,
+        count(*) FILTER (WHERE {_HARI_TERLAMBAT} > 0)                 AS terlambat,
+        COALESCE(max({_HARI_TERLAMBAT}), 0)                           AS terlambat_max,
+        COALESCE(round(avg({_HARI_TERLAMBAT})
+                       FILTER (WHERE {_HARI_TERLAMBAT} > 0)), 0)      AS terlambat_rata
       {base}""", p)
 
     aging = db.q(f"""
@@ -223,8 +359,12 @@ def dash_tbo(f):
                                  count(*) AS n {base} GROUP BY 1 ORDER BY n DESC""", p),
         "rows": db.q(f"""SELECT f.id, f.branch_code, br.branch_name, f.tgl_input, f.no_cif,
                            f.cif_gabungan, f.no_rekening, f.nama_pemilik, f.nominal, f.mata_uang,
-                           f.jenis_rekening, f.jenis_produk, f.tipe_pembukaan, f.dokumen_tbo,
-                           f.ada_tbo, f.status_tbo, f.tgl_tbo_lengkap,
+                           f.jenis_rekening, f.jenis_setoran, f.jenis_produk, f.tipe_pembukaan,
+                           f.dokumen_tbo, f.ada_tbo, f.status_tbo, f.tgl_tbo_lengkap,
+                           f.tgl_penempatan, f.tgl_jatuh_tempo,
+                           f.nip_maker, f.nip_checker, f.nip_approver,
+                           f.target_pemenuhan_tbo,
+                           {_HARI_TERLAMBAT} AS hari_terlambat,
                            CASE WHEN f.status_tbo='Outstanding'
                                 THEN CURRENT_DATE - f.tgl_input END AS aging,
                            f.keterangan, f.flags
@@ -246,6 +386,24 @@ def dash_rekon(f):
     if f.get("status"):
         w.append("r.status = %s"); p.append(f["status"])
     wh = (" AND " + " AND ".join(w)) if w else ""
+
+    # Jatah wilayah/cabang. Dashboard ini menyusun WHERE-nya sendiri, tidak
+    # lewat _filter(), sehingga sampai Agustus 2026 SATU-SATUNYA dashboard
+    # yang tidak ikut dibatasi jatah — pengguna wilayah A melihat seluruh
+    # baris rekonsiliasi. Ditambahkan di sini supaya keempat dashboard
+    # berperilaku sama.
+    #
+    # Ketiga query di bawah memakai {wh} dan p pada posisi yang sama, jadi
+    # cukup ditempelkan sekali di sini. Urutan penting: potongan scope
+    # ditulis paling belakang, maka parameternya juga paling belakang.
+    #
+    # br disambung dengan LEFT JOIN, jadi baris rekonsiliasi yang kode
+    # cabangnya tidak ada di master cabang punya br.region_class NULL dan
+    # ikut tersaring — gagal-tertutup, sama seperti issues.csv.
+    swh, sp = scoping.klausa(f.get("_scope", ""), "br")
+    wh += swh
+    p += sp
+
     base = f"FROM branchops_rekon r LEFT JOIN branchops_branches br ON br.branch_code=r.branch_code WHERE 1=1{wh}"
 
     return {
@@ -293,12 +451,86 @@ def ringkasan(scope=""):
     tabel kosong di dashboard tapi angka nasional di Beranda, yang
     membocorkan besaran data wilayah lain."""
     swh, sp = scoping.klausa(scope, "br")
+
+    # TBO yang masih terbuka - menggantikan daftar "Unggahan terakhir" di
+    # Beranda (Agustus 2026). Daftar unggahan sudah ada di tab Unggah;
+    # yang perlu terlihat begitu dashboard dibuka adalah pekerjaan yang
+    # belum selesai, bukan riwayat berkas.
+    #
+    # DUA SUMBER digabung (Agustus 2026): pembukaan rekening ber-TBO
+    # (branchops_tbo) dan pencairan yang membawa Data TBO
+    # (branchops_pencairan). Keduanya "TBO yang menggantung" bagi orang
+    # yang mengejarnya, jadi memisahkannya di dua layar hanya membuat
+    # satu daftar selalu terlupakan.
+    #
+    # Kolom "sumber" WAJIB ikut: layar memakainya untuk memilih endpoint
+    # mana yang dipanggil saat tombol Ubah / Tandai lengkap ditekan.
+    # Tanpa itu, id 7 dari dua tabel berbeda tidak bisa dibedakan.
+    #
+    # Query terpisah, TIDAK digabung ke "hitung" di bawah. Blok itu
+    # memakai sp * 5 karena {swh} muncul lima kali; menambah {swh} ke
+    # sana berarti harus ingat mengubah pengalinya juga, dan kalau lupa
+    # parameternya bergeser diam-diam.
+    #
+    # branchops_pencairan TIDAK punya kolom mata_uang - seluruh baris
+    # pencairan rupiah. 'IDR' ditulis tetap supaya bentuk kedua cabang
+    # UNION sama persis; UNION menuntut jumlah dan tipe kolom identik.
+    gabung_tbo = f"""
+      SELECT 'tbo'::text AS sumber, f.id, f.branch_code, br.branch_name,
+             f.tgl_input, f.no_rekening, f.nama_pemilik, f.nominal,
+             f.mata_uang, f.dokumen_tbo AS dokumen, f.target_pemenuhan_tbo,
+             f.status_tbo,
+             {_HARI_TERLAMBAT} AS hari_terlambat,
+             CURRENT_DATE - f.tgl_input AS aging
+        FROM branchops_tbo f
+        JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
+        JOIN branchops_branches br ON br.branch_code=f.branch_code
+       WHERE f.status_tbo='Outstanding' AND f.ada_tbo{swh}
+      UNION ALL
+      SELECT 'pencairan'::text, f.id, f.branch_code, br.branch_name,
+             f.tgl_input, f.no_rekening, f.nama_pemilik, f.nominal,
+             'IDR'::varchar, f.data_tbo, f.target_pemenuhan_tbo,
+             f.status_tbo,
+             {_HARI_TERLAMBAT_PC},
+             CURRENT_DATE - f.tgl_input
+        FROM branchops_pencairan f
+        JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
+        JOIN branchops_branches br ON br.branch_code=f.branch_code
+       WHERE f.status_tbo='Outstanding' AND {_PUNYA_TBO}{swh}"""
+
+    # {swh} muncul DUA kali di gabung_tbo (sekali per cabang UNION), jadi
+    # parameternya sp * 2. Kalau menambah cabang UNION ketiga nanti,
+    # naikkan pengalinya juga.
+    sp_gab = sp * 2
+
+    tbo_kpi = db.q1(f"""
+      SELECT count(*) AS total,
+             count(*) FILTER (WHERE g.sumber='tbo')            AS dari_tbo,
+             count(*) FILTER (WHERE g.sumber='pencairan')      AS dari_pencairan,
+             count(*) FILTER (WHERE g.hari_terlambat > 0)      AS lewat_target,
+             count(*) FILTER (WHERE g.target_pemenuhan_tbo IS NULL) AS tanpa_target,
+             COALESCE(max(g.hari_terlambat), 0)                AS terlambat_max,
+             COALESCE(sum(g.nominal) FILTER (WHERE g.mata_uang='IDR'),0) AS rp,
+             count(DISTINCT g.branch_code)                     AS cabang
+      FROM ({gabung_tbo}) g""", sp_gab)
+
     return {
-        "batch": db.q("""SELECT b.id, b.jenis, b.nama_file, b.status, b.baris_total, b.baris_valid,
-                           b.baris_ditolak, b.baris_warning, b.periode_awal, b.periode_akhir,
-                           b.uploaded_at, b.uploaded_by AS oleh
-                         FROM branchops_batches b
-                         ORDER BY b.id DESC LIMIT 10"""),
+        "tbo_terbuka": {
+            "kpi": tbo_kpi,
+            # Yang paling terlambat lebih dulu; yang belum punya target
+            # menyusul, diurutkan dari yang paling lama menggantung.
+            # NULLS LAST penting: tanpa itu baris tanpa target justru
+            # nangkring di puncak daftar dan menutupi yang benar-benar telat.
+            #
+            # LIMIT 2000 mengikuti batas yang sama dengan keempat dashboard.
+            # "Tampilkan semua" dipenuhi dalam praktik; batas ini ada supaya
+            # satu wilayah dengan puluhan ribu baris terbuka tidak membekukan
+            # peramban. Layar memberi tahu bila daftarnya terpotong.
+            "rows": db.q(f"""
+              SELECT * FROM ({gabung_tbo}) g
+              ORDER BY g.hari_terlambat DESC NULLS LAST, g.tgl_input ASC
+              LIMIT 2000""", sp_gab),
+        },
         "hitung": db.q1(f"""
           SELECT (SELECT count(*) FROM branchops_it_break f
                     JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
@@ -318,5 +550,5 @@ def ringkasan(scope=""):
                  (SELECT count(*) FROM branchops_branches br
                    WHERE br.is_active{swh}) AS cabang""",
                         sp * 5),
-        "periode": periode_tersedia(),
+        "periode": periode_tersedia(scope),
     }

@@ -24,6 +24,25 @@ Sama seperti hak menu, nilainya juga TIDAK disimpan di JWT dan TIDAK di
 localStorage — supaya pencabutan jatah wilayah berlaku pada request
 berikutnya, bukan pada login berikutnya.
 
+DUA JENIS JATAH
+---------------
+Sejak Agustus 2026 ada DUA cara membatasi seorang pengguna, dan keduanya
+SALING MENIADAKAN — satu pengguna memegang satu jenis saja:
+
+    region_class  -> seluruh cabang dalam satu wilayah  ("Regional 1")
+    branch_codes  -> daftar cabang tertentu             ["00123","00456"]
+
+branch_codes adalah LARIK, bukan satu nilai — seorang penyelia bisa
+memegang beberapa cabang dalam satu kota. Satu cabang cukup ditulis
+sebagai larik satu unsur; tidak ada bentuk khusus untuk kasus itu.
+"Tidak dijatah" selalu None, tidak pernah larik kosong.
+
+Larangan memegang dua-duanya bukan sekadar kesepakatan di kode: ada CHECK
+(ck_bo_users_satu_jatah) di schema.sql yang menolaknya di tingkat basis
+data. Kalau toh suatu saat kedua kolom terisi, set_jatah() dan scope_aktif()
+memenangkan CABANG — yang lebih sempit — supaya kegagalan berpihak pada
+menutup data, bukan membukanya.
+
 ATURAN
 ------
 1. Peran 'admin' SELALU melihat semua cabang. Disengaja: admin yang tidak
@@ -31,13 +50,18 @@ ATURAN
    jatah wilayah pengguna lain.
 2. Kelas khusus 'SEMUA' berarti melihat seluruh cabang. Ini yang diberikan
    kepada pengguna kantor pusat.
-3. Pengguna yang jatah wilayahnya KOSONG tidak melihat baris apa pun.
-   Gagal-tertutup: data hanya terlihat setelah sengaja diberikan.
+3. Pengguna yang jatahnya KOSONG (dua-duanya kosong) tidak melihat baris
+   apa pun. Gagal-tertutup: data hanya terlihat setelah sengaja diberikan.
    Pengguna yang sudah ada sebelum fitur ini dipasang otomatis diberi
    kelas 'SEMUA' oleh migrasi di schema.sql, jadi tidak ada yang terkunci.
 4. Cabang yang region_class-nya masih kosong hanya terlihat oleh admin dan
    kelas 'SEMUA'. Ini disengaja: cabang yang belum dikelompokkan tidak boleh
    bocor ke pengguna wilayah mana pun hanya karena masternya belum lengkap.
+5. PENGECUALIAN aturan 4, disengaja: pengguna yang ditambatkan LANGSUNG ke
+   sebuah cabang tetap melihat cabang itu walaupun cabangnya belum punya
+   wilayah. Penunjukan langsung oleh admin lebih kuat daripada aturan
+   "belum dikelompokkan" — kalau tidak, menambatkan pengguna ke cabang baru
+   akan menghasilkan layar kosong tanpa petunjuk sebabnya.
 """
 from __future__ import annotations
 
@@ -62,19 +86,49 @@ def _email():
     return _user().get("email")
 
 
-def kelas_pengguna(email=None):
-    """Region Class milik pengguna yang sedang masuk.
+def _bersihkan_kode(kode_list):
+    """Rapikan daftar kode cabang: buang kosong, buang kembar, urutkan.
+
+    Mengembalikan None bila tidak ada yang tersisa — bukan larik kosong.
+    Diurutkan supaya dua daftar isi sama selalu tersimpan sama persis,
+    sehingga perbandingan dan jejak audit tidak berubah hanya karena admin
+    mencentang dengan urutan berbeda."""
+    if not kode_list:
+        return None
+    if isinstance(kode_list, str):          # satu kode ditulis polos
+        kode_list = [kode_list]
+    bersih = sorted({(k or "").strip() for k in kode_list if (k or "").strip()})
+    return bersih or None
+
+
+def jatah_pengguna(email=None):
+    """Jatah pengguna yang sedang masuk: (region_class, branch_codes).
 
     Dibaca dari basis data setiap kali, BUKAN dari JWT — supaya perubahan
-    jatah wilayah berlaku pada request berikutnya."""
+    jatah berlaku pada request berikutnya, bukan pada login berikutnya.
+
+    Karena CHECK ck_bo_users_satu_jatah, paling banyak satu dari keduanya
+    terisi; yang lain pasti None. branch_codes berupa list, atau None."""
     email = email or _email()
     if not email:
-        return None
-    baris = db.q("SELECT region_class FROM branchops_users WHERE email=%s",
-                 (email,))
+        return None, None
+    baris = db.q("""SELECT region_class, branch_codes
+                      FROM branchops_users WHERE email=%s""", (email,))
     if not baris:
-        return None
-    return (baris[0].get("region_class") or "").strip() or None
+        return None, None
+    r = baris[0]
+    return ((r.get("region_class") or "").strip() or None,
+            _bersihkan_kode(r.get("branch_codes")))
+
+
+def kelas_pengguna(email=None):
+    """Region Class milik pengguna. None bila ia dijatah per cabang."""
+    return jatah_pengguna(email)[0]
+
+
+def cabang_pengguna(email=None):
+    """Daftar kode cabang milik pengguna. None bila ia dijatah per wilayah."""
+    return jatah_pengguna(email)[1]
 
 
 def boleh_semua(role=None, kelas=None):
@@ -90,28 +144,104 @@ def scope_aktif():
     """Nilai yang disuntikkan ke dict filter sebagai kunci "_scope".
 
     Mengembalikan salah satu dari:
-        None          -> tanpa batasan, lihat semua cabang
-        "<kelas>"     -> hanya cabang dengan region_class itu
-        ""            -> tidak melihat apa pun (belum dijatah wilayah)
+        None                    -> tanpa batasan, lihat semua cabang
+        ("wilayah", "<kelas>")  -> hanya cabang dengan region_class itu
+        ("cabang", [kode, ...]) -> hanya cabang-cabang itu
+        ""                      -> tidak melihat apa pun (belum dijatah)
 
     Perhatikan bedanya None dan "" — keduanya "kosong" dalam arti Python,
-    jadi pemeriksaannya harus pakai `is None`, bukan `if not scope`."""
+    jadi pemeriksaannya harus pakai `is None`, bukan `if not scope`.
+
+    Isinya sengaja dibuat BUNTU bagi pemanggil: analytics.py hanya meneruskan
+    nilai ini ke klausa() tanpa pernah membukanya. Jadi menambah jenis jatah
+    ketiga nanti cukup mengubah dua fungsi di berkas ini, bukan setiap query."""
     if boleh_semua():
         return None
-    return kelas_pengguna() or ""
+    kelas, cabang = jatah_pengguna()
+    # Cabang diperiksa lebih dulu: bila entah bagaimana kedua kolom terisi,
+    # yang menang adalah jatah yang lebih SEMPIT.
+    if cabang:
+        return ("cabang", list(cabang))
+    if kelas:
+        return ("wilayah", kelas)
+    return ""
 
 
 def klausa(scope, alias="br"):
     """Potongan WHERE + parameter untuk sebuah nilai scope.
 
     Dipakai analytics.py. Dipisah dari scope_aktif() supaya analytics.py
-    tetap bisa diuji tanpa perlu ada request Flask yang aktif."""
+    tetap bisa diuji tanpa perlu ada request Flask yang aktif.
+
+    alias SELALU menunjuk branchops_branches, jadi kolom branch_code dan
+    region_class dua-duanya pasti ada."""
     if scope is None:
         return "", []
-    if scope == "":
-        # Tidak dijatah wilayah -> tidak ada baris yang cocok.
+    if isinstance(scope, tuple):
+        jenis, nilai = scope
+        if jenis == "cabang":
+            # = ANY(%s) menerima satu larik sebagai SATU parameter, jadi
+            # jumlah cabang tidak mengubah bentuk query. psycopg2 sendiri
+            # yang mengubah list Python menjadi array PostgreSQL.
+            kode = [nilai] if isinstance(nilai, str) else list(nilai or [])
+            if not kode:
+                return " AND FALSE", []      # daftar kosong -> tidak ada baris
+            return f" AND {alias}.branch_code = ANY(%s)", [kode]
+        if jenis == "wilayah":
+            return f" AND {alias}.region_class = %s", [nilai]
+        # Jenis tak dikenal -> tutup, jangan buka.
         return " AND FALSE", []
+    if scope == "":
+        # Tidak dijatah -> tidak ada baris yang cocok.
+        return " AND FALSE", []
+    # Jaring pengaman: string polos dibaca sebagai wilayah, seperti sebelum
+    # jatah cabang ada. Menjaga pemanggil lama tetap benar, bukan diam-diam
+    # berubah arti.
     return f" AND {alias}.region_class = %s", [scope]
+
+
+def boleh_cabang(branch_code):
+    """Bolehkah pengguna yang sedang masuk MENYENTUH baris di cabang ini?
+
+    Dipakai endpoint yang mengubah SATU baris, di mana tidak ada query
+    berfilter yang bisa disisipi klausa(). Contohnya PUT /tbo/<id>.
+
+    Kenapa perlu: klausa() hanya melindungi baris yang DIBACA lewat daftar.
+    Endpoint yang menerima id langsung dari URL tidak melewatinya sama
+    sekali - tanpa pemeriksaan ini, seorang editor bisa mengubah baris
+    cabang yang bahkan tidak boleh ia lihat, cukup dengan menebak id.
+
+    Sengaja memakai scope_aktif() yang sama dengan pembacaan, supaya
+    "yang boleh dilihat" dan "yang boleh diubah" tidak pernah berbeda arti.
+    Menambah jenis jatah ketiga nanti cukup mengubah fungsi ini dan
+    klausa(), bukan setiap endpoint.
+
+    GAGAL TERTUTUP: apa pun yang tidak jelas menghasilkan False."""
+    scope = scope_aktif()
+    if scope is None:
+        return True                      # admin / jatah SEMUA
+    if scope == "":
+        return False                     # belum dijatah -> tidak apa-apa
+    if not branch_code:
+        # Baris tanpa kode cabang hanya milik admin, dan admin sudah
+        # tertangkap di cabang None di atas. Lihat aturan 5 di docstring.
+        return False
+
+    if isinstance(scope, tuple):
+        jenis, nilai = scope
+        if jenis == "cabang":
+            kode = [nilai] if isinstance(nilai, str) else list(nilai or [])
+            return branch_code in kode
+        if jenis == "wilayah":
+            b = db.q1("SELECT region_class FROM branchops_branches "
+                      "WHERE branch_code=%s", (branch_code,))
+            return bool(b) and b.get("region_class") == nilai
+        return False                     # jenis tak dikenal -> tutup
+
+    # String polos dibaca sebagai wilayah, sejalan dengan klausa().
+    b = db.q1("SELECT region_class FROM branchops_branches "
+              "WHERE branch_code=%s", (branch_code,))
+    return bool(b) and b.get("region_class") == scope
 
 
 # --------------------------------------------------------------------- #
@@ -270,21 +400,103 @@ def set_wilayah_cabang(branch_code, nilai):
     return nilai or None
 
 
+# Tipe cabang yang boleh dipakai. Daftar ini HARUS sama persis dengan
+# CHECK (branch_type IN (...)) di schema.sql — kalau tidak, nilai yang lolos
+# di sini akan ditolak PostgreSQL dan admin hanya melihat pesan error kasar.
+# Diletakkan di modul ini supaya berdekatan dengan set_wilayah_cabang: dua-
+# duanya menyunting satu baris di branchops_branches dari layar Master Data.
+TIPE_CABANG = ("KC", "KCP", "Pusat", "Lainnya")
+
+
+def set_tipe_cabang(branch_code, nilai):
+    """Ubah tipe SATU cabang (KC/KCP/Pusat/Lainnya) dari layar Master Data.
+
+    Kolom branch_type NOT NULL, jadi nilai kosong tidak diperbolehkan —
+    'Lainnya' adalah pilihan untuk cabang yang tidak masuk kategori lain.
+
+    CATATAN PENTING: mengunggah ulang master cabang akan MENIMPA nilai ini,
+    karena parse_master menebak tipe dari nama cabang dan upsert di
+    storage.py memakai branch_type=EXCLUDED.branch_type."""
+    nilai = (nilai or "").strip()
+    if nilai not in TIPE_CABANG:
+        raise ValueError(f"Tipe '{nilai}' tidak dikenal. "
+                         f"Pilih salah satu: {', '.join(TIPE_CABANG)}")
+    n = db.execute("""UPDATE branchops_branches SET branch_type=%s
+                       WHERE branch_code=%s""", (nilai, branch_code))
+    if not n:
+        raise ValueError(f"Cabang '{branch_code}' tidak ada di master cabang")
+    return nilai
+
+
 def pilihan_kelas():
     """Daftar untuk layar admin: kelas dari master + kelas khusus SEMUA."""
     return [KELAS_SEMUA] + [k for k in daftar_kelas() if k != KELAS_SEMUA]
 
 
-def set_kelas(uid, kelas):
-    """Simpan jatah wilayah seorang pengguna. Mengembalikan nilai tersimpan.
+def kode_tak_dikenal(kode_list):
+    """Kode cabang mana saja dari daftar ini yang TIDAK ada di master.
 
-    Nilai kosong disimpan sebagai NULL = tidak melihat apa pun.
+    Diperiksa sekali untuk seluruh daftar, bukan satu per satu, supaya
+    admin melihat semua kesalahan sekaligus alih-alih membetulkannya
+    berulang kali."""
+    kode_list = _bersihkan_kode(kode_list)
+    if not kode_list:
+        return []
+    # Satu parameter saja, isinya seluruh daftar (bukan satu %s per kode).
+    ada = {b["branch_code"] for b in db.q(
+        "SELECT branch_code FROM branchops_branches WHERE branch_code = ANY(%s)",
+        [list(kode_list)])}
+    return [k for k in kode_list if k not in ada]
+
+
+def periksa_jatah(kelas, kode_list):
+    """Bersihkan sepasang (region_class, branch_codes) sebelum disimpan.
+
+    Mengembalikan (kelas_bersih, daftar_kode) — paling banyak satu terisi,
+    sisanya None. Melempar ValueError bila isiannya tidak masuk akal.
+
+    Dipakai bersama oleh scoping.set_jatah() dan endpoint pengguna di
+    app.py, supaya kedua jalur masuk memakai aturan yang persis sama."""
+    kelas = (kelas or "").strip()
+    kode_list = _bersihkan_kode(kode_list)
+    if kelas and kode_list:
+        raise ValueError("Satu pengguna hanya boleh punya SATU jatah: "
+                         "wilayah saja, atau daftar cabang saja.")
+    if kelas:
+        if kelas != KELAS_SEMUA and kelas not in daftar_kelas():
+            raise ValueError(f"Wilayah '{kelas}' tidak ada atau sedang nonaktif. "
+                             f"Kelola daftarnya di tab Master Data.")
+        return kelas, None
+    if kode_list:
+        # Kode tak dikenal DITOLAK, bukan disaring diam-diam. Menyaringnya
+        # akan membuat admin mengira pengguna memegang 3 cabang padahal
+        # yang tersimpan 2, dan selisihnya tidak muncul di layar mana pun.
+        hilang = kode_tak_dikenal(kode_list)
+        if hilang:
+            raise ValueError(
+                f"Cabang tidak ada di master cabang: {', '.join(hilang)}. "
+                f"Unggah master cabang dulu di tab Unggah.")
+        return None, kode_list
+    # Dua-duanya kosong = sengaja tidak dijatah = tidak melihat apa pun.
+    return None, None
+
+
+def set_jatah(uid, kelas=None, kode_list=None):
+    """Simpan jatah seorang pengguna. Mengembalikan (kelas, kode) tersimpan.
+
+    SELALU menulis kedua kolom sekaligus. Menetapkan salah satu jenis jatah
+    otomatis MENGOSONGKAN yang lain — keduanya saling meniadakan, jadi
+    menyisakan nilai lama di kolom satunya hanya akan ditolak CHECK di basis
+    data (atau, lebih buruk, tersimpan dan bermakna ganda).
+
     Nilai yang tidak dikenal ditolak, supaya salah ketik tidak diam-diam
     membuat pengguna kehilangan seluruh akses tanpa pesan apa pun."""
-    kelas = (kelas or "").strip()
-    if kelas and kelas != KELAS_SEMUA and kelas not in daftar_kelas():
-        raise ValueError(f"Wilayah '{kelas}' tidak ada atau sedang nonaktif. "
-                         f"Kelola daftarnya di tab Master Data.")
-    db.execute("UPDATE branchops_users SET region_class=%s WHERE id=%s",
-               (kelas or None, uid))
-    return kelas or None
+    kelas, kode_list = periksa_jatah(kelas, kode_list)
+    db.execute("""UPDATE branchops_users SET region_class=%s, branch_codes=%s
+                   WHERE id=%s""", (kelas, kode_list, uid))
+    return kelas, kode_list
+
+
+def set_kelas(uid, kelas):
+    """Bentuk lama: menjatah wilayah saja. Ikut mengosongkan jatah cabang."""
+    return set_jatah(uid, kelas=kelas, kode_list=None)[0]

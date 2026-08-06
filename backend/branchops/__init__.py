@@ -19,6 +19,7 @@ import datetime
 import io
 import os
 import pathlib
+import re
 import tempfile
 
 from flask import Blueprint, jsonify, request, send_file
@@ -38,6 +39,141 @@ def ensure_schema():
 
 def _email():
     return getattr(request, "user", {}).get("email", "?")
+
+
+# -------------------------------------------------------------------------- #
+#  Kolom TBO yang boleh diubah lewat layar Edit  (Agustus 2026)
+#
+#  DAFTAR PUTIH, bukan daftar hitam. Kolom baru yang ditambahkan nanti
+#  otomatis TIDAK bisa diedit sampai sengaja dimasukkan ke sini. Dengan
+#  daftar hitam, kolom baru diam-diam ikut bisa diubah tanpa ada yang
+#  pernah memutuskan begitu.
+#
+#  Yang TIDAK ada di sini, dan alasannya:
+#    branch_code, tgl_input, no_cif, no_rekening, nama_pemilik,
+#    tgl_penempatan  -> identitas baris. Kalau bisa diubah, satu baris
+#    bisa berpindah cabang atau berganti nasabah, dan rekonsiliasi
+#    terhadap data IT kehilangan dasarnya.
+#
+#    batch_id, baris_no, no_rekening_norm, flags, created_at,
+#    cif_gabungan  -> milik proses unggah, bukan manusia. no_rekening_norm
+#    khususnya: kunci rekonsiliasi, diturunkan dari no_rekening.
+#
+#  nama_pemilik juga tersamar "***" di setiap respons, jadi layar edit
+#  tidak akan pernah tahu nilai aslinya untuk dikirim balik.
+# -------------------------------------------------------------------------- #
+def _tgl(v):
+    """String ISO / kosong -> date / None. Menolak yang bukan tanggal."""
+    if v in (None, "", "-"):
+        return None
+    if isinstance(v, datetime.date):
+        return v
+    return datetime.date.fromisoformat(str(v).strip()[:10])
+
+
+def _teks_opsional(v, maks):
+    if v in (None, ""):
+        return None
+    s = str(v).strip()
+    if len(s) > maks:
+        raise ValueError(f"maksimal {maks} karakter")
+    return s or None
+
+
+def _angka(v):
+    if v in (None, "", "-"):
+        return None
+    n = float(str(v).replace(",", "").strip())
+    if n < 0:
+        raise ValueError("tidak boleh negatif")
+    return n
+
+
+def _pilihan(v, sah):
+    s = (str(v).strip() if v is not None else "")
+    if s not in sah:
+        raise ValueError("harus salah satu dari " + ", ".join(sah))
+    return s
+
+
+def _bool(v):
+    if isinstance(v, bool):
+        return v
+    return str(v).strip().lower() in ("1", "true", "ya", "y")
+
+
+_TBO_EDITABLE = {
+    "tgl_jatuh_tempo":      _tgl,
+    "target_pemenuhan_tbo": _tgl,
+    "tgl_tbo_lengkap":      _tgl,
+    "nominal":              _angka,
+    "mata_uang":            lambda v: _teks_opsional(v, 8),
+    "jenis_rekening":       lambda v: _teks_opsional(v, 60),
+    "jenis_setoran":        lambda v: _teks_opsional(v, 60),
+    "jenis_produk":         lambda v: _teks_opsional(v, 60),
+    "tipe_pembukaan":       lambda v: _pilihan(v, ("Baru", "Penempatan Kembali")),
+    "dokumen_tbo":          lambda v: _teks_opsional(v, 4000),
+    "ada_tbo":              _bool,
+    "status_tbo":           lambda v: _pilihan(v, ("Outstanding", "Lengkap", "Dikecualikan")),
+    "nip_maker":            lambda v: _teks_opsional(v, 20),
+    "nip_checker":          lambda v: _teks_opsional(v, 20),
+    "nip_approver":         lambda v: _teks_opsional(v, 20),
+    "keterangan":           lambda v: _teks_opsional(v, 4000),
+}
+
+
+def _teks(v):
+    """Nilai apa pun -> teks untuk jejak audit. date/None ikut terbaca."""
+    return None if v is None else str(v)
+
+
+# -------------------------------------------------------------------------- #
+#  Kolom PENCAIRAN yang boleh diubah lewat layar Edit  (Agustus 2026)
+#
+#  Daftar putih, alasan yang sama seperti _TBO_EDITABLE.
+#
+#  Yang TIDAK ada di sini, dan alasannya:
+#    branch_code, tgl_input, no_cif, no_rekening, nama_pemilik,
+#    tgl_pencairan  -> identitas baris, sesuai permintaan.
+#
+#    no_deposito_norm  -> KUNCI REKONSILIASI terhadap data IT. Diturunkan
+#    dari no_deposito, tidak pernah diketik. Kalau no_deposito diubah,
+#    endpoint menghitung ulang norm-nya sendiri (lihat tbo/pencairan edit),
+#    supaya keduanya tidak pernah berbeda.
+#
+#    is_duplikat, dup_dikecualikan, skor_lengkap, checker_eq_approver,
+#    flags, batch_id, baris_no, created_at  -> milik proses unggah.
+#    Menyuntingnya berarti berbohong tentang apa yang dikirim cabang.
+# -------------------------------------------------------------------------- #
+_PENCAIRAN_EDITABLE = {
+    "no_deposito":          lambda v: _teks_opsional(v, 40),
+    "tgl_penempatan":       _tgl,
+    "tgl_bilyet":           _tgl,
+    "tenor_hari":           lambda v: None if v in (None, "", "-") else int(str(v).strip()),
+    "nominal":              _angka,
+    "jenis_pencairan":      lambda v: _teks_opsional(v, 60),
+    "jenis_penarikan":      lambda v: _teks_opsional(v, 60),
+    "data_tbo":             lambda v: _teks_opsional(v, 4000),
+    "target_pemenuhan_tbo": _tgl,
+    "tgl_tbo_lengkap":      _tgl,
+    "status_tbo":           lambda v: _pilihan(v, ("Outstanding", "Lengkap", "Dikecualikan")),
+    "arus_dana":            lambda v: _pilihan(v, ("Arus Keluar", "Rollover / DOC",
+                                                   "Penempatan Kembali")),
+    "nip_maker":            lambda v: _teks_opsional(v, 20),
+    "nip_checker":          lambda v: _teks_opsional(v, 20),
+    "nip_approver":         lambda v: _teks_opsional(v, 20),
+    "catatan":              lambda v: _teks_opsional(v, 4000),
+}
+
+# Aturan yang SAMA dengan _TIDAK_ADA di ingest.py dan dengan blok backfill
+# di schema.sql. Kalau salah satu diubah, ubah ketiganya — kalau tidak,
+# layar Edit, parser dan laporan akan tidak sepakat baris mana yang
+# dianggap punya TBO.
+_TIDAK_ADA_TBO = re.compile(r"^\s*(tidak\s*ada|tdk\s*ada|tidak\s*ad|-)\s*$", re.I)
+
+
+def _punya_tbo(nilai):
+    return bool(nilai) and not _TIDAK_ADA_TBO.match(str(nilai))
 
 
 def _out(payload):
@@ -136,7 +272,7 @@ def create_blueprint(require):
     @require()
     def cabang():
         return _out({"cabang": analytics.daftar_cabang(scoping.scope_aktif()),
-                     "periode": analytics.periode_tersedia()})
+                     "periode": analytics.periode_tersedia(scoping.scope_aktif())})
 
     # ---------------------------------------------------------------- #
     # master data: wilayah + penetapan wilayah cabang  (tab Master Data)
@@ -202,15 +338,30 @@ def create_blueprint(require):
     @bp.put("/masterdata/cabang/<kode>")
     @require("admin")
     @privileges.require_menu("masterdata")
-    def cabang_set_wilayah(kode):
-        """Ubah wilayah satu cabang, tanpa mengunggah ulang Excel."""
+    def cabang_ubah(kode):
+        """Ubah satu cabang dari layar Master Data, tanpa mengunggah ulang Excel.
+
+        Menerima region_class dan/atau branch_type. Kunci yang TIDAK dikirim
+        tidak diubah — layar mengirim satu kolom per perubahan, jadi mengubah
+        Tipe tidak boleh diam-diam mengosongkan Wilayah."""
+        body = request.get_json(silent=True) or {}
+        hasil = {"ok": True, "branch_code": kode}
         try:
-            nilai = scoping.set_wilayah_cabang(kode, (request.get_json(silent=True) or {}).get("region_class"))
+            if "region_class" in body:
+                nilai = scoping.set_wilayah_cabang(kode, body.get("region_class"))
+                db.audit(_email(), "wilayah_cabang_diubah", "branchops_branches",
+                         None, {"branch_code": kode, "region_class": nilai})
+                hasil["region_class"] = nilai
+            if "branch_type" in body:
+                tipe = scoping.set_tipe_cabang(kode, body.get("branch_type"))
+                db.audit(_email(), "tipe_cabang_diubah", "branchops_branches",
+                         None, {"branch_code": kode, "branch_type": tipe})
+                hasil["branch_type"] = tipe
         except ValueError as e:
             return jsonify(error=str(e)), 400
-        db.audit(_email(), "wilayah_cabang_diubah", "branchops_branches",
-                 None, {"branch_code": kode, "region_class": nilai})
-        return jsonify(ok=True, branch_code=kode, region_class=nilai)
+        if len(hasil) == 2:            # hanya ok + branch_code = tidak ada isi
+            return jsonify(error="Tidak ada yang diubah"), 400
+        return jsonify(**hasil)
 
     @bp.get("/region-class")
     @require()
@@ -377,6 +528,37 @@ def create_blueprint(require):
         return jsonify(ok=True, jumlah=n, wilayah_baru=kelas_baru)
 
     # ---------------------------------------------------------------- #
+    # Ambil SATU baris (Agustus 2026)
+    #
+    # Dipakai layar Edit ketika dibuka dari Beranda. Daftar di Beranda
+    # menggabungkan dua tabel, jadi hanya membawa kolom yang sama-sama
+    # ada; formulir Edit butuh baris utuh.
+    #
+    # Keduanya lewat _out(), jadi nama nasabah tetap tersamar, dan
+    # keduanya memeriksa jatah - tanpa itu, siapa pun bisa membaca baris
+    # cabang mana pun hanya dengan menebak id.
+    # ---------------------------------------------------------------- #
+    def _satu(tabel, rid, menu):
+        row = db.q1(f"SELECT * FROM {tabel} WHERE id=%s", (rid,))
+        if not row:
+            return jsonify(error="Baris tidak ditemukan"), 404
+        if not scoping.boleh_cabang(row.get("branch_code")):
+            return jsonify(error="Baris ini di luar jatah cabang Anda"), 403
+        return _out(row)
+
+    @bp.get("/tbo/<int:tid>")
+    @require()
+    @privileges.require_menu("d3")
+    def tbo_satu(tid):
+        return _satu("branchops_tbo", tid, "d3")
+
+    @bp.get("/pencairan/<int:pid>")
+    @require()
+    @privileges.require_menu("d2")
+    def pencairan_satu(pid):
+        return _satu("branchops_pencairan", pid, "d2")
+
+    # ---------------------------------------------------------------- #
     # tindakan
     # ---------------------------------------------------------------- #
     @bp.patch("/tbo/<int:tid>")
@@ -394,6 +576,152 @@ def create_blueprint(require):
                    (status, tgl, _email(), tid))
         db.audit(_email(), "tbo_status", "branchops_tbo", tid, {"status": status})
         return jsonify(ok=True, status_tbo=status, tgl_tbo_lengkap=tgl)
+
+    # ---------------------------------------------------------------- #
+    # Edit rincian TBO (Agustus 2026)
+    #
+    # ENAM kolom sengaja TIDAK bisa diubah lewat layar ini:
+    #   branch_code, tgl_input, no_cif, no_rekening, nama_pemilik,
+    #   tgl_penempatan
+    # Keenamnya adalah identitas baris - dari mana asalnya dan rekening
+    # siapa. Membiarkannya diubah berarti satu baris bisa diam-diam
+    # berpindah cabang atau berganti nasabah, dan rekonsiliasi terhadap
+    # data IT tidak lagi bisa dipercaya.
+    #
+    # Penjagaannya lewat DAFTAR PUTIH (_TBO_EDITABLE), bukan daftar hitam.
+    # Kolom baru yang ditambahkan nanti otomatis TIDAK bisa diedit sampai
+    # sengaja dimasukkan ke daftar - arah gagal yang benar. Daftar hitam
+    # akan membiarkan kolom baru bisa diubah tanpa ada yang memutuskan.
+    # ---------------------------------------------------------------- #
+    @bp.put("/tbo/<int:tid>")
+    @require("admin", "editor")
+    @privileges.require_menu("d3")
+    def tbo_edit(tid):
+        body = request.get_json(silent=True) or {}
+
+        lama = db.q1("SELECT * FROM branchops_tbo WHERE id=%s", (tid,))
+        if not lama:
+            return jsonify(error="Baris TBO tidak ditemukan"), 404
+
+        # Penjatahan berlaku juga di sini. Tanpa ini, seorang editor bisa
+        # mengubah baris cabang yang tidak boleh ia LIHAT, cukup dengan
+        # menebak id-nya. Admin tetap boleh semua (scope_aktif mengurus).
+        if not scoping.boleh_cabang(lama.get("branch_code")):
+            return jsonify(error="Baris ini di luar jatah cabang Anda"), 403
+
+        set_bagian, nilai, berubah = [], [], {}
+        for kol, ubah in _TBO_EDITABLE.items():
+            if kol not in body:
+                continue                      # tidak dikirim = jangan disentuh
+            try:
+                baru = ubah(body[kol])
+            except (ValueError, TypeError) as e:
+                return jsonify(error=f"Nilai {kol} tidak sah: {e}"), 400
+            if baru != lama.get(kol):
+                set_bagian.append(f"{kol}=%s")
+                nilai.append(baru)
+                berubah[kol] = {"dari": _teks(lama.get(kol)), "jadi": _teks(baru)}
+
+        if not set_bagian:
+            return jsonify(ok=True, tidak_berubah=True)
+
+        # status_tbo dan tgl_tbo_lengkap harus bergerak bersama, sama
+        # seperti di endpoint PATCH di atas. Kalau status jadi Lengkap
+        # tanpa tanggal, aging dan laporan kehilangan acuan.
+        if "status_tbo" in berubah and "tgl_tbo_lengkap" not in berubah:
+            if berubah["status_tbo"]["jadi"] == "Lengkap" and not lama.get("tgl_tbo_lengkap"):
+                set_bagian.append("tgl_tbo_lengkap=%s")
+                nilai.append(datetime.date.today())
+            elif berubah["status_tbo"]["jadi"] != "Lengkap":
+                set_bagian.append("tgl_tbo_lengkap=NULL")
+
+        set_bagian += ["tbo_updated_by=%s", "tbo_updated_at=now()"]
+        nilai += [_email(), tid]
+        db.execute(f"UPDATE branchops_tbo SET {', '.join(set_bagian)} WHERE id=%s",
+                   tuple(nilai))
+
+        db.audit(_email(), "tbo_diedit", "branchops_tbo", tid, berubah)
+        return _out({"ok": True, "berubah": list(berubah)})
+
+    # ---------------------------------------------------------------- #
+    # Edit rincian PENCAIRAN (Agustus 2026)
+    #
+    # HANYA baris yang kolom "Data TBO"-nya terisi. Baris pencairan biasa
+    # tidak bisa disunting sama sekali lewat sini — angka pencairan adalah
+    # apa yang dilaporkan cabang, dan mengubahnya berarti dashboard tidak
+    # lagi mencerminkan laporan itu. Yang boleh disunting adalah
+    # pelacakan TBO-nya, dan rincian yang menempel pada baris itu.
+    #
+    # Enam kolom identitas tetap terkunci: branch_code, tgl_input,
+    # no_cif, no_rekening, nama_pemilik, tgl_pencairan.
+    # ---------------------------------------------------------------- #
+    @bp.put("/pencairan/<int:pid>")
+    @require("admin", "editor")
+    @privileges.require_menu("d2")
+    def pencairan_edit(pid):
+        body = request.get_json(silent=True) or {}
+
+        lama = db.q1("SELECT * FROM branchops_pencairan WHERE id=%s", (pid,))
+        if not lama:
+            return jsonify(error="Baris pencairan tidak ditemukan"), 404
+
+        if not scoping.boleh_cabang(lama.get("branch_code")):
+            return jsonify(error="Baris ini di luar jatah cabang Anda"), 403
+
+        # Syarat utama: harus punya Data TBO. Diperiksa terhadap nilai yang
+        # TERSIMPAN, bukan yang dikirim — kalau tidak, siapa pun bisa
+        # membuka baris mana saja hanya dengan menyertakan data_tbo di
+        # badan permintaan.
+        if not _punya_tbo(lama.get("data_tbo")):
+            return jsonify(error="Baris ini tidak punya Data TBO, jadi tidak bisa disunting. "
+                                 "Hanya pencairan yang membawa Data TBO yang dilacak di sini."), 400
+
+        set_bagian, nilai, berubah = [], [], {}
+        for kol, ubah in _PENCAIRAN_EDITABLE.items():
+            if kol not in body:
+                continue
+            try:
+                baru = ubah(body[kol])
+            except (ValueError, TypeError) as e:
+                return jsonify(error=f"Nilai {kol} tidak sah: {e}"), 400
+            if baru != lama.get(kol):
+                set_bagian.append(f"{kol}=%s")
+                nilai.append(baru)
+                berubah[kol] = {"dari": _teks(lama.get(kol)), "jadi": _teks(baru)}
+
+        if not set_bagian:
+            return jsonify(ok=True, tidak_berubah=True)
+
+        # no_deposito_norm ikut dihitung ulang. Kolom itu kunci
+        # rekonsiliasi terhadap data IT; membiarkannya menunjuk nomor lama
+        # membuat baris ini cocok dengan break yang salah, diam-diam.
+        if "no_deposito" in berubah:
+            set_bagian.append("no_deposito_norm=%s")
+            nilai.append(ingest.digits(berubah["no_deposito"]["jadi"]))
+
+        # Mengubah arus_dana lewat layar berarti keputusan MANUSIA, bukan
+        # tebakan parser. Menandainya penting: analytics memakai
+        # arus_manual untuk membedakan mana yang sudah ditinjau orang.
+        if "arus_dana" in berubah:
+            set_bagian.append("arus_manual=TRUE")
+            set_bagian.append("arus_keyakinan=%s")
+            nilai.append("Tinggi")
+
+        # status_tbo dan tgl_tbo_lengkap bergerak bersama, sama seperti TBO.
+        if "status_tbo" in berubah and "tgl_tbo_lengkap" not in berubah:
+            if berubah["status_tbo"]["jadi"] == "Lengkap" and not lama.get("tgl_tbo_lengkap"):
+                set_bagian.append("tgl_tbo_lengkap=%s")
+                nilai.append(datetime.date.today())
+            elif berubah["status_tbo"]["jadi"] != "Lengkap":
+                set_bagian.append("tgl_tbo_lengkap=NULL")
+
+        set_bagian += ["tbo_updated_by=%s", "tbo_updated_at=now()"]
+        nilai += [_email(), pid]
+        db.execute(f"UPDATE branchops_pencairan SET {', '.join(set_bagian)} WHERE id=%s",
+                   tuple(nilai))
+
+        db.audit(_email(), "pencairan_diedit", "branchops_pencairan", pid, berubah)
+        return _out({"ok": True, "berubah": list(berubah)})
 
     @bp.patch("/rekon/<int:rid>")
     @require("admin", "editor")

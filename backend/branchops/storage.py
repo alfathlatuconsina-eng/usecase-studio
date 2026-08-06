@@ -26,15 +26,19 @@ COLS = {
         "break_sejati", "luar_jam", "flags"]),
     "pencairan": ("branchops_pencairan", [
         "baris_no", "branch_code", "tgl_input", "no_deposito", "no_deposito_norm", "nama_pemilik",
+        "no_cif", "no_rekening",
         "tgl_penempatan", "tgl_bilyet", "tgl_pencairan", "tenor_hari", "nominal",
-        "jenis_pencairan", "jenis_penarikan", "data_tbo", "arus_dana", "arus_keyakinan",
+        "jenis_pencairan", "jenis_penarikan", "data_tbo",
+        "target_pemenuhan_tbo", "status_tbo",
+        "arus_dana", "arus_keyakinan",
         "arus_manual", "nip_maker", "nip_checker", "nip_approver", "checker_eq_approver",
         "catatan", "is_duplikat", "dup_dikecualikan", "skor_lengkap", "flags"]),
     "tbo": ("branchops_tbo", [
         "baris_no", "branch_code", "tgl_input", "no_cif", "cif_gabungan", "no_rekening",
         "no_rekening_norm", "nama_pemilik", "tgl_penempatan", "tgl_jatuh_tempo", "nominal",
         "mata_uang", "jenis_rekening", "jenis_setoran", "jenis_produk", "tipe_pembukaan",
-        "dokumen_tbo", "ada_tbo", "status_tbo", "nip_maker", "nip_checker", "nip_approver",
+        "dokumen_tbo", "ada_tbo", "status_tbo", "target_pemenuhan_tbo",
+        "nip_maker", "nip_checker", "nip_approver",
         "keterangan", "flags"]),
 }
 
