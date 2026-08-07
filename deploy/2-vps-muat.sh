@@ -60,15 +60,37 @@ echo "cadangan per-tabel: ~/bo-vps-sebelum-push-$STAMP.sql"
 echo
 echo "== 2/7  Menarik kode terbaru dari git =="
 cd "$APP"
-# Kalau ada suntingan langsung di VPS, berhenti. Menimpanya diam-diam
-# adalah cara paling mudah kehilangan perbaikan darurat yang pernah
-# dilakukan di produksi.
-if [ -n "$(git status --porcelain)" ]; then
-  echo "BERHENTI: ada perubahan yang belum di-commit di $APP:"
-  git status --short
-  echo "Simpan dulu (git stash / salin berkasnya), lalu ulangi."
+
+# Berhenti HANYA kalau ada berkas TERLACAK yang disunting langsung di VPS.
+# Menimpa suntingan darurat produksi diam-diam adalah cara paling mudah
+# kehilangannya.
+#
+# --untracked-files=no PENTING. Tanpa itu, berkas nyasar yang memang tidak
+# pernah masuk repo — cadangan *.bak lama, skrip patch sekali pakai,
+# lampiran .xlsx — ikut terhitung dan push berhenti tanpa alasan yang
+# benar. Berkas seperti itu tidak akan tersentuh `git pull`, dan kalau
+# suatu saat memang bentrok, git sendiri yang menolak dan menyebut nama
+# berkasnya. Itu penjagaan yang tepat, di tempat yang tepat.
+KOTOR=$(git status --porcelain --untracked-files=no)
+if [ -n "$KOTOR" ]; then
+  echo "BERHENTI: ada berkas TERLACAK yang berubah di $APP:"
+  echo "$KOTOR"
+  echo
+  echo "Ini suntingan langsung di produksi. Simpan dulu:"
+  echo "    cd $APP && git stash        # atau salin berkasnya"
+  echo "lalu jalankan lagi push dari komputer lokal."
   exit 5
 fi
+
+# Berkas nyasar hanya DILAPORKAN, tidak menghentikan apa pun.
+NYASAR=$(git status --porcelain --untracked-files=normal | grep '^??' || true)
+if [ -n "$NYASAR" ]; then
+  echo "Catatan: ada berkas tak terlacak di $APP (diabaikan, tidak akan"
+  echo "tersentuh git pull). Bersihkan sendiri kalau memang sampah:"
+  echo "$NYASAR" | sed 's/^/    /'
+  echo
+fi
+
 git pull --ff-only origin main
 git log --oneline -3
 

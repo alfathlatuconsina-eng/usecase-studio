@@ -44,24 +44,42 @@ CABANG = ["01006", "01001", "01008", "01003", "01004"]
 
 
 def tulis(ws, baris_judul, judul, catatan, baris_data, lebar_khusus=()):
-    """Judul kolom + baris data, dengan keterangan tipe di bawah judul."""
+    """Judul kolom + baris data. Data mulai TEPAT di baris berikutnya.
+
+    Keterangan tipe TIDAK ditulis sebagai baris di lembar data. Percobaan
+    pertama menaruhnya di bawah judul, dan parser membacanya sebagai baris
+    data — tiap template menghasilkan satu baris ditolak berisi teks
+    'wajib, tanggal' dan sejenisnya. Parser tidak tahu mana baris hiasan;
+    ia membaca semua yang ada setelah HEADER_ROW.
+
+    Keterangannya pindah ke lembar PETUNJUK, lewat kolom_tabel()."""
     for i, j in enumerate(judul, start=1):
         c = ws.cell(row=baris_judul, column=i, value=j)
         c.font = TEBAL
         c.alignment = Alignment(wrap_text=True, vertical="top")
         c.fill = (BARU_FILL if j.startswith("* ") else
                   ABAI_FILL if j.startswith("(") else JUDUL_FILL)
-    for i, k in enumerate(catatan, start=1):
-        c = ws.cell(row=baris_judul + 1, column=i, value=k)
-        c.font = Font(size=9, italic=True, color="808080")
-        c.alignment = Alignment(wrap_text=True, vertical="top")
     for b, baris in enumerate(baris_data):
         for i, v in enumerate(baris, start=1):
-            ws.cell(row=baris_judul + 2 + b, column=i, value=v)
+            ws.cell(row=baris_judul + 1 + b, column=i, value=v)
     for i in range(1, len(judul) + 1):
         ws.column_dimensions[get_column_letter(i)].width = lebar_khusus[i - 1] \
             if i - 1 < len(lebar_khusus) else 17
-    ws.freeze_panes = ws.cell(row=baris_judul + 2, column=1)
+    ws.freeze_panes = ws.cell(row=baris_judul + 1, column=1)
+
+
+def kolom_tabel(judul, catatan):
+    """Daftar kolom untuk lembar PETUNJUK: posisi, indeks parser, tipe."""
+    baris = ["DAFTAR KOLOM",
+             "",
+             "Kolom Excel | indeks parser | judul | keterangan",
+             "-" * 96]
+    for i, (j, k) in enumerate(zip(judul, catatan)):
+        baris.append(f"  {get_column_letter(i + 1):>2}  |  r[{i:2d}]  |  "
+                     f"{j:<32} | {k}")
+    baris += ["", "Kolom bertanda * adalah tambahan Agustus 2026.",
+              "Kolom berjudul (tidak dibaca) memang dilewati parser.", ""]
+    return baris
 
 
 def petunjuk(wb, teks):
@@ -161,7 +179,7 @@ def break_deposito():
         ])
 
     tulis(ws, 1, judul, catatan, data, lebar_khusus=[13, 30] + [17] * 24)
-    petunjuk(wb, UMUM + [
+    petunjuk(wb, UMUM + kolom_tabel(judul, catatan) + [
         "KHUSUS BREAK DEPOSITO",
         "",
         "Nama lembar : Sheet1  (kalau berbeda, lembar PERTAMA yang dipakai)",
@@ -194,7 +212,7 @@ def pencairan():
     ws.title = "Pencairan Deposito - olah"
     ws["A1"] = "PENCAIRAN DEPOSITO — laporan cabang"
     ws["A1"].font = Font(bold=True, size=12)
-    ws["A2"] = "Baris 1-3 dilewati parser. Data mulai baris 5 (baris 4 = keterangan tipe)."
+    ws["A2"] = "Baris 1-3 dilewati parser. Judul di baris 3, data mulai baris 4."
 
     judul = [
         "(tidak dibaca)", "No.", "Kode & Nama Cabang", "Tanggal (Input Data)",
@@ -244,7 +262,7 @@ def pencairan():
     tulis(ws, 3, judul, catatan, data,
           lebar_khusus=[13, 6, 32, 16, 17, 26, 16, 15, 17, 16, 22, 17, 28,
                         12, 12, 12, 30, 13, 17, 20])
-    petunjuk(wb, UMUM + [
+    petunjuk(wb, UMUM + kolom_tabel(judul, catatan) + [
         "KHUSUS PENCAIRAN DEPOSITO",
         "",
         "Nama lembar : Pencairan Deposito - olah",
@@ -290,7 +308,7 @@ def tbo():
     ws.title = "Data TBO Pembukaan Rekening"
     ws["A1"] = "DATA TBO — pembukaan rekening dengan dokumen TBO"
     ws["A1"].font = Font(bold=True, size=12)
-    ws["A2"] = "Baris 1-3 dilewati parser. Data mulai baris 5 (baris 4 = keterangan tipe)."
+    ws["A2"] = "Baris 1-3 dilewati parser. Judul di baris 3, data mulai baris 4."
 
     judul = [
         "(tidak dibaca)", "No.", "Kode & Nama Cabang", "Tanggal (Input Data)",
@@ -343,7 +361,7 @@ def tbo():
     tulis(ws, 3, judul, catatan, data,
           lebar_khusus=[13, 6, 32, 16, 16, 19, 26, 16, 17, 20, 20, 24, 17,
                         28, 12, 12, 12, 30, 20])
-    petunjuk(wb, UMUM + [
+    petunjuk(wb, UMUM + kolom_tabel(judul, catatan) + [
         "KHUSUS DATA TBO",
         "",
         "Nama lembar : Data TBO Pembukaan Rekening",
