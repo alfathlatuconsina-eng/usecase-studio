@@ -172,14 +172,40 @@ REM  dan pesan galat pentingnya justru yang tergulung hilang - tanpa catatan
 REM  ini, kegagalan hanya bisa ditebak.
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmm"') do set STAMP=%%i
 set LOG=%KELUAR%\push-log-%STAMP%.txt
-REM  -Encoding utf8 penting: bawaan Tee-Object di Windows PowerShell adalah
-REM  UTF-16, dan berkas hasilnya terbaca sebagai huruf berselang spasi di
-REM  editor mana pun. Catatan yang tidak terbaca sama saja dengan tidak ada.
-ssh %VPS% "sed -i 's/\r$//' /tmp/2-vps-muat.sh && bash /tmp/2-vps-muat.sh" 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%LOG%' -Encoding utf8"
-REM  errorlevel setelah pipe adalah milik powershell, bukan ssh. Keberhasilan
-REM  ditentukan dari penanda yang dicetak skrip VPS di baris terakhirnya.
+REM  JANGAN salurkan keluaran ssh lewat powershell di sini. Versi sebelumnya
+REM  memakai:
+REM
+REM      ssh ... 2>&1 | powershell -Command "$input | Tee-Object -FilePath X -Encoding utf8"
+REM
+REM  dan itu GAGAL SELALU di Windows PowerShell 5.1 (bawaan Windows 10/11):
+REM  Tee-Object di sana TIDAK punya parameter -Encoding, parameter itu baru
+REM  ada di PowerShell 6+. Akibatnya powershell mati seketika saat mengikat
+REM  parameter, salurannya putus, dan ssh ikut terbunuh DI TENGAH JALAN -
+REM  skrip di VPS berhenti setelah membuat cadangan, sebelum git pull.
+REM  Berkas catatan tidak pernah dibuat, findstr gagal membacanya, dan skrip
+REM  ini melaporkan "GAGAL DI SISI VPS" padahal VPS tidak apa-apa. Kejadian
+REM  8 Agu 2026; dua cadangan sia-sia tertinggal di /root.
+REM
+REM  Sekarang keluaran ssh langsung ditulis ke berkas, lalu dicetak. Tidak
+REM  ada powershell, jadi tidak ada yang bisa memutus salurannya. Berkasnya
+REM  berisi byte apa adanya dari VPS (UTF-8), bukan UTF-16 - jadi terbaca di
+REM  editor mana pun DAN bisa dibaca findstr.
+REM
+REM  Yang hilang hanya keluaran langsung: layar diam sekitar 30 detik, baru
+REM  seluruh catatan tercetak sekaligus. Itu pertukaran yang sepadan dengan
+REM  pemuatan yang tidak terputus di tengah.
+ssh %VPS% "sed -i 's/\r$//' /tmp/2-vps-muat.sh && bash /tmp/2-vps-muat.sh" > "%LOG%" 2>&1
+set RC_SSH=%errorlevel%
+type "%LOG%"
+REM  Keberhasilan tetap ditentukan penanda yang dicetak skrip VPS di baris
+REM  terakhirnya, bukan errorlevel: skrip itu bisa saja keluar dengan kode 0
+REM  padahal berhenti lebih awal. RC_SSH hanya dipakai untuk pesan yang lebih
+REM  jelas kalau sambungannya sendiri yang putus.
 findstr /c:"SELESAI. Cadangan:" "%LOG%" >nul
-if errorlevel 1 goto :gagal_vps
+if errorlevel 1 (
+  if not "%RC_SSH%"=="0" echo   ^(ssh keluar dengan kode %RC_SSH% - sambungan putus atau skrip VPS berhenti^)
+  goto :gagal_vps
+)
 echo.
 echo   catatan lengkap: %LOG%
 
