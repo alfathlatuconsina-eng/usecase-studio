@@ -444,6 +444,32 @@ def log_audit(s, action, proj, changes=None):
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+def _catat_login_branchops(email, role):
+    """Record a successful Branch Ops sign-in in branchops_audit.
+
+    Branch Ops only, on purpose. It is the one module with an audit table
+    shaped for this: PMO's audit_log carries project_id/project_name, and
+    People, Quality and E-Library have no audit table at all. Extending this
+    to the other four means designing a shared table first — don't bolt it on.
+
+    Only SUCCESSFUL sign-ins are recorded. A failed attempt writes nothing,
+    so this trail cannot be used to spot password guessing. That was a
+    deliberate choice, not an oversight; revisit it here if that changes.
+
+    Three layers of guard, because signing in must never fail on account of
+    bookkeeping: the module may not have imported at all (see the guarded
+    import at the bottom of this file), the attribute lookup may miss, and
+    db.audit() already swallows its own database errors.
+    """
+    bo = globals().get("_branchops")
+    if bo is None:
+        return
+    try:
+        bo.db.audit(email, "masuk", detail={"role": role})
+    except Exception:                                             # noqa: BLE001
+        pass
+
+
 def _do_login(model, module):
     data = request.get_json(force=True, silent=True) or {}
     email = (data.get("email") or "").strip().lower()
@@ -452,8 +478,13 @@ def _do_login(model, module):
         user = s.scalar(select(model).where(model.email == email))
         if not user or not bcrypt.checkpw(pw.encode(), user.pw_hash.encode()):
             return jsonify({"error": "Incorrect email or password"}), 401
-        return jsonify({"token": make_token(user, module),
-                        "email": user.email, "role": user.role})
+        # Read the fields BEFORE the session closes, then audit outside it:
+        # the audit write uses its own psycopg2 connection, and holding this
+        # SQLAlchemy session open across it serves no purpose.
+        token, uemail, urole = make_token(user, module), user.email, user.role
+    if module == "branchops":
+        _catat_login_branchops(uemail, urole)
+    return jsonify({"token": token, "email": uemail, "role": urole})
 
 
 @app.post("/api/pmo/login")

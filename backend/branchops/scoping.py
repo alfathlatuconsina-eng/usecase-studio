@@ -244,6 +244,59 @@ def boleh_cabang(branch_code):
     return bool(b) and b.get("region_class") == scope
 
 
+def kode_di_luar_jatah(kode_list):
+    """Dari sekumpulan kode cabang, mana yang DI LUAR jatah pengguna ini.
+
+    Mengembalikan daftar kode yang TIDAK boleh disentuh, terurut. Daftar
+    kosong berarti seluruhnya boleh.
+
+    Dipakai POST /upload: sebuah berkas Excel memuat banyak cabang
+    sekaligus, jadi pemeriksaannya harus atas HIMPUNAN kode, bukan satu
+    baris demi satu baris. Memanggil boleh_cabang() per baris akan
+    menembak basis data sekali per baris untuk jatah wilayah - satu berkas
+    200 baris jadi 200 query. Di sini cukup SATU query.
+
+    Aturannya sengaja SAMA PERSIS dengan boleh_cabang() dan klausa(),
+    supaya "yang boleh dilihat", "yang boleh diubah" dan "yang boleh
+    diunggah" tidak pernah berbeda arti. Kalau jenis jatah ketiga
+    ditambahkan nanti, ketiganya harus diubah bersama.
+
+    GAGAL TERTUTUP: jatah kosong atau jenis tak dikenal -> seluruh kode
+    dianggap di luar jatah, bukan sebaliknya."""
+    kode = sorted({(k or "").strip() for k in (kode_list or []) if (k or "").strip()})
+
+    scope = scope_aktif()
+    if scope is None:
+        return []                       # admin / jatah SEMUA -> semuanya boleh
+    if not kode:
+        return []
+    if scope == "":
+        return kode                     # belum dijatah -> tidak satu pun boleh
+
+    if isinstance(scope, tuple):
+        jenis, nilai = scope
+        if jenis == "cabang":
+            boleh = set([nilai] if isinstance(nilai, str) else list(nilai or []))
+            return [k for k in kode if k not in boleh]
+        if jenis == "wilayah":
+            wilayah = nilai
+        else:
+            return kode                 # jenis tak dikenal -> tutup semuanya
+    else:
+        # String polos dibaca sebagai wilayah, sejalan dengan klausa().
+        wilayah = scope
+
+    # Satu query untuk seluruh kode. Kode yang TIDAK ADA di master cabang
+    # tidak akan muncul di hasil, jadi otomatis ikut terhitung di luar
+    # jatah - sesuai aturan 4: cabang yang belum dikelompokkan hanya milik
+    # admin.
+    baris = db.q("""SELECT branch_code FROM branchops_branches
+                     WHERE branch_code = ANY(%s) AND region_class = %s""",
+                 (kode, wilayah))
+    boleh = {r["branch_code"] for r in baris}
+    return [k for k in kode if k not in boleh]
+
+
 # --------------------------------------------------------------------- #
 #  Daftar wilayah (master)
 #

@@ -21,6 +21,7 @@ ATURAN
    yang bisa memperbaikinya lewat aplikasi.
 4. Peran yang BELUM diatur mendapat semua menu yang masuk akal untuknya,
    sehingga memasang fitur ini tidak tiba-tiba mengunci siapa pun.
+5. Menu "home" (Beranda) SELALU diberikan, lihat MENU_ALWAYS di bawah.
 """
 from __future__ import annotations
 
@@ -72,6 +73,22 @@ MENU_MIN_ROLE = {
 # admin, dan admin bisa memberikannya ke editor lewat layar Hak Menu.
 MENU_DEFAULT_OFF = {"master"}
 
+# Menu yang TIDAK BISA dicabut dari peran mana pun.
+#
+# Beranda adalah tempat setiap orang mendarat sesudah masuk: view-home yang
+# terbuka lebih dulu, dan renderHome() yang dipanggil di akhir init().
+# Mencabutnya tidak membuat orang melihat lebih sedikit — ia hanya membuat
+# mereka mendarat di layar yang menolak dirinya sendiri.
+#
+# Yang membatasi Beranda bukan hak atas "home", melainkan hak atas d1-d4:
+# ringkasan() hanya menghitung dan menampilkan sumber yang boleh dilihat
+# peran itu. Jadi viewer yang hanya berhak "d1" tetap mendapat Beranda,
+# tapi Beranda-nya hanya berisi Break Deposito.
+#
+# Tetap terdaftar di MENU_KEYS supaya layar Hak Menu bisa menampilkannya
+# sebagai tercentang-mati, bukan menghilang tanpa penjelasan.
+MENU_ALWAYS = {"home"}
+
 
 def menus_for_role(role):
     """Menu maksimum yang BOLEH dimiliki sebuah peran (batas atas).
@@ -118,7 +135,10 @@ def allowed_menus(role=None):
 
     tersimpan = baris[0]["menus"] or []
     # Irisan: hak tersimpan TIDAK boleh melebihi batas peran.
-    return [m for m in batas if m in tersimpan]
+    # MENU_ALWAYS ditambahkan kembali: baris lama yang tersimpan sebelum
+    # aturan ini ada bisa saja tidak memuat "home", dan pengguna dengan
+    # baris seperti itu tidak boleh kehilangan halaman pendaratannya.
+    return [m for m in batas if m in tersimpan or m in MENU_ALWAYS]
 
 
 def set_menus(role, menus, oleh):
@@ -131,7 +151,12 @@ def set_menus(role, menus, oleh):
         raise ValueError("peran tidak dikenal")
     if role == "admin":
         raise ValueError("peran admin selalu mendapat semua menu")
-    bersih = [m for m in MENU_KEYS if m in (menus or [])]
+    # MENU_ALWAYS ikut disimpan walau layar tidak mengirimnya, supaya isi
+    # basis data sama dengan yang benar-benar berlaku. Kalau hanya
+    # allowed_menus() yang menambahkannya, layar Hak Menu akan menampilkan
+    # Beranda tidak tercentang padahal nyatanya aktif.
+    bersih = [m for m in MENU_KEYS
+              if m in (menus or []) or m in MENU_ALWAYS]
     db.execute(
         """INSERT INTO branchops_role_menus (role, menus, updated_by, updated_at)
            VALUES (%s, %s, %s, now())

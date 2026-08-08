@@ -98,14 +98,66 @@ def get_branches() -> dict:
             q("SELECT * FROM branchops_branches ORDER BY branch_code")}
 
 
-def audit(user_email, action, entity=None, entity_id=None, detail=None):
-    """Jejak audit modul ini sendiri; tidak menyentuh audit_log milik PMO."""
-    import json
+def asal_permintaan():
+    """(ip, user_agent) permintaan yang sedang berjalan; (None, None) di luar request.
+
+    SEBERAPA JAUH INI BOLEH DIPERCAYA
+    ---------------------------------
+    Keduanya berasal dari permintaan HTTP itu sendiri, jadi keduanya bisa
+    dipalsukan pengirimnya. Ini menjawab "kira-kira dari mana dan dengan apa
+    ini dikerjakan", BUKAN membuktikan siapa yang mengerjakan. Jangan pernah
+    dipakai sebagai dasar memberi atau menolak akses.
+
+    X-Forwarded-For hanya dipercaya kalau memang ADA. Kalau aplikasi berjalan
+    langsung tanpa proxy, header itu sepenuhnya dikendalikan pengirim dan
+    siapa pun bisa menuliskan alamat apa saja di sana. Kalau ada proxy, proxy
+    itu HARUS menimpanya, bukan menambahkan.
+
+    CATATAN PENTING UNTUK VPS: berkas nginx di panduan pemasangan hanya
+    meneruskan Host:
+
+        location / { proxy_pass http://127.0.0.1:8000; proxy_set_header Host $host; }
+
+    Tanpa baris X-Forwarded-For, remote_addr di server selalu 127.0.0.1 dan
+    kolom IP akan berisi itu untuk SEMUA orang. Perbaikannya di nginx:
+
+        proxy_set_header X-Real-IP        $remote_addr;
+        proxy_set_header X-Forwarded-For  $proxy_add_x_forwarded_for;
+
+    Di komputer lokal (tanpa proxy) alamatnya sudah benar apa adanya.
+    """
     try:
-        execute("""INSERT INTO branchops_audit (user_email, action, entity, entity_id, detail)
-                   VALUES (%s,%s,%s,%s,%s)""",
+        from flask import has_request_context, request
+        if not has_request_context():
+            return None, None
+    except Exception:                      # flask tidak tersedia (skrip CLI)
+        return None, None
+
+    # Rantai XFF berbentuk "klien, proxy1, proxy2" -> yang pertama adalah klien.
+    xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    ip = xff or request.headers.get("X-Real-IP") or request.remote_addr or None
+
+    # User-Agent disimpan MENTAH; peringkasan jadi tugas layar Audit.
+    ua = request.headers.get("User-Agent") or None
+    return (ip[:64] if ip else None), (ua[:500] if ua else None)
+
+
+def audit(user_email, action, entity=None, entity_id=None, detail=None):
+    """Jejak audit modul ini sendiri; tidak menyentuh audit_log milik PMO.
+
+    Asal permintaan (ip, perangkat) diisi DI SINI, bukan di setiap pemanggil.
+    Fungsi ini satu-satunya yang menulis ke branchops_audit, jadi mengisinya
+    di sini berarti aksi baru yang ditambahkan nanti ikut tercatat asalnya
+    tanpa penulisnya perlu ingat."""
+    import json
+    ip, perangkat = asal_permintaan()
+    try:
+        execute("""INSERT INTO branchops_audit
+                     (user_email, action, entity, entity_id, detail, ip, perangkat)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                 (user_email, action, entity,
                  str(entity_id) if entity_id is not None else None,
-                 json.dumps(detail, default=str) if detail else None))
+                 json.dumps(detail, default=str) if detail else None,
+                 ip, perangkat))
     except Exception:      # audit tidak boleh menggagalkan aksi utama
         pass

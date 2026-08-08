@@ -38,6 +38,99 @@ This is a personal showcase project. It is now FIVE dashboards served by ONE Fla
 - Never point DATABASE\_URL at the VPS during local development.  
 - Note: README.md still says "install Python 3.12". The version I actually run is 3.13 — trust this file, not the README, until the README is updated.
 
+## STATUS 8 Aug 2026 — local work is NOT committed, VPS still has nothing
+
+Read this first. Everything below describes tooling that works; this
+section says how far it actually got.
+
+**HEAD is still `1b3842a`. A large body of Branch Ops work sits in the
+working tree, uncommitted.** This is the single most important thing on
+this page, because the deploy script pulls from git — pushing today would
+ship the documentation for rules 12–18 and none of the code.
+
+Modified and NOT committed (13 tracked files):
+
+    backend/app.py                    login audit trail (rule 17)
+    backend/branchops/__init__.py     upload jatah check (rule 18)
+    backend/branchops/analytics.py    Beranda menu narrowing (rule 12),
+                                      Dashboard 2 rebuild (rule 13)
+    backend/branchops/db.py           request origin on audit (rule 17)
+    backend/branchops/privileges.py   MENU_ALWAYS / "home" (rule 12)
+    backend/branchops/schema.sql      3 new columns + 1 new setting
+    backend/branchops/scoping.py      kode_di_luar_jatah() (rule 18)
+    backend/branchops/storage.py      branch-aware supersede (rule 18)
+    frontend/branchops.html           rules 12–18, all of them
+    frontend/branchops-login.html     idle logout notice (rule 16)
+    claude.md                         this file
+    deploy/2-push-ke-vps.bat          git guard fix
+    deploy/2-vps-muat.sh
+
+Two of these close real holes, so leaving them uncommitted is not
+neutral: rule 12 stops /summary handing d2 and d3 row data to roles whose
+menus were revoked, and rule 18 stops an editor uploading another
+branch's data. Commit before pushing.
+
+**After pulling any of this, RESTART THE BACKEND.** schema.sql is applied
+by ensure\_schema() at startup and now contains three
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements plus a new
+branchops\_settings row. All idempotent, safe to re-run — but nothing
+applies until the app restarts, and the Audit tab and Unggah tab will
+error on missing columns until it does.
+
+Note the file name: git tracks this file as lowercase `claude.md`.
+Windows treats that as the same file as CLAUDE.md; Linux does not. On the
+VPS a checkout produces `claude.md`. Harmless for the app — it is
+documentation only — but do not "fix" it by adding a second file.
+
+**Not yet exercised against a live database**, unchanged from 7 Aug and
+now covering more: the branchops\_pencairan migration, the guarded
+backfill, the edit screens, per-dashboard date ranges, and everything in
+rules 12–18. The logic in rules 16, 17 and 18 was unit-tested with
+stubbed clock, request and database — that is not the same as having run.
+First real test should still be uploading
+`contoh/Template-02-Pencairan-Deposito.xlsx`, which exercises the new
+columns, the parser and the sequence reset together; then upload the same
+file as an editor scoped to one branch, to exercise rule 18's refusal.
+
+The three upload templates in `contoh/` are generated and verified — all
+three parse with 0 rejected rows against the current parsers (re-checked
+8 Aug; ingest.py has not changed since they were built).
+
+**The VPS has none of it** — not the code, not the schema, not the data.
+`deploy/2-push-ke-vps.bat` has been run twice and stopped both times at
+step 2 (`git pull`) before touching the database:
+
+- 1st run: my guard was wrong. It used `git status --porcelain`, which
+  counts UNTRACKED files, so leftover `*.bak-*`, `patch_*.py` and an
+  `.xlsx` in `/opt/pmo` blocked it for no reason. Fixed — it now uses
+  `--untracked-files=no` and only reports untracked files.
+- 2nd run: the guard was RIGHT. Six TRACKED files are modified directly
+  in production and were never committed:
+  `backend/app.py`, `backend/init_db.py`, `backend/requirements.txt`,
+  `frontend/landing.html`, `frontend/people.html`, `frontend/quality.html`.
+
+**That is the SECOND blocker, and it must not be bypassed blindly.**
+(The first is the uncommitted local work above. Both have to be resolved,
+and in that order: commit locally, then reconcile the VPS edits, then
+push. Pushing with either one outstanding loses work in one direction or
+the other.)
+`app.py` holds all five dashboards, so `git stash` there can break PMO,
+People, Quality or E-Library. Run `deploy/1-lihat-suntingan-vps.bat`
+first — it copies the diff and the VPS versions of those six files down
+to `deploy/masuk/suntingan-vps-<stamp>/` without changing anything. Then
+decide per file: if a fix only exists in production, port it to local,
+commit and push BEFORE pushing, or `git pull` will erase it. Note
+`init_db.py` on the VPS is the known-broken copy (imports a QualitySurvey
+model that does not exist) — do not bring that one back to local.
+
+Each failed run still made VPS backups in root's home
+(`pmo-sebelum-push-*.sql`, `bo-vps-sebelum-push-*.sql`). Harmless, but
+they accumulate.
+
+Still outstanding in the data, separate from the push: the batch 16
+June rows that look synthetic, and the batch 21 `tgl_input` typo. See
+"Known data problems" below. Batch 27 has been cancelled.
+
 ## Pulling Branch Ops data from the VPS to local (deploy/) — Aug 2026
 
 I sometimes want the VPS's Branch Ops data on this machine. `deploy/` holds
@@ -193,11 +286,31 @@ and are live — do not confuse them with the dead tables listed here.
 - Frontend: frontend/branchops.html (login: branchops-login.html)  
 - API: /api/branchops/\* (Flask Blueprint in backend/branchops/)  
 - Tables: branchops\_users, plus the tables in backend/branchops/schema.sql — branchops\_branches, branchops\_batches, branchops\_stg, branchops\_issues, branchops\_it\_break, branchops\_pencairan, branchops\_tbo, branchops\_rekon, branchops\_ref\_values, branchops\_role\_menus, branchops\_settings, branchops\_audit  
-- Daily data arrives as Excel (.xlsx) uploads parsed by ingest.py (openpyxl)  
+- Daily data arrives as Excel (.xlsx) uploads parsed by ingest.py (openpyxl).
+  Templates for all three file types live in `contoh/` and are verified to
+  parse with 0 rejected rows; upload the branch master first or every row
+  is rejected as `cabang_tak_dikenal`.
 - Dashboards: d1 Break Deposito, d2 Pencairan Deposito, d3 TBO, d4 Rekonsiliasi.
   Each filters on ONE date column — tgl\_break, tgl\_input, tgl\_input, tgl\_acuan
   respectively. That mapping is repeated in `\_KOLOM\_TGL` in analytics.py and
   must stay in step with what dash\_\*() passes to \_filter().
+- Uploading is possible from the Unggah tab (all three file types) AND from
+  a button inside d1, d2 and d3. Both post to the same POST /upload — see
+  rules 14, 15 and 18. d4 has no upload and never will; its rows are
+  computed, not uploaded.
+
+Columns added to existing tables in Aug 2026 — if a query or an INSERT
+looks like it is missing one, check here before assuming it was dropped:
+
+- `branchops\_batches.branch\_code` — batch scope. NULL = bank-wide, set
+  when the batch covers exactly one branch. Decides which older batch a
+  commit supersedes (rule 18).
+- `branchops\_audit.ip`, `branchops\_audit.perangkat` — request origin,
+  filled for EVERY audited action by db.audit(), not just logins (rule 17).
+- `branchops\_settings.idle\_timeout\_menit` — idle auto-logout, in minutes,
+  0 = off (rule 16).
+- `branchops\_pencairan` — TBO tracking columns mirroring branchops\_tbo
+  (rule 6).
 
 #### Branch Ops — required behaviour
 
@@ -265,9 +378,18 @@ and are live — do not confuse them with the dead tables listed here.
    - A role with no row is "not yet configured" and gets everything that role
      sensibly allows, so installing this locked nobody out.
    - Only these routes are intentionally open to every signed-in user:
-     /summary, /cabang, and GET /settings — all three are needed to render
-     any dashboard at all. Everything else is menu-gated. When adding a new
-     route, gate it too, or it becomes the next hole.
+     /cabang and GET /settings — both are needed to render any dashboard
+     at all. Everything else is menu-gated. When adding a new route, gate
+     it too, or it becomes the next hole.
+   - /summary (Beranda) is the one route that is neither open nor gated by
+     a decorator, and the reason is in "Beranda" below: it cannot be shut
+     off, so it narrows its own contents instead. Do not "fix" this by
+     adding @require_menu("home") — that would lock people out of the only
+     page they can land on. See rule 12.
+   - Of those eleven keys, "home" is NOT revocable — see MENU\_ALWAYS in
+     privileges.py and rule 12 below. The admin screen shows it ticked and
+     disabled. Adding another key to MENU\_ALWAYS means the same care:
+     something must still narrow what that screen shows.
    - The nav in branchops.html is built from the menus list returned by
      /api/branchops/me. That is presentation only — never rely on it.
 
@@ -401,7 +523,11 @@ and are live — do not confuse them with the dead tables listed here.
      greyed out, not hidden — hiding them makes people think data is gone.
    - Pencairan editing is refused unless the row's STORED data\_tbo is
      filled. Check the stored value, never the request body, or anyone can
-     unlock any row by including data\_tbo in their payload.
+     unlock any row by including data\_tbo in their payload. Since Aug 2026
+     Dashboard 2 only LISTS rows that have Data TBO (rule 13), so every
+     Ubah button there is enabled — that is the list narrowing, not this
+     rule loosening. Do not remove the check because "every row can be
+     edited anyway".
    - Editing no\_deposito recomputes no\_deposito\_norm in the same UPDATE.
      That column is the reconciliation key against IT data; letting the two
      drift makes rows match the wrong break, silently.
@@ -485,3 +611,460 @@ and are live — do not confuse them with the dead tables listed here.
     deletes the uploaded file after parsing (tempfile + os.unlink), so
     deleting a batch throws away the last record of what was uploaded.
 
+12. Beranda obeys Hak Menu — BUILT (Aug 2026). Do not undo this.
+
+    Before this, `/summary` was `@require()` only. That was defensible when
+    it returned counts, but rule 10 above made it return up to 2000 real
+    rows out of branchops_tbo and branchops_pencairan. Any signed-in user
+    therefore received d2 and d3 row data — account numbers, deposito
+    numbers, nominals, targets — even with those menus revoked, and could
+    read it straight out of the network response without opening a tab.
+    Masking and jatah still applied; the menu check was the one missing.
+
+    - **"home" can never be revoked** — `MENU_ALWAYS` in privileges.py.
+      Beranda is where everyone lands: view-home carries `class="view on"`
+      and init() calls renderHome() unconditionally. Revoking it did not
+      show people less, it dropped them on a screen that refused itself.
+      `allowed_menus()` and `set_menus()` both add it back, so old rows
+      saved before this rule still behave. Do not gate /summary on it.
+    - **What narrows Beranda is d1–d4, not "home".** `ringkasan(scope,
+      menus)` takes the caller's allowed menus and builds the TBO union
+      from only the arms it may see: branchops_tbo needs d3,
+      branchops_pencairan needs d2, neither means no query at all. The
+      four menu-card counts are nulled for dashboards the role lacks.
+      Route passes `privileges.allowed_menus()`; `menus=None` means "no
+      menu limit" and must never be used from an HTTP route.
+    - **The counts in `hitung` are computed then discarded**, not built
+      conditionally. That block is one query whose `sp * 5` multiplier is
+      tied to five `{swh}` inside it; making it conditional means
+      recomputing the multiplier every time, which is exactly how
+      parameters shift silently. The numbers never leave the process.
+      `cabang` is deliberately never nulled — Beranda needs it for the
+      "Master cabang belum diisi" banner.
+    - **Every UNION arm now writes its own column aliases in full.**
+      PostgreSQL names the result columns after the FIRST arm only, so the
+      pencairan arm used to be allowed to go without. Now that either arm
+      can be dropped, either can be first: an unaliased pencairan arm
+      standing alone yields `?column?` and `g.sumber`, `g.mata_uang`,
+      `g.dokumen` and `g.hari_terlambat` vanish with no error at all.
+      If you add a third arm, alias every column in it.
+    - The frontend reads the menu list from `/summary`'s own reply, not
+      from window.MENUS, so the cards and the numbers cannot disagree.
+      Row buttons check d3/d2 per row's `sumber`, matching what
+      PUT /tbo/<id> and PUT /pencairan/<id> actually enforce. All of this
+      is presentation — the backend is what stops it.
+    - Tests: `py -3 backend/uji_hak_menu_beranda.py`. No database and no
+      Flask app needed; db and scoping are stubbed. It checks the two
+      things that fail silently rather than loudly — placeholder count
+      versus parameter count in all four privilege shapes, and that every
+      union column carries an alias. Run it after touching ringkasan().
+
+13. Dashboard 2 (Pencairan) — rebuilt Aug 2026. Do not undo this.
+
+    Section order on the page, top to bottom. Anything not listed was
+    deleted on purpose, not lost:
+
+    1. KPI cards
+    2. "Arus dana dan volume" — komposisi arus dana + tren harian
+    3. "Pencairan: dipercepat vs sesuai jatuh tempo" — ringkasan + two
+       stacked daily charts
+    4. "Detail transaksi" — see below
+    5. "Rincian per cabang menurut jenis pencairan" — collapsed `<details
+       class="sect">`, break rows ONLY
+
+    DELETED: "Fokus pengendalian: pencairan dipercepat (break)" (both
+    per-branch bar charts), and the whole "Kinerja dan kepatuhan cabang"
+    block — cabang nilai vs volume, kelengkapan pelaporan per cabang,
+    ringkasan kepatuhan, and "Cabang tidak mengirim laporan". The backend
+    still sends `tak_lapor`; it is simply unused by this dashboard now.
+    `aggByBranch()` in branchops.html lost its only caller at the same
+    time and is marked as such in the file — it is not a missing feature.
+
+    - **Detail transaksi shows ONLY rows with Data TBO**, and the filtering
+      happens in SQL, not in JavaScript. `dash_pencairan` returns a second
+      list, `rows_tbo`, with `AND {_PUNYA_TBO}` applied BEFORE its own
+      `LIMIT 2000`.
+
+      This is the whole point and it is easy to undo by accident: `rows` is
+      capped at 2000 ordered by `tgl_input, id`. Filtering that in the
+      browser means the screen only ever sees TBO rows that happen to fall
+      inside the 2000 earliest disbursements — any TBO row past the cap
+      disappears with no error, no warning, and a count that looks exact.
+      Never go back to `rows.filter(r => r.punya_tbo)`.
+
+      `rows` itself must stay UNFILTERED: the KPIs, both daily charts and
+      the Rincian table are computed from it and have to count every
+      disbursement. `rows` and `rows_tbo` return an identical 33-column
+      shape, so the edit dialog and the CSV work off either.
+    - **`kpi.n_tbo`** is the true, uncapped count of TBO rows. The screen
+      compares it against `rows_tbo.length` and shows a warning banner when
+      the list is short. Keep that banner. A precise number that is quietly
+      partial is the failure that goes unnoticed longest.
+    - Columns, in order: No deposito, No rekening, Cabang, Tanggal
+      Pencairan, Nasabah, Nominal, Tenor, Target TBO, Terlambat, Aksi.
+      Ten columns — header, `<td>` count and `emptyRow(10)` must agree.
+    - Aksi is a plain "Ubah" for admin/editor on every row, because every
+      row here has Data TBO by construction. The rule in item 7 is
+      UNCHANGED: the backend still refuses to edit a pencairan row whose
+      stored data_tbo is empty. The button is uniform now only because
+      such rows are no longer listed.
+    - **The whole list renders at once — no inner scroll box.** The table
+      overrides `.tbl-wrap`'s 520px default to `max-height:none`. A capped
+      box was tried and removed: the sticky `<thead>` hides the fact that
+      the table is clipped, macOS draws no scrollbar until you scroll, and
+      the row count sits at the top-right of the page far from the table,
+      so hidden rows read as missing data. The inline style is safe because
+      `$("root").innerHTML` is rebuilt on every dashboard switch.
+    - Search by No. Deposito filters the already-loaded rows; it does not
+      call the server. Both sides are compared with punctuation stripped,
+      so `0012-3456` matches `00123456`. It fires on the button, on Enter,
+      and on the browser's native ✕ (the `search` event — without that, the
+      box clears but the table stays filtered).
+    - **CSV follows what is on screen**, including the search result. A
+      download that differs from the visible table is only discovered after
+      the file is in someone else's hands.
+    - The inline "Arus dana" dropdown went with its column. Arus dana is
+      still editable through the Ubah dialog, which means only on TBO rows.
+      `PATCH /api/branchops/pencairan/<id>/arus` is now unreachable from
+      the UI; the endpoint was left in place deliberately.
+    - Rincian per cabang is break-only, and the ROWS are filtered before
+      `aggGroups`, not just the sort order. Narrowing the `order` argument
+      alone still lets aggGroups build the "Sesuai Jatuh Tempo" group, and
+      its numbers still land in grpTableHTML's Grand total — the table
+      would read break-only while its total was not.
+
+    NEVER write the characters percent-s in a SQL comment in analytics.py.
+    psycopg counts parameter markers across the entire statement text,
+    comments included, so one in a comment makes the marker count disagree
+    with the parameter list and the query fails at runtime. This was
+    written and caught during the Aug 2026 work on `dash_pencairan`'s kpi
+    query; the note is repeated in the file at the point it happened.
+
+14. Dashboard 3 (TBO) — search + inline upload. Aug 2026. Do not undo this.
+
+    **Search is by No. Rekening ONLY, and that is not an oversight.**
+    Nama Nasabah is replaced with "***" by masking.py before the data
+    leaves the API (rule 1), so `r.nama_pemilik` in the browser is the
+    literal string "***" for every row — a name search on screen would
+    match all rows or none. Making it work means the BACKEND matching the
+    real name, which turns the app into a way to confirm whether a given
+    customer exists in the data. That is the thing rule 1 exists to
+    prevent. If it is ever genuinely wanted it must be role-gated AND
+    written to branchops_audit, decided deliberately — not slipped in
+    because "search should search everything". The reason is repeated as a
+    comment in branchops.html at the search box.
+
+    - Both sides are compared with punctuation stripped, so `300-010-002`
+      matches `300010002`. Fires on the button, on Enter, and on the
+      browser's native ✕ (the `search` event — without wiring that, the box
+      clears but the table stays filtered).
+    - `TBO_ROWS` is filled from ALL rows, never from the search result, or
+      the edit dialog cannot open a row that is currently filtered out.
+    - CSV follows what is on screen, including the search result.
+    - Filtering happens on rows already loaded, so it is bounded by the
+      date/branch filters and by `LIMIT 2000`. Unlike Dashboard 2 there is
+      no server-side pre-filter here, because the TBO dashboard is already
+      about TBO rows — nothing is being narrowed away.
+
+    **The in-dashboard upload button** sits in the dashboard header beside
+    "Unduh tabel (CSV)". Since Aug 2026 it serves BOTH Dashboard 3 (TBO)
+    and Dashboard 2 (Pencairan) — see rule 15 — so the element is
+    `bUpData` / `fUpData`, not the old `bUpTbo` / `fUpTbo`, and the handler
+    is `unggahData(file, jenis, judul)`, not `unggahTbo(file)`.
+
+    THREE conditions must all hold before it renders: `window.DASH` is a
+    key in `UNGGAH_DASH`, role is not viewer, and MENUS includes "upload".
+    That mirrors `@require("admin","editor")` then
+    `@privileges.require_menu("upload")` on the endpoint. Hiding it is only
+    presentation — but drop the last two checks and the button appears and
+    then 403s, which reads as a broken app rather than a permission.
+
+    - It posts to the SAME `POST /upload` as the Unggah tab, with the
+      `jenis` taken from `UNGGAH_DASH`. Never add a dashboard-only upload
+      path — the same rule as "never add a Beranda-only write path" in
+      rule 10. Two paths means one of them eventually stops validating.
+    - **It NEVER auto-commits.** The upload stops as a draft and the dialog
+      shows rows read / admitted / rejected / warned with the rejection
+      reasons grouped by code, then Komit, Batalkan and Unduh catatan. A
+      batch that lands committed with nobody reading the rejection list is
+      the quietest way to get broken data onto a dashboard.
+    - `boCommit(id, sesudah)` and `boBatal(id, sesudah)` take an optional
+      callback so an upload started from a dashboard refreshes THAT
+      dashboard instead of throwing the user into the Unggah tab. Same
+      pattern as `pcEdit(id, sesudah)`. The four existing call sites in the
+      Unggah tab pass one argument and still fall through to
+      `renderUpload`; keep that fallback.
+    - The file input is cleared after each pick. Without it, choosing the
+      SAME file twice in a row fires no `change` event at all and the
+      button feels dead.
+
+    **Upload lifecycle — what actually happens, and when.** Not new, but
+    now reachable from a dashboard, so it needs writing down.
+
+    - `POST /upload` → `storage.simpan_batch()` writes FOUR things in one
+      transaction, immediately: a `branchops_batches` row with
+      `status='draft'`; every raw Excel row into `branchops_stg`; every
+      validation finding into `branchops_issues`; and the data rows
+      themselves into the fact table (`branchops_tbo` for jenis=tbo).
+      Rows that failed hard validation are NOT put in the fact table —
+      they exist only in stg and issues.
+    - So the data is in the table the moment it is uploaded. What makes it
+      APPEAR is `_AKTIF` in analytics.py, which joins
+      `branchops_batches ... AND b.status='committed'`. A draft batch is
+      invisible on every dashboard while its rows sit in the fact table.
+    - `commit_batch()` inserts nothing. It runs two UPDATEs: any OTHER
+      committed batch with the same `jenis` AND exactly the same
+      `periode_awal`/`periode_akhir` becomes `dibatalkan`, then this batch
+      becomes `committed`.
+    - **TRAP: the supersede matches on identical period, not just jenis.**
+      periode comes from the date range inside the file
+      (`TGL_PERIODE[jenis]`). Re-upload a corrected file whose range
+      differs by even one day — a fixed date typo, a row dropped at the
+      edge — and the old batch is NOT superseded. Both stay committed and
+      the same account appears twice on the dashboard. Nothing errors.
+      When REPLACING an earlier upload rather than adding a new period,
+      cancel the old batch on the Unggah tab first.
+    - Closing the upload dialog without choosing leaves an orphan DRAFT:
+      invisible, but its rows are already in the fact table, and
+      re-uploading the same file makes a second one. The Unggah tab is
+      where drafts are seen and cleared.
+
+15. ONE upload button shared by d1, d2 and d3. Aug 2026.
+
+    Dashboard 2 got the same in-dashboard upload button Dashboard 3 has,
+    and Dashboard 1 was added shortly after.
+    It was NOT built as a second button with a second dialog. There is one
+    button (`bUpData`), one hidden file input (`fUpData`) and one dialog
+    function (`unggahData(file, jenis, judul)`); which menu shows it, what
+    it is labelled and what `jenis` it posts all come from ONE table:
+
+    ```js
+    const UNGGAH_DASH = {
+      1: { jenis: "it_break",  label: "Unggah Data Break Deposito" },
+      2: { jenis: "pencairan", label: "Unggah Data Pencairan" },
+      3: { jenis: "tbo",       label: "Unggah Data TBO" },
+    };
+    ```
+
+    - The `jenis` values must stay identical to the keys of
+      `ingest.PARSERS` ("it_break", "pencairan", "tbo"). They are posted
+      verbatim; an unknown one is a 400 from `/upload`.
+    - Dashboard 1 was added on request, later in Aug 2026, and adding it
+      was the one line above — nothing else changed. Worth remembering
+      why it was initially left out, because it still applies: the Break
+      Deposito file is an IT Group export, not a branch submission, so
+      whoever clicks the button usually did not produce the file and
+      cannot correct it. A rejected row there means asking IT for a new
+      export, not editing a cell. Batch 27 (all `tgl_break` = 1984) is
+      what that failure looks like in practice.
+    - Dashboard 4 can never have one — rekon rows are computed from the
+      other two tables, not uploaded. Do not add it.
+    - **Copying the dialog per menu is the thing to avoid.** Everything
+      worth keeping about this screen — never auto-committing, showing
+      rejections grouped by code, offering Unduh catatan — has to be
+      remembered in every copy. The copy nobody edits still looks correct.
+      Same reasoning as "never add a Beranda-only write path" (rule 10).
+    - The handler re-reads `window.DASH` at the moment a file is picked,
+      not when the button was drawn. Switching menus with the OS file
+      picker still open would otherwise post a Pencairan file as
+      `jenis=tbo`. The parser would reject it row by row, which is far
+      more confusing than never mis-sending it.
+    - `switchTab` rewrites the button's label on every dashboard switch.
+      A stale label is not a typo here — one button serves two file types
+      that must not be swapped, so a label naming the previous menu
+      invites exactly the wrong upload.
+    - The supersede TRAP in rule 14 applies to Pencairan too, and matters
+      more there: `TGL_PERIODE["pencairan"]` is `tgl_input`, so a
+      corrected re-upload whose date range shifts by a day does NOT
+      cancel the old batch. Both stay committed and the same disbursement
+      is counted twice in the KPIs and both daily charts. Cancel the old
+      batch on the Unggah tab first when REPLACING rather than adding.
+
+16. Idle auto-logout — BUILT (Aug 2026). Branch Ops only.
+
+    Leaving the screen untouched for `idle_timeout_menit` clears the token
+    and sends the browser to `/branchops/login?idle=1`. Silent, by
+    decision — no countdown, no "still there?" prompt. The login page
+    explains why it happened, in a neutral colour rather than the red
+    error style, because a login screen appearing mid-task otherwise
+    reads as a crash and gets reported as one.
+
+    - **This is NOT session security, and must not be described as such.**
+      It removes the token from the browser, which is what stops a
+      passer-by using an unattended screen. It does not invalidate
+      anything server-side: the JWT stays valid until its own `exp`, and
+      `JWT_HOURS = 12` in app.py. A token already copied out still works
+      for 12 hours. Closing that means shortening `JWT_HOURS` — which is
+      shared by ALL FIVE dashboards — or keeping a server-side revocation
+      list. Neither was done here. The same warning is repeated in
+      branchops.html and in the setting's own description.
+    - Configured in `branchops_settings.idle_timeout_menit`, in MINUTES,
+      `0` = off. Seeded at **1** by schema.sql. Admins change it on the
+      Pengaturan tab; the field is a number input capped at 480 so nobody
+      types `0.1` and locks the module out of usability.
+    - **The value is read ONCE, in `init()`.** Changing the setting takes
+      effect on the next page load, not the next request — unlike menu
+      privileges and jatah, which are deliberately read per request. Said
+      plainly under the Pengaturan heading so it is not mistaken for a bug.
+    - If `GET /settings` fails, the timer does NOT start. Deliberate: a
+      guessed limit throws people out on a number nobody chose. Better
+      silent than wrong.
+    - **Wall clock, not `setTimeout`.** A `setInterval` tick compares
+      `Date.now()` against the last activity stamp. A single long
+      `setTimeout` stops running when the laptop sleeps or the browser
+      freezes the tab — so a session left overnight would never expire,
+      which is the exact opposite of the point. The comparison catches it
+      on the first tick after wake.
+    - Last-activity is kept in `localStorage` (`branchops_aktivitas_terakhir`),
+      so working in one tab keeps the others alive instead of each tab
+      running its own countdown.
+    - **Two pauses, and both exist for real failures:**
+      `window._sibuk` counts in-flight `authFetch` calls, and the file
+      picker sets `_pilihBerkasSampai`. The OS file dialog belongs to the
+      operating system, not the page — while it is open the page receives
+      no mouse or keyboard events at all, so without this, someone
+      hunting for their Excel file gets thrown out precisely when they
+      were about to upload. The picker grace is capped at 10 minutes and
+      also cleared on window `focus`, so an abandoned dialog cannot hold
+      a session open indefinitely.
+    - `window._sibuk--` sits in a `finally`. If it were skipped when a
+      fetch throws (network down, server stopped), the counter never
+      returns to zero and the session never expires — a silent failure,
+      in the permissive direction.
+    - File inputs are watched by ONE delegated listener on `document`,
+      not wired per element. The Unggah tab builds `fMaster` and the drop
+      zone's `file` input after load, and any input added later must be
+      covered automatically rather than remembered.
+    - Tests: `node /tmp/t.js` style harness was used during development
+      (stubbed clock + localStorage) covering the busy counter, the
+      picker cap, cross-tab activity and the sleeping-laptop case. It was
+      not kept in the repo — if this logic is changed, rebuild it. The
+      cases that matter are the ones that fail permissively: busy counter
+      stuck above zero, and a `setTimeout` rewrite that survives sleep.
+    - Only Branch Ops has this. PMO, People, Quality and E-Library are
+      untouched.
+
+17. Login trail + request origin on audit — BUILT (Aug 2026).
+
+    `branchops_audit` gained two columns, `ip` and `perangkat`, and
+    `_do_login()` in app.py now writes a `masuk` row for a successful
+    Branch Ops sign-in. The Audit tab shows Waktu / Pengguna / Aksi /
+    Alamat IP / Perangkat / Objek / Detail.
+
+    - **Filled in `db.audit()`, not at each call site.** That function is
+      the only thing that writes to branchops_audit, so every action
+      already recorded — uploads, edits, privilege changes — gained an
+      origin at the same time, and any action added later gets one
+      without the author remembering to.
+    - **`perangkat` stores the RAW User-Agent.** The friendly
+      "Chrome di Windows" is produced by `ringkasPerangkat()` in
+      branchops.html at render time. This follows principle 1 at the top
+      of schema.sql: raw data is never altered. Summarising before
+      storage would throw away the evidence to save a string — and UA
+      guessing is exactly the kind of thing that turns out wrong later.
+      The raw text is in the cell's `title` tooltip.
+    - The check order in `ringkasPerangkat()` is load-bearing, do not
+      alphabetise it: Edge claims to be Chrome *and* Safari, Chrome
+      claims to be Safari, Android claims to be Linux, and iPhone says
+      "like Mac OS X". Most specific first, or everything reads as
+      Safari on macOS. An unrecognised UA shows a truncated raw string
+      rather than "unknown" — unreadable beats empty.
+    - **Successful sign-ins ONLY.** A wrong password writes nothing, so
+      this trail cannot show password guessing. That was a decision, not
+      an oversight. Changing it means writing the audit row on the 401
+      branch of `_do_login()` — and deciding what to record when the
+      email doesn't exist at all.
+    - **Branch Ops only.** PMO's `audit_log` is project-shaped
+      (`project_id`, `project_name`) and People, Quality and E-Library
+      have no audit table. `_do_login()` is shared by all five, hence the
+      `if module == "branchops"` guard. Covering the others needs a
+      shared table designed first.
+    - Signing in must never fail because of bookkeeping, so the write is
+      guarded three times: `_branchops` may not be in globals (the import
+      at the bottom of app.py is deliberately guarded), the attribute
+      lookup may miss, and `db.audit()` swallows its own DB errors.
+    - **IP and User-Agent are self-reported and forgeable.** They answer
+      "roughly where from", never "who". Never gate access on them. The
+      Audit tab says so on screen, deliberately.
+
+    **VPS CAVEAT — the IP column will read 127.0.0.1 in production.**
+    The nginx block in the install notes forwards only Host:
+
+        location / { proxy_pass http://127.0.0.1:8000; proxy_set_header Host $host; }
+
+    With no `X-Forwarded-For` and no `ProxyFix` in app.py, `remote_addr`
+    is the proxy itself for every user. `asal_permintaan()` prefers
+    X-Forwarded-For, then X-Real-IP, then remote_addr, so the fix is
+    nginx-side:
+
+        proxy_set_header X-Real-IP        $remote_addr;
+        proxy_set_header X-Forwarded-For  $proxy_add_x_forwarded_for;
+
+    Locally, with no proxy, the address is already correct. Note the
+    trade: trusting XFF is only safe *because* a proxy overwrites it. If
+    the app is ever exposed directly, that header is attacker-controlled.
+
+18. Uploads obey jatah — BUILT (Aug 2026). Do not undo this.
+
+    An editor may only upload data for the branches in their jatah
+    ("Jatah (Cabang yang dilihat)"). Admin is unrestricted. Applies to
+    all three file types and to BOTH entry points — the Unggah tab and
+    the in-dashboard button — because both post to the same
+    `POST /upload`. That is the payoff of rule 15's single write path.
+
+    - **The WHOLE FILE is refused (403) if it contains one out-of-scope
+      branch.** Rows are not silently filtered. Two reasons, and the
+      second is the one that bites: filtering makes people believe the
+      whole submission landed when only part did; and a filtered batch
+      still takes its PERIOD from every row in the file, because
+      `ParseResult.periode()` reads `self.rows` including rejected ones.
+      A half-empty batch carrying a full-width period is exactly what
+      cancels another branch's batch.
+    - Checked BEFORE `simpan_batch()`. A refused file must leave nothing
+      behind in batches/stg/issues, or the Unggah tab fills with drafts
+      that can never be committed.
+    - `scoping.kode_di_luar_jatah(codes)` resolves the whole file in ONE
+      query. Do not replace it with `boleh_cabang()` per row — that is a
+      database round trip per row for wilayah jatah. Its rules must stay
+      identical to `boleh_cabang()` and `klausa()`: see, edit and upload
+      must never disagree about what a branch means. A third jatah kind
+      later means changing all three.
+    - Fails closed: no jatah, unknown scope kind, or a branch missing
+      from the master all count as out of scope.
+    - The response carries `cabang_luar` (capped at 20) and
+      `cabang_luar_total`. Both screens list them. A refusal that does
+      not say WHICH branch is unactionable on a 200-row file.
+
+    **`branchops_batches.branch_code` — why supersede changed too.**
+
+    `commit_batch()` used to cancel any committed batch with the same
+    `jenis` and the exact same period. That was right while one file
+    meant the whole bank. Per-branch uploads break the assumption
+    outright: branch A and branch B both report Mon–Fri, same jenis,
+    same period — and committing B cancelled A, with A's rows vanishing
+    from every dashboard and no error anywhere. That is the normal case
+    for branch reporting, not an edge case.
+
+    - `branch_code` on the batch is NULL for a bank-wide file and set
+      when the batch covers EXACTLY ONE branch (`storage.lingkup_cabang()`).
+      Computed from all rows including rejected ones, so it describes the
+      file rather than the surviving remainder.
+    - Supersede matches with `IS NOT DISTINCT FROM`, never `=`. NULL = NULL
+      is NULL in SQL, not TRUE — with plain `=`, bank-wide batches would
+      stop replacing bank-wide batches, which is the one behaviour that
+      had to stay unchanged.
+    - Resulting matrix: bank-wide replaces bank-wide (as before); same
+      branch replaces same branch; branch A never touches branch B; and
+      bank-wide and single-branch batches never cancel each other.
+    - That last pair is a real consequence, not an oversight: an admin's
+      bank-wide upload no longer retires the branch uploads for the same
+      period, so the same rows can be present twice. Cancel the old
+      batches on the Unggah tab when switching between the two styles.
+      The Unggah tab shows a "Lingkup" column for exactly this reason.
+    - The period trap from rules 14 and 15 is UNCHANGED and still applies
+      within a scope.
+
+    Not covered, deliberately: `POST /master` (the branch master) is
+    still bank-wide for anyone holding the "master" menu key. It defines
+    which branches exist, so it is not a per-branch document. It is off
+    by default (`MENU_DEFAULT_OFF`) and that remains the control.

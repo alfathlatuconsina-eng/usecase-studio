@@ -266,7 +266,16 @@ def create_blueprint(require):
     @bp.get("/summary")
     @require()
     def summary():
-        return _out(analytics.ringkasan(scoping.scope_aktif()))
+        """Beranda. Sengaja TIDAK memakai @require_menu.
+
+        Beranda tidak bisa dicabut (privileges.MENU_ALWAYS), jadi tidak ada
+        kunci menu yang masuk akal untuk menutup rute ini. Pembatasannya ada
+        di dalam: ringkasan() hanya membaca sumber yang boleh dilihat peran
+        pemanggil. Tanpa argumen kedua ini, rute ini mengembalikan baris
+        branchops_tbo dan branchops_pencairan kepada peran yang hak d3 dan
+        d2-nya sudah dicabut."""
+        return _out(analytics.ringkasan(scoping.scope_aktif(),
+                                        privileges.allowed_menus()))
 
     @bp.get("/cabang")
     @require()
@@ -386,7 +395,10 @@ def create_blueprint(require):
         return _out({"batches": db.q(
             """SELECT id, jenis, nama_file, status, baris_total, baris_valid,
                       baris_ditolak, baris_warning, periode_awal, periode_akhir,
-                      uploaded_at, uploaded_by AS oleh
+                      uploaded_at, uploaded_by AS oleh,
+                      -- lingkup cabang: NULL = se-bank. Menentukan batch lama
+                      -- mana yang tergantikan saat dikomit (commit_batch).
+                      branch_code
                FROM branchops_batches ORDER BY id DESC LIMIT 50"""),
             "master_n": (db.q1("SELECT count(*) AS n FROM branchops_branches")
                          or {}).get("n", 0)})
@@ -421,6 +433,38 @@ def create_blueprint(require):
             except Exception as e:                        # noqa: BLE001
                 return jsonify(error=f"Berkas tidak bisa dibaca: {e}. Pastikan nama sheet "
                                      "dan susunan kolom sesuai template."), 400
+            # ---------------------------------------------------------- #
+            # JATAH CABANG — berlaku untuk ketiga jenis berkas.
+            #
+            # Peran editor hanya boleh mengunggah data cabang yang menjadi
+            # jatahnya ("Jatah (Cabang yang dilihat)" di layar Pengguna).
+            # Admin tidak dibatasi.
+            #
+            # SELURUH BERKAS DITOLAK kalau memuat satu saja cabang di luar
+            # jatah, bukan disaring per baris. Dua alasan:
+            #
+            #  1. Menyaring diam-diam membuat orang mengira seluruh
+            #     kiriman masuk, padahal hanya sebagiannya. Angka di layar
+            #     lalu terlihat pasti padahal tidak lengkap.
+            #  2. Batch yang tersaring tetap memakai PERIODE dari seluruh
+            #     isi berkas (ParseResult.periode() membaca semua baris,
+            #     termasuk yang ditolak). Batch separuh isi dengan periode
+            #     penuh itulah yang kemudian membatalkan batch cabang lain
+            #     pada periode sama - lihat storage.commit_batch().
+            #
+            # Diperiksa SEBELUM simpan_batch(): berkas yang ditolak tidak
+            # boleh meninggalkan jejak apa pun di batches/stg/issues, atau
+            # tab Unggah akan penuh draft yang tak pernah bisa dikomit.
+            luar = scoping.kode_di_luar_jatah(
+                [r.get("branch_code") for r in res.rows])
+            if luar:
+                return jsonify(
+                    error=("Berkas memuat cabang di luar jatah Anda. "
+                           "Anda hanya boleh mengunggah data cabang yang "
+                           "menjadi jatah Anda."),
+                    cabang_luar=luar[:20],
+                    cabang_luar_total=len(luar)), 403
+
             batch_id = storage.simpan_batch(res, f.filename, len(data), sha, _email())
         finally:
             os.unlink(tmp.name)
@@ -802,6 +846,10 @@ def create_blueprint(require):
             kunci=privileges.MENU_KEYS,
             label=privileges.MENU_LABEL,
             peran=list(privileges.PERAN),
+            # selalu = menu yang tidak bisa dicabut dari peran mana pun.
+            # Layar menampilkannya tercentang-mati; kalau daftar ini tidak
+            # dikirim (backend versi lama), layar kembali ke perilaku lama.
+            selalu=sorted(privileges.MENU_ALWAYS),
             # batas = menu yang BOLEH dicentang untuk peran itu
             batas_peran={p: privileges.menus_for_role(p) for p in privileges.PERAN},
             # bawaan = keadaan bila peran belum pernah diatur. Berbeda dari

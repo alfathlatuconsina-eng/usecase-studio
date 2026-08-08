@@ -31,6 +31,12 @@
   .login-box input::placeholder { color: #9aa3ad; }
   .login-box input:focus { border-color: var(--accent); }
   #login-error { color: #e05252; font-size: 12px; margin-top: 10px; min-height: 16px; }
+  /* Pemberitahuan keluar otomatis. Sengaja BUKAN warna galat merah:
+     ini bukan kesalahan siapa pun, dan tampilan galat membuat orang
+     mengira aplikasinya rusak lalu melapor. */
+  #idle-note { display: none; margin-top: 14px; padding: 10px 12px; border-radius: 7px;
+    background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+    font-size: 12px; line-height: 1.5; }
   .btn-primary { width: 100%; padding: 13px; margin-top: 24px; background: var(--accent);
     color: #fff; border: none; border-radius: 7px; font-size: 15px; font-weight: 700;
     letter-spacing: .2px; cursor: pointer; transition: background .15s, transform .1s; }
@@ -64,6 +70,8 @@
     </div>
     <div class="login-heading">Sign In</div>
     <div class="login-sub">Enter your credentials to access this module.</div>
+    <div id="idle-note">Anda dikeluarkan otomatis karena layar dibiarkan menganggur.
+      Silakan masuk lagi untuk melanjutkan.</div>
     <label for="login-email">Email</label>
     <input type="email" id="login-email" placeholder="you@bank.co.id" autocomplete="username">
     <label for="login-pw">Password</label>
@@ -80,6 +88,13 @@
 
 <script>
   const REDIRECT_TO = '/branchops';
+
+  /* Dikeluarkan karena menganggur (?idle=1 dari branchops.html). Tanpa
+     penjelasan ini, layar masuk yang muncul tiba-tiba di tengah pekerjaan
+     terbaca sebagai aplikasi yang rusak, bukan sebagai batas waktu. */
+  if (new URLSearchParams(location.search).has('idle')) {
+    document.getElementById('idle-note').style.display = 'block';
+  }
 
   const existing = localStorage.getItem('branchops_token');
   if (existing) {

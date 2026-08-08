@@ -58,19 +58,39 @@ def cek_duplikat_file(jenis, sha):
 # --------------------------------------------------------------------------
 # simpan batch
 # --------------------------------------------------------------------------
+def lingkup_cabang(res) -> str | None:
+    """Kode cabang batch ini kalau isinya TEPAT SATU cabang, selain itu None.
+
+    None berarti "se-bank" dan itulah bentuk unggahan admin. Nilai terisi
+    berarti berkas ini hanya menyangkut satu cabang - bentuk unggahan
+    editor bercabang tunggal.
+
+    Dipakai commit_batch() supaya batch satu cabang tidak membatalkan batch
+    cabang lain yang kebetulan berperiode sama. Lihat catatan di schema.sql
+    pada kolom branchops_batches.branch_code.
+
+    Dihitung dari SELURUH baris, termasuk yang ditolak validasi, supaya
+    lingkupnya menggambarkan isi berkas - bukan sisa yang lolos."""
+    kode = {(r.get("branch_code") or "").strip() for r in res.rows}
+    kode.discard("")
+    return next(iter(kode)) if len(kode) == 1 else None
+
+
 def simpan_batch(res, nama_file, ukuran, sha, user_email, catatan=None) -> int:
     tgl_kol = TGL_PERIODE[res.jenis]
     p_awal, p_akhir = res.periode(tgl_kol)
+    kode_cabang = lingkup_cabang(res)
 
     with db.conn() as c:
         with c.cursor() as k:
             k.execute("""INSERT INTO branchops_batches
                    (jenis, nama_file, ukuran_byte, sha256, status, baris_total, baris_valid,
-                    baris_ditolak, baris_warning, periode_awal, periode_akhir, uploaded_by, catatan)
-                   VALUES (%s,%s,%s,%s,'draft',%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    baris_ditolak, baris_warning, periode_awal, periode_akhir, uploaded_by, catatan,
+                    branch_code)
+                   VALUES (%s,%s,%s,%s,'draft',%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
                       (res.jenis, nama_file, ukuran, sha, len(res.rows), res.baris_valid,
                        res.baris_ditolak, len({i.baris_no for i in res.warnings}),
-                       p_awal, p_akhir, user_email, catatan))
+                       p_awal, p_akhir, user_email, catatan, kode_cabang))
             batch_id = k.fetchone()[0]
 
             # staging: seluruh baris apa adanya
@@ -99,7 +119,20 @@ def simpan_batch(res, nama_file, ukuran, sha, user_email, catatan=None) -> int:
 
 
 def commit_batch(batch_id, user_email):
-    """Jadikan batch aktif. Batch committed lain dengan jenis + periode sama dibatalkan."""
+    """Jadikan batch aktif. Batch committed lain dengan jenis + periode +
+    LINGKUP CABANG yang sama dibatalkan.
+
+    Lingkup cabang ikut dicocokkan sejak Agustus 2026. Sebelumnya hanya
+    jenis + periode, dan itu benar selama satu berkas mewakili seluruh
+    bank. Sejak editor boleh mengunggah data cabangnya sendiri, dua cabang
+    yang melaporkan periode yang sama menghasilkan batch yang - menurut
+    aturan lama - saling menggantikan: komit cabang B membatalkan batch
+    cabang A, dan baris cabang A hilang dari seluruh dashboard tanpa galat.
+
+    IS NOT DISTINCT FROM, bukan '=': branch_code bernilai NULL untuk batch
+    se-bank, dan NULL = NULL bernilai NULL di SQL, bukan TRUE. Dengan '='
+    biasa, batch se-bank berhenti menggantikan batch se-bank - yaitu
+    perilaku lama yang justru harus dipertahankan."""
     b = db.q1("SELECT * FROM branchops_batches WHERE id=%s", (batch_id,))
     if not b:
         raise ValueError("Batch tidak ditemukan")
@@ -108,8 +141,10 @@ def commit_batch(batch_id, user_email):
 
     db.execute("""UPDATE branchops_batches SET status='dibatalkan'
                   WHERE jenis=%s AND status='committed' AND id<>%s
-                    AND periode_awal=%s AND periode_akhir=%s""",
-               (b["jenis"], batch_id, b["periode_awal"], b["periode_akhir"]))
+                    AND periode_awal=%s AND periode_akhir=%s
+                    AND branch_code IS NOT DISTINCT FROM %s""",
+               (b["jenis"], batch_id, b["periode_awal"], b["periode_akhir"],
+                b.get("branch_code")))
     db.execute("""UPDATE branchops_batches SET status='committed', committed_by=%s, committed_at=now()
                   WHERE id=%s""", (user_email, batch_id))
     return db.q1("SELECT * FROM branchops_batches WHERE id=%s", (batch_id,))

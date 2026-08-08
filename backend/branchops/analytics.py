@@ -218,6 +218,18 @@ def dash_pencairan(f, sertakan_dup=False):
         count(*) FILTER (WHERE cardinality(f.flags)=0)      AS bersih,
         count(*) FILTER (WHERE f.checker_eq_approver)       AS ck_eq_ap,
         count(*) FILTER (WHERE 'Tanpa maker/checker/approver' = ANY(f.flags)) AS tanpa_nip,
+        -- Jumlah SEBENARNYA baris ber-Data TBO, tanpa dibatasi LIMIT.
+        -- Dipakai layar untuk tahu apakah daftar rows_tbo terpotong: kalau
+        -- rows_tbo.length kurang dari n_tbo, ada yang tidak tertampil dan
+        -- layar harus mengatakannya, bukan menyebut angka yang terlihat
+        -- pasti padahal sebagian.
+        --
+        -- JANGAN menulis tanda persen-s di komentar mana pun di dalam query.
+        -- psycopg menghitung penanda parameter di SELURUH teks, termasuk di
+        -- dalam komentar SQL, jadi satu saja di sini membuat jumlah penanda
+        -- tidak lagi sama dengan jumlah parameter dan query gagal saat
+        -- dijalankan. _PUNYA_TBO sendiri tidak memuat penanda parameter.
+        count(*) FILTER (WHERE {_PUNYA_TBO})                AS n_tbo,
         count(DISTINCT f.branch_code)                       AS cabang,
         COALESCE(avg(f.skor_lengkap)*100,0)                 AS lengkap,
         COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY f.nominal),0) AS median
@@ -285,6 +297,33 @@ def dash_pencairan(f, sertakan_dup=False):
                            -- yang lambat laun berbeda dari parser dan schema.
                            {_PUNYA_TBO} AS punya_tbo
                          {base} ORDER BY f.tgl_input, f.id LIMIT 2000""", p),
+        # Baris ber-Data TBO, DISARING DI SINI dan bukan di layar.
+        #
+        # Kenapa query terpisah, bukan menyaring "rows" di JavaScript:
+        # "rows" dipotong LIMIT 2000. Menyaring sesudah pemotongan berarti
+        # layar hanya melihat baris ber-TBO yang kebetulan masuk 2000
+        # pencairan paling awal menurut tgl_input. Kalau penyaring tanggal
+        # mengenai lebih dari 2000 baris, baris ber-TBO sesudahnya HILANG
+        # tanpa tanda apa pun - dan layar tetap menyebut angka yang pasti.
+        # Dengan disaring lebih dulu, LIMIT berlaku atas baris ber-TBO,
+        # bukan atas seluruh pencairan.
+        #
+        # "rows" TIDAK diubah: KPI harian, grafik jenis pencairan dan tabel
+        # Rincian di layar dihitung darinya, dan semuanya harus tetap
+        # menghitung SELURUH pencairan, bukan yang ber-TBO saja.
+        "rows_tbo": db.q(f"""SELECT f.id, f.branch_code, br.branch_name, f.tgl_input, f.tgl_pencairan,
+                           f.no_deposito, f.nama_pemilik, f.nominal, f.tenor_hari,
+                           f.no_cif, f.no_rekening,
+                           f.tgl_penempatan, f.tgl_bilyet,
+                           f.jenis_pencairan, f.jenis_penarikan, f.arus_dana, f.arus_keyakinan,
+                           f.arus_manual, f.checker_eq_approver, f.is_duplikat, f.dup_dikecualikan,
+                           f.skor_lengkap, f.catatan, f.flags,
+                           f.data_tbo, f.target_pemenuhan_tbo, f.status_tbo, f.tgl_tbo_lengkap,
+                           f.nip_maker, f.nip_checker, f.nip_approver,
+                           {_HARI_TERLAMBAT_PC} AS hari_terlambat,
+                           TRUE AS punya_tbo
+                         {base} AND {_PUNYA_TBO}
+                         ORDER BY f.tgl_input, f.id LIMIT 2000""", p),
     }
 
 
@@ -444,13 +483,35 @@ def dash_rekon(f):
 # ==========================================================================
 # beranda
 # ==========================================================================
-def ringkasan(scope=""):
+def ringkasan(scope="", menus=None):
     """Angka untuk tab Beranda.
 
     Ikut dibatasi jatah wilayah — kalau tidak, pengguna wilayah A melihat
     tabel kosong di dashboard tapi angka nasional di Beranda, yang
-    membocorkan besaran data wilayah lain."""
+    membocorkan besaran data wilayah lain.
+
+    DAN ikut dibatasi HAK MENU (Agustus 2026). `menus` adalah daftar hak
+    menu pemanggil, apa adanya dari privileges.allowed_menus().
+
+    Kenapa di sini dan bukan cukup dengan @require_menu di rutenya:
+    Beranda selalu boleh dibuka (privileges.MENU_ALWAYS), jadi tidak ada
+    satu kunci menu pun yang bisa menutup rute /summary secara utuh. Yang
+    harus menyempit adalah ISINYA. Sebelum ini, /summary mengembalikan
+    sampai 2000 baris asli dari branchops_tbo dan branchops_pencairan
+    kepada siapa pun yang sudah masuk — termasuk peran yang hak d2 dan
+    d3-nya sudah dicabut. Menyembunyikan kartunya di JavaScript tidak
+    menutup itu: barisnya tetap terkirim dan terlihat di tab Network.
+
+    menus=None berarti "tanpa batas menu". Dipakai pemanggil internal yang
+    memang tidak mewakili seorang pengguna. JANGAN memanggilnya begitu
+    dari sebuah rute HTTP.
+
+    Jatah wilayah dan hak menu berjalan BERSAMA, bukan menggantikan satu
+    sama lain: jatah memilih BARIS mana, hak menu memilih SUMBER mana."""
     swh, sp = scoping.klausa(scope, "br")
+
+    def boleh(k):
+        return menus is None or k in menus
 
     # TBO yang masih terbuka - menggantikan daftar "Unggahan terakhir" di
     # Beranda (Agustus 2026). Daftar unggahan sudah ada di tab Unggah;
@@ -475,35 +536,71 @@ def ringkasan(scope=""):
     # branchops_pencairan TIDAK punya kolom mata_uang - seluruh baris
     # pencairan rupiah. 'IDR' ditulis tetap supaya bentuk kedua cabang
     # UNION sama persis; UNION menuntut jumlah dan tipe kolom identik.
-    gabung_tbo = f"""
-      SELECT 'tbo'::text AS sumber, f.id, f.branch_code, br.branch_name,
-             f.tgl_input, f.no_rekening, f.nama_pemilik, f.nominal,
-             f.mata_uang, f.dokumen_tbo AS dokumen, f.target_pemenuhan_tbo,
-             f.status_tbo,
+    # SETIAP cabang UNION menulis nama kolomnya sendiri secara LENGKAP.
+    # Biasanya PostgreSQL mengambil nama kolom dari cabang PERTAMA saja,
+    # jadi dulu cabang pencairan boleh tanpa alias. Sejak hak menu bisa
+    # membuang salah satu cabang, cabang mana pun bisa menjadi yang
+    # pertama — kalau pencairan berdiri sendiri tanpa alias, kolomnya
+    # bernama "?column?" dan g.sumber, g.mata_uang, g.dokumen serta
+    # g.hari_terlambat lenyap tanpa satu pun galat sampai baris dibaca.
+    lengan_tbo = f"""
+      SELECT 'tbo'::text AS sumber, f.id AS id, f.branch_code AS branch_code,
+             br.branch_name AS branch_name,
+             f.tgl_input AS tgl_input, f.no_rekening AS no_rekening,
+             f.nama_pemilik AS nama_pemilik, f.nominal AS nominal,
+             f.mata_uang AS mata_uang, f.dokumen_tbo AS dokumen,
+             f.target_pemenuhan_tbo AS target_pemenuhan_tbo,
+             f.status_tbo AS status_tbo,
              {_HARI_TERLAMBAT} AS hari_terlambat,
              CURRENT_DATE - f.tgl_input AS aging
         FROM branchops_tbo f
         JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
         JOIN branchops_branches br ON br.branch_code=f.branch_code
-       WHERE f.status_tbo='Outstanding' AND f.ada_tbo{swh}
-      UNION ALL
-      SELECT 'pencairan'::text, f.id, f.branch_code, br.branch_name,
-             f.tgl_input, f.no_rekening, f.nama_pemilik, f.nominal,
-             'IDR'::varchar, f.data_tbo, f.target_pemenuhan_tbo,
-             f.status_tbo,
-             {_HARI_TERLAMBAT_PC},
-             CURRENT_DATE - f.tgl_input
+       WHERE f.status_tbo='Outstanding' AND f.ada_tbo{swh}"""
+
+    lengan_pencairan = f"""
+      SELECT 'pencairan'::text AS sumber, f.id AS id,
+             f.branch_code AS branch_code, br.branch_name AS branch_name,
+             f.tgl_input AS tgl_input, f.no_rekening AS no_rekening,
+             f.nama_pemilik AS nama_pemilik, f.nominal AS nominal,
+             'IDR'::varchar AS mata_uang, f.data_tbo AS dokumen,
+             f.target_pemenuhan_tbo AS target_pemenuhan_tbo,
+             f.status_tbo AS status_tbo,
+             {_HARI_TERLAMBAT_PC} AS hari_terlambat,
+             CURRENT_DATE - f.tgl_input AS aging
         FROM branchops_pencairan f
         JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
         JOIN branchops_branches br ON br.branch_code=f.branch_code
        WHERE f.status_tbo='Outstanding' AND {_PUNYA_TBO}{swh}"""
 
-    # {swh} muncul DUA kali di gabung_tbo (sekali per cabang UNION), jadi
-    # parameternya sp * 2. Kalau menambah cabang UNION ketiga nanti,
-    # naikkan pengalinya juga.
-    sp_gab = sp * 2
+    # Cabang UNION dipilih menurut hak menu: baris branchops_tbo milik
+    # Dashboard 3, baris branchops_pencairan milik Dashboard 2. Peran yang
+    # tidak berhak atas dashboardnya tidak boleh menerima barisnya lewat
+    # pintu belakang Beranda.
+    lengan = []
+    if boleh("d3"):
+        lengan.append(lengan_tbo)
+    if boleh("d2"):
+        lengan.append(lengan_pencairan)
 
-    tbo_kpi = db.q1(f"""
+    # {swh} muncul SEKALI di tiap cabang, jadi pengalinya = jumlah cabang
+    # yang benar-benar dipakai. Dulu angka 2 ditulis tetap; sekarang
+    # jumlahnya berubah-ubah, dan menghitungnya dari len() adalah satu-
+    # satunya cara agar parameter tidak bergeser diam-diam.
+    gabung_tbo = "\n      UNION ALL\n".join(lengan)
+    sp_gab = sp * len(lengan)
+
+    if not lengan:
+        # Tidak berhak atas d2 maupun d3: tidak ada yang perlu ditanyakan
+        # ke basis data. Bentuk yang dikembalikan tetap sama supaya layar
+        # tidak perlu tahu bedanya — "tidak ada TBO terbuka" dan "tidak
+        # boleh melihat TBO" sama-sama berarti tidak ada yang ditampilkan.
+        tbo_kpi = {"total": 0, "dari_tbo": 0, "dari_pencairan": 0,
+                   "lewat_target": 0, "tanpa_target": 0, "terlambat_max": 0,
+                   "rp": 0, "cabang": 0}
+        tbo_rows = []
+    else:
+        tbo_kpi = db.q1(f"""
       SELECT count(*) AS total,
              count(*) FILTER (WHERE g.sumber='tbo')            AS dari_tbo,
              count(*) FILTER (WHERE g.sumber='pencairan')      AS dari_pencairan,
@@ -514,24 +611,21 @@ def ringkasan(scope=""):
              count(DISTINCT g.branch_code)                     AS cabang
       FROM ({gabung_tbo}) g""", sp_gab)
 
-    return {
-        "tbo_terbuka": {
-            "kpi": tbo_kpi,
-            # Yang paling terlambat lebih dulu; yang belum punya target
-            # menyusul, diurutkan dari yang paling lama menggantung.
-            # NULLS LAST penting: tanpa itu baris tanpa target justru
-            # nangkring di puncak daftar dan menutupi yang benar-benar telat.
-            #
-            # LIMIT 2000 mengikuti batas yang sama dengan keempat dashboard.
-            # "Tampilkan semua" dipenuhi dalam praktik; batas ini ada supaya
-            # satu wilayah dengan puluhan ribu baris terbuka tidak membekukan
-            # peramban. Layar memberi tahu bila daftarnya terpotong.
-            "rows": db.q(f"""
+        # Yang paling terlambat lebih dulu; yang belum punya target
+        # menyusul, diurutkan dari yang paling lama menggantung.
+        # NULLS LAST penting: tanpa itu baris tanpa target justru
+        # nangkring di puncak daftar dan menutupi yang benar-benar telat.
+        #
+        # LIMIT 2000 mengikuti batas yang sama dengan keempat dashboard.
+        # "Tampilkan semua" dipenuhi dalam praktik; batas ini ada supaya
+        # satu wilayah dengan puluhan ribu baris terbuka tidak membekukan
+        # peramban. Layar memberi tahu bila daftarnya terpotong.
+        tbo_rows = db.q(f"""
               SELECT * FROM ({gabung_tbo}) g
               ORDER BY g.hari_terlambat DESC NULLS LAST, g.tgl_input ASC
-              LIMIT 2000""", sp_gab),
-        },
-        "hitung": db.q1(f"""
+              LIMIT 2000""", sp_gab)
+
+    hitung = db.q1(f"""
           SELECT (SELECT count(*) FROM branchops_it_break f
                     JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
                     JOIN branchops_branches br ON br.branch_code=f.branch_code
@@ -549,6 +643,29 @@ def ringkasan(scope=""):
                    WHERE r.status<>'Cocok'{swh}) AS rekon_bermasalah,
                  (SELECT count(*) FROM branchops_branches br
                    WHERE br.is_active{swh}) AS cabang""",
-                        sp * 5),
+                   sp * 5)
+
+    # Angka kartu menu dibuang untuk dashboard yang tidak boleh dibuka.
+    # Dihitung dulu, baru dibuang: query-nya satu blok dengan pengali
+    # sp * 5 yang terikat pada lima {swh} di dalamnya. Membangunnya
+    # sepotong-sepotong berarti pengali itu harus ikut dihitung ulang tiap
+    # kali, dan itulah cara parameter bergeser tanpa ketahuan. Angkanya
+    # tidak pernah meninggalkan proses ini, jadi tidak ada yang bocor.
+    #
+    # 'cabang' TIDAK ikut dibuang: Beranda memakainya untuk spanduk
+    # "Master cabang belum diisi", yang harus tetap muncul bagi siapa pun.
+    for kunci, menu in (("it", "d1"), ("pencairan", "d2"),
+                        ("tbo", "d3"), ("rekon_bermasalah", "d4")):
+        if not boleh(menu):
+            hitung[kunci] = None
+
+    return {
+        "tbo_terbuka": {"kpi": tbo_kpi, "rows": tbo_rows},
+        "hitung": hitung,
+        # Daftar menu ikut dikirim supaya layar membangun kartunya dari
+        # jawaban yang sama dengan yang menyaring angkanya. Kalau layar
+        # memakai daftar lain (misalnya sisa /me yang sudah basi), kartu
+        # dan angka bisa berbeda pendapat.
+        "menus": None if menus is None else list(menus),
         "periode": periode_tersedia(scope),
     }

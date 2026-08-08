@@ -22,6 +22,28 @@ CREATE TABLE IF NOT EXISTS branchops_audit (
 );
 CREATE INDEX IF NOT EXISTS ix_bo_audit_ts ON branchops_audit (ts DESC);
 
+-- Asal permintaan (Agustus 2026). Diisi db.audit() untuk SETIAP aksi yang
+-- tercatat, bukan hanya login, karena satu-satunya tempat yang menulis ke
+-- tabel ini adalah fungsi itu.
+--
+--   ip         alamat IP pemanggil
+--   perangkat  header User-Agent MENTAH, apa adanya
+--
+-- User-Agent sengaja disimpan UTUH dan tidak diringkas sebelum masuk, sesuai
+-- prinsip 1 di kepala berkas ini: data mentah tidak pernah diubah. Layar
+-- Audit-lah yang meringkasnya jadi "Chrome di Windows"; kalau ringkasan itu
+-- suatu saat salah menebak, teks aslinya masih ada untuk diperiksa. Menyimpan
+-- hasil ringkasan saja berarti membuang bukti demi tampilan.
+--
+-- Keduanya SELF-REPORTED dan bisa dipalsukan. Berguna untuk menjawab
+-- "kira-kira dari mana ini dikerjakan", bukan sebagai bukti identitas.
+ALTER TABLE branchops_audit ADD COLUMN IF NOT EXISTS ip        VARCHAR(64);
+ALTER TABLE branchops_audit ADD COLUMN IF NOT EXISTS perangkat TEXT;
+
+-- Untuk menyaring satu jenis aksi (mis. hanya 'masuk') tanpa memindai
+-- seluruh tabel setelah jejaknya menumpuk.
+CREATE INDEX IF NOT EXISTS ix_bo_audit_action ON branchops_audit (action, ts DESC);
+
 
 
 -- ------------------------------------------------------------------ --
@@ -74,6 +96,26 @@ CREATE TABLE IF NOT EXISTS branchops_batches (
     catatan       TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_bo_batch_status ON branchops_batches (jenis, status);
+
+-- Lingkup cabang sebuah batch (Agustus 2026).
+--
+--   NULL          batch se-bank: isinya lebih dari satu cabang, atau nol
+--                 cabang. Ini yang dihasilkan unggahan admin.
+--   '00123'       batch berisi TEPAT SATU cabang. Ini yang dihasilkan
+--                 unggahan editor yang jatahnya satu cabang.
+--
+-- KENAPA ADA: commit_batch() membatalkan batch lama yang jenis DAN
+-- periodenya sama. Aturan itu lahir ketika satu berkas mewakili seluruh
+-- bank, jadi "periode sama" berarti "berkas pengganti". Sejak editor boleh
+-- mengunggah data cabangnya sendiri, anggapan itu runtuh: cabang A dan
+-- cabang B sama-sama melaporkan Senin-Jumat, jenis sama, periode sama -
+-- dan komit milik B akan MEMBATALKAN batch milik A. Barisnya lenyap dari
+-- seluruh dashboard tanpa satu pun galat.
+--
+-- Dengan kolom ini, pembatalan hanya mengenai batch dengan lingkup yang
+-- SAMA. Unggahan se-bank (NULL) tetap saling menggantikan seperti dulu,
+-- jadi perilaku lama tidak berubah.
+ALTER TABLE branchops_batches ADD COLUMN IF NOT EXISTS branch_code VARCHAR(5);
 
 CREATE TABLE IF NOT EXISTS branchops_issues (
     id         BIGSERIAL PRIMARY KEY,
@@ -307,6 +349,22 @@ INSERT INTO branchops_settings (kunci, nilai, deskripsi) VALUES
   'Periksa kelengkapan dan format NIP maker/checker/approver. 1 = periksa, 0 = abaikan. Nilai NIP tetap tersimpan apa adanya; yang dimatikan hanya penandaannya.'),
  ('validasi_duplikat','abaikan',
   'Perlakuan baris kembar (nomor deposito + nominal + tanggal pencairan sama). abaikan = semua baris masuk dan dihitung; peringatan = masuk tapi ditandai dan dikecualikan dari agregat; tolak = baris kembar tidak masuk.')
+ON CONFLICT (kunci) DO NOTHING;
+
+-- Keluar otomatis saat layar dibiarkan menganggur (Agustus 2026).
+--
+-- Nilainya MENIT, dan 0 berarti fitur ini dimatikan.
+--
+-- Yang perlu diketahui sebelum menaikkan harapan atas pengaturan ini:
+-- ini menghapus token dari peramban, jadi gunanya menutup layar yang
+-- ditinggal terbuka. Ia BUKAN pembatalan sesi di server. Token JWT tetap
+-- sah sampai kedaluwarsanya sendiri (JWT_HOURS = 12 jam di app.py), jadi
+-- salinan token yang sudah terlanjur diambil orang lain tetap berlaku.
+-- Memperpendek itu berarti mengubah JWT_HOURS, dan JWT_HOURS dipakai
+-- KELIMA dashboard - jangan diubah diam-diam dari sini.
+INSERT INTO branchops_settings (kunci, nilai, deskripsi) VALUES
+ ('idle_timeout_menit','1',
+  'Keluar otomatis setelah layar dibiarkan menganggur selama sekian MENIT. 0 = dimatikan. Hitungan berhenti sementara selama berkas sedang diunggah dan selama kotak pilih berkas terbuka, supaya orang tidak terlempar keluar di tengah unggahan. Catatan: ini menghapus token di peramban, bukan membatalkan sesi di server.')
 ON CONFLICT (kunci) DO NOTHING;
 
 INSERT INTO branchops_ref_values (kategori, nilai, urutan) VALUES
