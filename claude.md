@@ -38,98 +38,201 @@ This is a personal showcase project. It is now FIVE dashboards served by ONE Fla
 - Never point DATABASE\_URL at the VPS during local development.  
 - Note: README.md still says "install Python 3.12". The version I actually run is 3.13 — trust this file, not the README, until the README is updated.
 
-## STATUS 8 Aug 2026 — local work is NOT committed, VPS still has nothing
+## STATUS 8 Aug 2026, 23:38 — PUSHED. VPS is up to date.
 
-Read this first. Everything below describes tooling that works; this
-section says how far it actually got.
+The push succeeded on the fifth attempt. `deploy/keluaran/push-log-20260808-2338.txt`
+is the record: all seven steps, ending in `SELESAI. Cadangan:`.
 
-**HEAD is still `1b3842a`. A large body of Branch Ops work sits in the
-working tree, uncommitted.** This is the single most important thing on
-this page, because the deploy script pulls from git — pushing today would
-ship the documentation for rules 12–18 and none of the code.
+    HEAD          36e64bf, pushed to origin/main, working tree clean
+    VPS code      same commit, pulled at step 2/7
+    VPS data      loaded from local, schema.sql re-applied at 5/7,
+                  sequences reset at 6/7, 0 users left without a jatah
+    VPS Postgres  16.14  (local is 18.4 — see push failure 3 below)
+    VPS disk      was 100% full; cleaned to ~1.5 GB free
 
-Modified and NOT committed (13 tracked files):
+**Still to do, in rough priority order:**
 
-    backend/app.py                    login audit trail (rule 17)
-    backend/branchops/__init__.py     upload jatah check (rule 18)
-    backend/branchops/analytics.py    Beranda menu narrowing (rule 12),
-                                      Dashboard 2 rebuild (rule 13)
-    backend/branchops/db.py           request origin on audit (rule 17)
-    backend/branchops/privileges.py   MENU_ALWAYS / "home" (rule 12)
-    backend/branchops/schema.sql      3 new columns + 1 new setting
-    backend/branchops/scoping.py      kode_di_luar_jatah() (rule 18)
-    backend/branchops/storage.py      branch-aware supersede (rule 18)
-    frontend/branchops.html           rules 12–18, all of them
-    frontend/branchops-login.html     idle logout notice (rule 16)
-    claude.md                         this file
-    deploy/2-push-ke-vps.bat          git guard fix
-    deploy/2-vps-muat.sh
+1. **Verify in the browser on the VPS.** Nothing below has been confirmed
+   against the live site: the Lingkup column on Unggah, the Alamat IP and
+   Perangkat columns on Audit, the `masuk` login rows, and the idle
+   logout. The IP column is expected to read 127.0.0.1 for everyone until
+   nginx forwards X-Forwarded-For — see rule 17.
+2. **Prune `/root/*.sql` on the VPS.** Five attempts left roughly 150 MB
+   of backups on an 8.7 GB disk. See push failure 1.
+3. **Delete the transferred dump**, it holds real customer names:
+   `ssh root@159.65.139.45 "shred -u /tmp/lokal-branchops.sql"` and the
+   local `deploy/keluaran/lokal-branchops.sql`.
+4. Rules 16, 17 and 18 have run against a live database now, but have not
+   been EXERCISED — nobody has yet been logged out by the idle timer on
+   the VPS, or had an upload refused for being out of jatah.
+5. The data problems below (batch 16, batch 21) are unchanged.
 
-Two of these close real holes, so leaving them uncommitted is not
-neutral: rule 12 stops /summary handing d2 and d3 row data to roles whose
-menus were revoked, and rule 18 stops an editor uploading another
-branch's data. Commit before pushing.
+The five failed attempts are all written up under "Pushing to the VPS —
+every failure that has actually happened". Read that before the next push
+rather than rediscovering them.
 
-**After pulling any of this, RESTART THE BACKEND.** schema.sql is applied
-by ensure\_schema() at startup and now contains three
-`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements plus a new
-branchops\_settings row. All idempotent, safe to re-run — but nothing
-applies until the app restarts, and the Audit tab and Unggah tab will
-error on missing columns until it does.
-
-Note the file name: git tracks this file as lowercase `claude.md`.
-Windows treats that as the same file as CLAUDE.md; Linux does not. On the
-VPS a checkout produces `claude.md`. Harmless for the app — it is
-documentation only — but do not "fix" it by adding a second file.
-
-**Not yet exercised against a live database**, unchanged from 7 Aug and
-now covering more: the branchops\_pencairan migration, the guarded
-backfill, the edit screens, per-dashboard date ranges, and everything in
-rules 12–18. The logic in rules 16, 17 and 18 was unit-tested with
-stubbed clock, request and database — that is not the same as having run.
-First real test should still be uploading
-`contoh/Template-02-Pencairan-Deposito.xlsx`, which exercises the new
-columns, the parser and the sequence reset together; then upload the same
-file as an editor scoped to one branch, to exercise rule 18's refusal.
-
-The three upload templates in `contoh/` are generated and verified — all
-three parse with 0 rejected rows against the current parsers (re-checked
-8 Aug; ingest.py has not changed since they were built).
-
-**The VPS has none of it** — not the code, not the schema, not the data.
-`deploy/2-push-ke-vps.bat` has been run twice and stopped both times at
-step 2 (`git pull`) before touching the database:
-
-- 1st run: my guard was wrong. It used `git status --porcelain`, which
-  counts UNTRACKED files, so leftover `*.bak-*`, `patch_*.py` and an
-  `.xlsx` in `/opt/pmo` blocked it for no reason. Fixed — it now uses
-  `--untracked-files=no` and only reports untracked files.
-- 2nd run: the guard was RIGHT. Six TRACKED files are modified directly
-  in production and were never committed:
-  `backend/app.py`, `backend/init_db.py`, `backend/requirements.txt`,
-  `frontend/landing.html`, `frontend/people.html`, `frontend/quality.html`.
-
-**That is the SECOND blocker, and it must not be bypassed blindly.**
-(The first is the uncommitted local work above. Both have to be resolved,
-and in that order: commit locally, then reconcile the VPS edits, then
-push. Pushing with either one outstanding loses work in one direction or
-the other.)
-`app.py` holds all five dashboards, so `git stash` there can break PMO,
-People, Quality or E-Library. Run `deploy/1-lihat-suntingan-vps.bat`
-first — it copies the diff and the VPS versions of those six files down
-to `deploy/masuk/suntingan-vps-<stamp>/` without changing anything. Then
-decide per file: if a fix only exists in production, port it to local,
-commit and push BEFORE pushing, or `git pull` will erase it. Note
-`init_db.py` on the VPS is the known-broken copy (imports a QualitySurvey
-model that does not exist) — do not bring that one back to local.
-
-Each failed run still made VPS backups in root's home
-(`pmo-sebelum-push-*.sql`, `bo-vps-sebelum-push-*.sql`). Harmless, but
-they accumulate.
+Note the file name: git tracks this file as lowercase `claude.md`. Windows
+treats that as the same file as CLAUDE.md; Linux does not. On the VPS a
+checkout produces `claude.md`. Harmless — it is documentation only — but
+do not "fix" it by adding a second file.
 
 Still outstanding in the data, separate from the push: the batch 16
 June rows that look synthetic, and the batch 21 `tgl_input` typo. See
 "Known data problems" below. Batch 27 has been cancelled.
+
+## Pushing to the VPS — every failure that has actually happened
+
+Written 8 Aug 2026, the night the push finally went through, after five
+failed attempts in two days. Every entry below is something that HAS
+occurred, not something that might. Read this before running
+`deploy/2-push-ke-vps.bat`; `deploy/0-sebelum-push.md` is the short
+checklist version.
+
+**The shape of the problem, once:** `2-vps-muat.sh` stops the `pmo`
+service at step 3/7 and starts it again at 7/7. Anything that kills the
+script in between leaves PRODUCTION DOWN with no message saying so. That
+is what makes these failures expensive rather than annoying. After ANY
+failed push, the first command is always:
+
+    ssh root@159.65.139.45 "systemctl start pmo && systemctl is-active pmo"
+
+### 1. The VPS disk is 8.7 GB and it HAS hit 100%
+
+Symptom: `sed: couldn't flush <unknown>: No space left on device`, and the
+script gives up at step 2/6 without touching anything.
+
+Cause, in order of size when it happened:
+
+    /root/.npm       710 MB   npm cache
+    /root/.cache     699 MB   pip and friends
+    /root/*.sql      145 MB   accumulated push/pull backups
+    6 deleted-but-open file handles held more, freed by restarting services
+
+Both caches are pure cache — deleting them is safe and they rebuild.
+
+**The cause is structural, not accidental: every single run of
+`2-push-ke-vps.bat` writes a fresh ~26 MB `pmo-sebelum-push-*.sql` plus a
+~3.5 MB `bo-vps-sebelum-push-*.sql` into `/root`, and NOTHING ever deletes
+them.** Five attempts in one evening is ~150 MB. This WILL refill the
+disk. Prune after every successful push:
+
+    ssh root@159.65.139.45 "ls -lht /root/*.sql"
+
+Keep the newest of each pair, delete the rest. The proper fix — having the
+script keep only the two most recent — is still not done.
+
+Check before pushing, not after it fails:
+
+    ssh root@159.65.139.45 "df -h /"
+
+Anything under ~1 GB free, clean up first. And these dumps contain REAL
+customer names (masking is at the API layer, not at rest), so leaving them
+lying around is a data problem as well as a disk problem.
+
+### 2. Windows PowerShell 5.1 has no `Tee-Object -Encoding`
+
+Symptom: `Tee-Object : A parameter cannot be found that matches parameter
+name 'Encoding'`, then `FINDSTR: Cannot open ...push-log-*.txt`, then
+`GAGAL DI SISI VPS` — **while the VPS is perfectly fine.**
+
+`-Encoding` was added to `Tee-Object` in PowerShell 6. On the PowerShell
+that ships with Windows 10/11 it does not exist, so the command died at
+parameter binding, the pipe closed, and `ssh` was killed mid-run. The
+remote script got as far as writing its backup and stopped before
+`git pull`. The log was never created, so `findstr` failed, so the script
+blamed the VPS.
+
+Fixed in `2-push-ke-vps.bat`: the ssh output is redirected straight to the
+log file and printed with `type`. No PowerShell in that path at all.
+**Do not reintroduce a pipe there.** The cost is that the screen sits
+still for ~30 seconds during step 5/6 and prints everything at the end —
+that is normal, not a hang.
+
+General lesson worth keeping: a deploy script that decides success by
+reading a file it may have failed to create will report the wrong side as
+broken. Prefer checking the exit code of the thing that actually ran.
+
+### 3. Local PostgreSQL 18 dumps do not load into the VPS's PostgreSQL 16
+
+**The two sides are different major versions and always have been:**
+
+    local: PostgreSQL 18.4
+    VPS  : PostgreSQL 16.14 (Ubuntu 16.14-0ubuntu0.24.04.1)
+
+`pg_dump` 18 writes three lines that PostgreSQL 16 rejects:
+
+    \restrict <token>          psql meta-command, new in PG18
+    \unrestrict <token>        the closing half, at end of file
+    SET transaction_timeout    server parameter, new in PG17
+
+Symptom: `psql:/tmp/lokal-branchops.sql:13: ERROR: unrecognized
+configuration parameter "transaction_timeout"` — at step 4/7, service
+already stopped.
+
+Fixed in `2-vps-muat.sh` step 4a: those three lines are stripped before
+`psql` runs, and the script now prints both PostgreSQL versions so the
+next mismatch is visible immediately. Safe to strip —
+`transaction_timeout = 0` is the default, and `\restrict` only guards psql
+against untrusted dump content, which this file is not.
+
+Stripping happens on the VPS SIDE deliberately: that is the side that
+knows its own version. If the VPS is ever upgraded to 18, the block stops
+matching and does nothing.
+
+**Expect this to recur whenever local PostgreSQL is upgraded.** A newer
+`pg_dump` will invent new header lines. The check that catches it is the
+version pair printed at step 4a — if the load fails right after those two
+lines, this is why.
+
+### 4. The `[1/6]` guard counts UNTRACKED files
+
+`2-push-ke-vps.bat` reads `git status --porcelain` with no
+`--untracked-files=no`, so a single new file anywhere in the project stops
+the push and demands you type `TETAP`. Do not type it reflexively — the
+same guard is what correctly catches genuinely uncommitted code, and the
+VPS pulls from git, so anything uncommitted simply will not arrive.
+
+### 5. "Six files modified on the VPS" was a false alarm
+
+For two days this file recorded that `backend/app.py`, `init_db.py`,
+`requirements.txt`, `landing.html`, `people.html` and `quality.html` were
+edited directly in production and would be destroyed by `git pull`. On
+8 Aug `1-lihat-suntingan-vps.bat` produced a ZERO-BYTE diff, and all six
+files were confirmed byte-identical to commit `1b3842a`. Nothing had been
+edited in production at all.
+
+The likely source is the old guard that counted untracked files (see 4).
+Lesson: `1-lihat-suntingan-vps.bat` is cheap and read-only — run it and
+look, rather than trusting a remembered warning. A blocker that nobody
+re-verifies stays in the notes forever.
+
+### 6. Smaller things that cost time
+
+- **A stale `.git/index.lock`** sat in the repo for 27 hours and blocked
+  every commit with "Another git process seems to be running". It was
+  0 bytes with no MERGE/REBASE state — leftover from a crashed git. Check
+  its age and size before assuming something is genuinely running.
+- **The `[0/6]` connection test is `ssh ... >nul 2>&1`.** It hides any
+  prompt, so a password or passphrase request looks like a plain failure.
+  If it reports it cannot reach the VPS, run the same command by hand
+  without the redirect: `ssh -o ConnectTimeout=15 root@159.65.139.45 "echo ok"`.
+  One failure was simply transient and worked on retry.
+- **`*** System restart required ***`** in the login banner: reboot before
+  pushing, not after. Finding out the server does not come back is better
+  done before a database load than during one.
+
+### What a successful run looks like
+
+8 Aug 2026, log `deploy/keluaran/push-log-20260808-2338.txt`: all seven
+steps, `3 baris khusus versi baru dibuang` at 4a, every schema.sql NOTICE
+reading "already exists, skipping" (that is the idempotency working, not
+an error), zero users left with an empty jatah, and the final marker
+`SELESAI. Cadangan:`. That marker is what the script greps for — if it is
+absent, the run did not finish, whatever else was printed.
+
+Then, and this is separate from the script:
+
+    ssh root@159.65.139.45 "systemctl restart pmo && systemctl is-active pmo"
 
 ## Pulling Branch Ops data from the VPS to local (deploy/) — Aug 2026
 
