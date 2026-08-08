@@ -151,6 +151,41 @@ fi
 echo "  tidak ada ketergantungan dari luar - aman"
 
 echo
+echo "== 4a  Menyesuaikan berkas dengan versi PostgreSQL VPS =="
+# Lokal memakai PostgreSQL 18, VPS lebih tua. pg_dump menulis dua hal yang
+# HANYA dikenal versi baru, dan keduanya menghentikan pemuatan:
+#
+#   \restrict / \unrestrict     perintah psql, BARU di PostgreSQL 18.
+#                               psql lama menjawab "invalid command".
+#   SET transaction_timeout     parameter server, BARU di PostgreSQL 17.
+#                               server lama menjawab "unrecognized
+#                               configuration parameter".
+#
+# Keduanya aman dibuang:
+#   - transaction_timeout = 0 memang nilai bawaannya (fitur mati), jadi
+#     membuang barisnya tidak mengubah apa pun.
+#   - \restrict hanya pagar psql agar isi dump tak dianggap perintah; berkas
+#     ini kita sendiri yang membuatnya beberapa detik lalu.
+#
+# Dibuang DI SINI, bukan saat ekspor, karena yang tahu versi PostgreSQL-nya
+# adalah sisi ini. Kalau VPS suatu saat ikut PostgreSQL 18, blok ini jadi
+# tidak berpengaruh dengan sendirinya - sed tidak menemukan apa-apa.
+#
+# Terjadi 8 Agu 2026: pemuatan berhenti di baris 13 dengan
+# "unrecognized configuration parameter transaction_timeout".
+VERSI_VPS=$(sudo -u postgres psql -tAc "SHOW server_version;" 2>/dev/null)
+echo "  PostgreSQL VPS   : ${VERSI_VPS:-tidak terbaca}"
+echo "  berkas dibuat oleh: $(grep -m1 'Dumped by pg_dump version' "$DUMP" | sed 's/^-- *//')"
+
+BUANG=$(grep -c -e '^\\restrict' -e '^\\unrestrict' -e '^SET transaction_timeout' "$DUMP" || true)
+if [ "${BUANG:-0}" -gt 0 ]; then
+  sed -i -e '/^\\restrict/d' -e '/^\\unrestrict/d' -e '/^SET transaction_timeout/d' "$DUMP"
+  echo "  $BUANG baris khusus versi baru dibuang - aman, lihat komentar di skrip"
+else
+  echo "  tidak ada baris khusus versi baru - berkas dipakai apa adanya"
+fi
+
+echo
 echo "== 4/7  Memuat struktur + data (satu transaksi) =="
 # -1: DROP, CREATE dan INSERT berdiri atau jatuh bersama. DDL di PostgreSQL
 # ikut transaksional, jadi kegagalan meninggalkan tabel VPS apa adanya.
