@@ -167,8 +167,21 @@ echo.
 echo [5/6] Menjalankan pemuatan DI VPS
 echo        ^(cadangan, git pull, layanan mati sebentar, muat, hidupkan^)
 echo.
-ssh %VPS% "sed -i 's/\r$//' /tmp/2-vps-muat.sh && bash /tmp/2-vps-muat.sh"
-if not %errorlevel%==0 goto :gagal_vps
+REM  Seluruh keluaran VPS disimpan ke berkas. Jendela cmd memotong riwayat,
+REM  dan pesan galat pentingnya justru yang tergulung hilang - tanpa catatan
+REM  ini, kegagalan hanya bisa ditebak.
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmm"') do set STAMP=%%i
+set LOG=%KELUAR%\push-log-%STAMP%.txt
+REM  -Encoding utf8 penting: bawaan Tee-Object di Windows PowerShell adalah
+REM  UTF-16, dan berkas hasilnya terbaca sebagai huruf berselang spasi di
+REM  editor mana pun. Catatan yang tidak terbaca sama saja dengan tidak ada.
+ssh %VPS% "sed -i 's/\r$//' /tmp/2-vps-muat.sh && bash /tmp/2-vps-muat.sh" 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%LOG%' -Encoding utf8"
+REM  errorlevel setelah pipe adalah milik powershell, bukan ssh. Keberhasilan
+REM  ditentukan dari penanda yang dicetak skrip VPS di baris terakhirnya.
+findstr /c:"SELESAI. Cadangan:" "%LOG%" >nul
+if errorlevel 1 goto :gagal_vps
+echo.
+echo   catatan lengkap: %LOG%
 
 REM ---------------------------------------------------------------- 6
 echo.
@@ -202,8 +215,15 @@ echo ===================================================================
 echo   GAGAL DI SISI VPS
 echo ===================================================================
 echo.
-echo   Baca pesan kesalahan di atas - skrip di VPS berhenti pada langkah
-echo   yang tercetak terakhir.
+echo   Catatan lengkap tersimpan di:
+echo     %LOG%
+echo.
+echo   Baris terakhir dari catatan itu:
+echo   -----------------------------------------------------------------
+powershell -NoProfile -Command "if (Test-Path '%LOG%') { Get-Content '%LOG%' -Tail 18 }"
+echo   -----------------------------------------------------------------
+echo.
+echo   Skrip di VPS berhenti pada langkah yang tercetak terakhir.
 echo.
 echo   Pemuatan dibungkus satu transaksi, jadi kalau gagal di langkah 4,
 echo   tabel VPS tetap seperti semula.

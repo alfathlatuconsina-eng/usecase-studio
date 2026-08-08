@@ -104,6 +104,53 @@ sudo systemctl stop "$SVC"
 sleep 1
 
 echo
+echo "== 3b  Memeriksa ketergantungan sebelum DROP =="
+# pg_dump --clean menulis "DROP TABLE IF EXISTS ..." TANPA CASCADE.
+# Kalau ada tabel LAIN di VPS yang menunjuk salah satu dari sebelas tabel
+# ini lewat foreign key, DROP-nya gagal dengan
+#   "cannot drop table ... because other objects depend on it"
+# dan seluruh transaksi dibatalkan. Tersangka utama:
+# branchops_user_menus, tabel mati peninggalan desain lama yang ada di
+# VPS tapi tidak dipakai kode mana pun.
+#
+# Diperiksa lebih dulu supaya pesannya jelas, bukan galat mentah
+# PostgreSQL di tengah pemuatan.
+GANTUNG=$(sudo -u postgres psql -d "$DB" -tA -c "
+  SELECT t.relname || ' -> ' || r.relname || '  (constraint ' || c.conname || ')'
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_class r ON r.oid = c.confrelid
+   WHERE c.contype = 'f'
+     AND r.relname IN ('branchops_branches','branchops_ref_values',
+                       'branchops_role_menus','branchops_settings',
+                       'branchops_batches','branchops_stg','branchops_issues',
+                       'branchops_it_break','branchops_pencairan',
+                       'branchops_tbo','branchops_rekon')
+     AND t.relname NOT IN ('branchops_branches','branchops_ref_values',
+                       'branchops_role_menus','branchops_settings',
+                       'branchops_batches','branchops_stg','branchops_issues',
+                       'branchops_it_break','branchops_pencairan',
+                       'branchops_tbo','branchops_rekon');")
+
+if [ -n "$GANTUNG" ]; then
+  echo "BERHENTI: ada tabel di luar sebelas tabel ini yang menunjuk ke sana:"
+  echo "$GANTUNG" | sed 's/^/    /'
+  echo
+  echo "DROP TABLE tanpa CASCADE akan gagal karenanya, dan seluruh"
+  echo "pemuatan dibatalkan. Basis data VPS TIDAK diubah."
+  echo
+  echo "Kalau itu branchops_user_menus: tabel mati, 0 baris, tidak dibaca"
+  echo "kode mana pun (lihat 'Dead tables' di CLAUDE.md). Periksa dulu,"
+  echo "lalu buang sendiri kalau memang benar kosong:"
+  echo "    sudo -u postgres psql -d $DB -c 'SELECT count(*) FROM branchops_user_menus;'"
+  echo "    sudo -u postgres psql -d $DB -c 'DROP TABLE branchops_user_menus;'"
+  echo "lalu jalankan push lagi dari komputer lokal."
+  sudo systemctl start "$SVC" || true
+  exit 7
+fi
+echo "  tidak ada ketergantungan dari luar - aman"
+
+echo
 echo "== 4/7  Memuat struktur + data (satu transaksi) =="
 # -1: DROP, CREATE dan INSERT berdiri atau jatuh bersama. DDL di PostgreSQL
 # ikut transaksional, jadi kegagalan meninggalkan tabel VPS apa adanya.
