@@ -23,6 +23,11 @@ This is a personal showcase project. It is now FIVE dashboards served by ONE Fla
 - backend/branchops/  the only module split out: its own Blueprint (url\_prefix /api/branchops), schema.sql, Excel ingest (ingest.py), analytics.py, storage.py, db.py  
 - frontend/           one HTML file per dashboard \+ one login page each, plus landing.html (the public front page) and about.html  
 - pptx/               PowerPoint generator \+ template (PMO only)  
+- Panduan-Pengguna-BranchOps.docx — user manual for Branch Ops EDITOR and
+  VIEWER roles, in Indonesian. Admin tasks are deliberately out of scope.
+  Built by `deploy/buat-panduan.js`; edit that and regenerate rather than
+  editing the .docx by hand, or the two drift apart. It contains empty
+  captioned boxes for screenshots — those are meant to be filled in Word.  
 - uploads/            files uploaded through the E-Library module  
 - deploy/             scripts for moving Branch Ops data between local and VPS,
   plus their runbooks. `deploy/masuk/`, `deploy/keluaran/` and `deploy/cadangan/`
