@@ -226,6 +226,51 @@ re-verifies stays in the notes forever.
   pushing, not after. Finding out the server does not come back is better
   done before a database load than during one.
 
+### 7. A bare `git pull` does not work on the VPS
+
+Symptom, 9 Aug 2026:
+
+    There is no tracking information for the current branch.
+    Please specify which branch you want to merge with.
+
+The VPS's `main` had no upstream configured, so `git pull` with no
+arguments fetched and then refused to merge. `git log` still showed the
+old commit. Nothing broke — the command was chained with `&&`, so the
+`systemctl restart` never ran and the service kept serving the old code.
+
+`deploy/2-vps-muat.sh` never hits this because it uses the explicit form
+at step 2/7: `git pull --ff-only origin main`.
+
+Fixed permanently on 9 Aug with
+
+    git branch --set-upstream-to=origin/main main
+
+but keep using the explicit form in scripts anyway — `--ff-only` is the
+part that matters. It refuses rather than inventing a merge commit if the
+VPS ever has commits of its own, which is exactly the situation
+`1b-samakan-git-vps.bat` exists to clean up.
+
+### Deploying a CODE-ONLY change — do not use 2-push-ke-vps.bat
+
+`2-push-ke-vps.bat` also REPLACES the VPS Branch Ops database with the
+local one. For a change that touches no schema.sql, no data and no
+requirements.txt, that is 30 seconds of downtime, a full data overwrite,
+and another ~30 MB of backups on an 8.7 GB disk — all for nothing.
+
+Two commands are enough, and this route is proven (9 Aug 2026, commit
+`53cef02`):
+
+    git push origin main
+    ssh root@159.65.139.45 "cd /opt/pmo && git pull --ff-only origin main \
+      && systemctl restart pmo && systemctl is-active pmo"
+
+Then confirm with `git log --oneline -1` on the VPS. Look for
+"Fast-forward" in the output — a merge commit there means the VPS had
+its own commits and needs investigating before anything else.
+
+The restart is still required: `ensure_schema()` only runs at start-up.
+It is a no-op when schema.sql has not changed, so it is safe either way.
+
 ### What a successful run looks like
 
 8 Aug 2026, log `deploy/keluaran/push-log-20260808-2338.txt`: all seven
