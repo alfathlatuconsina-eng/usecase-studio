@@ -57,7 +57,22 @@ MENU_LABEL = {
 # menghitung bawaan "semua yang perannya izinkan".
 MENU_MIN_ROLE = {
     "upload":   ("admin", "editor"),
-    "master":   ("admin", "editor"),
+    # Master cabang = ADMIN SAJA (diubah Agustus 2026).
+    #
+    # Sebelumnya editor boleh diberi hak ini oleh admin. Alasannya diubah:
+    # master cabang menentukan cabang mana yang DIKENALI seluruh modul, jadi
+    # satu unggahan yang keliru membuat seluruh baris berkas transaksi
+    # berikutnya ditolak dengan alasan cabang_tak_dikenal - untuk semua
+    # pengguna, bukan hanya untuk yang mengunggah. Berkas ini juga menimpa
+    # Tipe dan Wilayah cabang, dan wilayah menentukan siapa melihat cabang
+    # mana; artinya mengunggah master cabang bisa mengubah hak lihat orang
+    # lain. Itu setara dengan layar Pengguna, jadi haknya disamakan.
+    #
+    # Baris lama di branchops_role_menus yang terlanjur memberi "master"
+    # kepada editor tidak perlu dibersihkan: allowed_menus() mengirisnya
+    # dengan menus_for_role(), jadi hak itu berhenti berlaku dengan
+    # sendirinya. Gagal-tertutup, bukan gagal-terbuka.
+    "master":   ("admin",),
     # Master Data mengatur daftar wilayah, dan wilayah menentukan siapa
     # melihat cabang mana. Mengubahnya = mengubah hak lihat orang lain,
     # jadi admin saja - setara dengan layar Pengguna.
@@ -68,9 +83,14 @@ MENU_MIN_ROLE = {
 }
 
 # Menu yang BOLEH diberikan kepada sebuah peran, tapi TIDAK aktif secara
-# bawaan. Master cabang menentukan cabang mana yang dikenali seluruh modul;
-# salah unggah membuat seluruh baris transaksi ditolak. Jadi bawaannya hanya
-# admin, dan admin bisa memberikannya ke editor lewat layar Hak Menu.
+# bawaan.
+#
+# Sejak "master" jadi admin-saja (lihat MENU_MIN_ROLE di atas), daftar ini
+# tidak lagi berpengaruh pada siapa pun: admin memang selalu mendapat semua
+# menu, dan peran lain sudah tersaring lebih dulu oleh menus_for_role().
+# Sengaja TIDAK dihapus - kalau suatu saat "master" dibuka lagi untuk editor,
+# jaring pengaman "boleh diberikan, tapi mati bawaannya" harus sudah ada di
+# tempatnya, bukan diingat ulang.
 MENU_DEFAULT_OFF = {"master"}
 
 # Menu yang TIDAK BISA dicabut dari peran mana pun.
@@ -151,12 +171,19 @@ def set_menus(role, menus, oleh):
         raise ValueError("peran tidak dikenal")
     if role == "admin":
         raise ValueError("peran admin selalu mendapat semua menu")
-    # MENU_ALWAYS ikut disimpan walau layar tidak mengirimnya, supaya isi
-    # basis data sama dengan yang benar-benar berlaku. Kalau hanya
+    # Disaring terhadap BATAS ATAS peran itu, bukan hanya terhadap MENU_KEYS.
+    # Tanpa irisan ini, memberi "master" kepada editor lewat API tetap
+    # TERSIMPAN di branchops_role_menus walau allowed_menus() mengabaikannya —
+    # dan baris yang isinya tidak pernah berlaku adalah jebakan bagi siapa pun
+    # yang kelak membaca tabel itu untuk mencari tahu siapa boleh apa.
+    #
+    # MENU_ALWAYS tetap ikut disimpan walau layar tidak mengirimnya, supaya
+    # isi basis data sama dengan yang benar-benar berlaku. Kalau hanya
     # allowed_menus() yang menambahkannya, layar Hak Menu akan menampilkan
     # Beranda tidak tercentang padahal nyatanya aktif.
+    batas = menus_for_role(role)
     bersih = [m for m in MENU_KEYS
-              if m in (menus or []) or m in MENU_ALWAYS]
+              if (m in (menus or []) and m in batas) or m in MENU_ALWAYS]
     db.execute(
         """INSERT INTO branchops_role_menus (role, menus, updated_by, updated_at)
            VALUES (%s, %s, %s, now())

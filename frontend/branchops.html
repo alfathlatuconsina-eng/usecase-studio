@@ -2126,9 +2126,24 @@ async function renderUpload(){
   if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Gagal memuat.</div>'; return; }
   const d = await r.json();
   const masterN = d.master_n || 0;
-  /* Kotak Master cabang hanya digambar bila akun ini punya hak "master".
-     Ini semata tampilan — rute /api/branchops/master tetap dijaga backend. */
-  const bolehMaster = !window.MENUS || window.MENUS.includes("master");
+  /* Kotak "Langkah 0 — Master cabang" hanya digambar untuk ADMIN.
+     Diubah Agustus 2026; sebelumnya editor pun bisa diberi hak ini.
+
+     DUA syarat, dan syarat peran ditulis lebih dulu dengan sengaja:
+       - peran admin        -> @require("admin") di backend
+       - punya hak "master" -> @privileges.require_menu("master")
+
+     Ini SEMATA tampilan; rute POST /api/branchops/master tetap dijaga
+     backend dan akan menolak sendiri. Tapi tanpa syarat peran di sini,
+     seorang editor akan melihat kotak unggah master, memilih berkas,
+     menunggu, lalu ditolak 403 - yang terbaca sebagai aplikasi rusak,
+     bukan sebagai batasan hak.
+
+     window.MENUS bisa null kalau backend tidak mengirim daftar menu; dalam
+     keadaan itu peran admin saja yang menentukan, sejalan dengan cadangan
+     berbasis peran di init(). */
+  const bolehMaster = window.ROLE === "admin"
+    && (!window.MENUS || window.MENUS.includes("master"));
   el.innerHTML = `
   <div style="padding-top:22px"><h1>Unggah data</h1>
   <div class="sub">Berkas diperiksa lebih dulu. Tidak ada yang masuk ke dashboard sebelum Anda menekan Komit.</div></div>

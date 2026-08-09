@@ -468,11 +468,22 @@ looks like it is missing one, check here before assuming it was dropped:
      MENU\_KEYS, MENU\_LABEL and (if role-limited) MENU\_MIN\_ROLE together;
      a key missing from MENU\_LABEL renders as a bare key in the admin
      screen.
-   - "master" is the one key that is OFF by default (MENU\_DEFAULT\_OFF in
-     privileges.py). Admin has it; editor may be granted it but does not get
-     it automatically; viewer can never have it. The reason: the branch master
-     defines which branches the whole module recognises, so a bad upload makes
-     every transaction row get rejected.
+   - "master" is ADMIN ONLY — changed Aug 2026, it used to be grantable to
+     editor. `MENU\_MIN\_ROLE["master"] = ("admin",)` and `POST /master` is
+     `@require("admin")`. Two reasons: the branch master defines which
+     branches the whole module recognises, so a bad upload makes every
+     later transaction row get rejected as `cabang\_tak\_dikenal` — for
+     everyone, not just the uploader; and the file overwrites each branch's
+     Tipe and Wilayah, and wilayah decides who may see which branch, so
+     uploading it can change other people's row access. That is the Pengguna
+     screen's level of power, so it now carries the same restriction.
+     Old rows in branchops\_role\_menus that granted "master" to editor need
+     no cleanup — `allowed\_menus()` intersects with `menus\_for\_role()`, so
+     the grant simply stops applying. `set\_menus()` now applies the same
+     intersection when SAVING, so such a row cannot be created again either.
+     MENU\_DEFAULT\_OFF still lists "master" but no longer affects anyone; it
+     is kept so the safety net is already in place if the key is ever
+     re-opened to editor.
    - Enforcement is on the BACKEND via @privileges.require\_menu("key"),
      placed AFTER @require(...) so the role check still runs first. The old
      gap is closed: /dash/&lt;no&gt; now checks d1–d4 inside the function.
@@ -1172,7 +1183,8 @@ looks like it is missing one, check here before assuming it was dropped:
     - The period trap from rules 14 and 15 is UNCHANGED and still applies
       within a scope.
 
-    Not covered, deliberately: `POST /master` (the branch master) is
-    still bank-wide for anyone holding the "master" menu key. It defines
-    which branches exist, so it is not a per-branch document. It is off
-    by default (`MENU_DEFAULT_OFF`) and that remains the control.
+    Not covered by jatah, deliberately: `POST /master` (the branch master)
+    is bank-wide. It defines which branches exist, so it is not a
+    per-branch document and scoping it makes no sense. Since Aug 2026 the
+    control is simply that it is ADMIN ONLY — see rule 2. An editor cannot
+    reach it at all, so there is no per-branch case left to answer.

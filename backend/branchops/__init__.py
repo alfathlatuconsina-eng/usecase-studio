@@ -545,8 +545,17 @@ def create_blueprint(require):
                          mimetype="text/csv", as_attachment=True,
                          download_name=f"validasi-batch-{bid}.csv")
 
+    # Master cabang = ADMIN SAJA. Diubah Agustus 2026, sebelumnya
+    # @require("admin", "editor").
+    #
+    # DUA lapis, dan keduanya perlu: @require menutup peran editor apa pun
+    # yang tersimpan di branchops_role_menus, dan require_menu("master")
+    # tetap dipasang supaya admin yang belum diberi kunci itu juga tertahan.
+    # Menghapus salah satunya membuat lapis yang tersisa jadi satu-satunya
+    # pertahanan - dan itu persis pola yang dilarang di privileges.py:
+    # hak menu MEMPERSEMPIT, tidak pernah menggantikan pemeriksaan peran.
     @bp.post("/master")
-    @require("admin", "editor")
+    @require("admin")
     @privileges.require_menu("master")
     def master():
         f = request.files.get("file")
@@ -852,8 +861,10 @@ def create_blueprint(require):
             selalu=sorted(privileges.MENU_ALWAYS),
             # batas = menu yang BOLEH dicentang untuk peran itu
             batas_peran={p: privileges.menus_for_role(p) for p in privileges.PERAN},
-            # bawaan = keadaan bila peran belum pernah diatur. Berbeda dari
-            # batas: "master" boleh diberikan ke editor, tapi mati bawaannya.
+            # bawaan = keadaan bila peran belum pernah diatur. Sejak Agustus
+            # 2026 "master" hanya untuk admin, sehingga bawaan dan batas
+            # kebetulan sama untuk editor dan viewer; keduanya tetap dikirim
+            # terpisah karena artinya memang berbeda.
             bawaan_peran={p: privileges.menus_default_for_role(p) for p in privileges.PERAN},
             tersimpan=privileges.peta_menus())
 
