@@ -43,7 +43,39 @@ This is a personal showcase project. It is now FIVE dashboards served by ONE Fla
 - Never point DATABASE\_URL at the VPS during local development.  
 - Note: README.md still says "install Python 3.12". The version I actually run is 3.13 — trust this file, not the README, until the README is updated.
 
-## STATUS 8 Aug 2026, 23:38 — PUSHED. VPS is up to date.
+## STATUS 12 Aug 2026 — LOCAL IS AHEAD OF THE VPS. Not deployed.
+
+Supersedes the 8 Aug block below, which stays because its push write-ups
+are still the reference.
+
+    HEAD           83ae484, working tree has ONE modified file:
+                   frontend/branchops.html (rule 19, uncommitted)
+    origin/main    83ae484 is AHEAD 1 — not pushed. That commit is
+                   CLAUDE.md only, documentation, no code.
+    VPS code       NOT verified this session. Last confirmed deploy was
+                   53cef02 on 9 Aug (the code-only route). Inferred from
+                   `git branch -vv` locally, not read off the VPS.
+    Local DB       unchanged. The VPS→local Branch Ops pull discussed on
+                   12 Aug was NOT run.
+
+Rule 19 is a change to ONE HTML file — no schema.sql, no data, no
+requirements.txt. When it is deployed, that is the **code-only** route
+(`git push origin main`, then `git pull --ff-only` + `systemctl restart
+pmo` over ssh). Do NOT use `2-push-ke-vps.bat` for it: that also replaces
+the VPS Branch Ops database with the local one and writes ~30 MB of
+backups onto an 8.7 GB disk, for a CSS-and-JS change. See "Deploying a
+CODE-ONLY change" below.
+
+After deploying it, hard-refresh the browser — `branchops.html` is
+cached, and a stale cache looks exactly like a failed deploy.
+
+Still outstanding from 8 Aug and unaffected by any of this: the browser
+verification on the VPS, pruning `/root/*.sql`, and deleting the dumps
+that hold real customer names (`/tmp/lokal-branchops.sql` on the VPS,
+`deploy/keluaran/lokal-branchops.sql` and `deploy/masuk/vps-branchops.sql`
+locally — all three were still present on 12 Aug).
+
+## STATUS 8 Aug 2026, 23:38 — PUSHED. VPS was up to date at that point.
 
 The push succeeded on the fifth attempt. `deploy/keluaran/push-log-20260808-2338.txt`
 is the record: all seven steps, ending in `SELESAI. Cadangan:`.
@@ -741,7 +773,8 @@ looks like it is missing one, check here before assuming it was dropped:
    A dashboard with no data gets EMPTY date boxes, not a borrowed range —
    empty means no filter, which is the honest answer. The frontend keeps
    each dashboard's manually chosen dates in PERIODE\_PILIHAN so switching
-   tabs does not throw away what the user typed.
+   tabs does not throw away what the user typed. Those stored values are
+   yyyy-mm-dd; what the boxes SHOW is dd/mm/yyyy — see rule 19.
 
 10. Beranda shows open TBO from BOTH tables — changed Aug 2026.
 
@@ -1233,3 +1266,67 @@ looks like it is missing one, check here before assuming it was dropped:
     per-branch document and scoping it makes no sense. Since Aug 2026 the
     control is simply that it is ADMIN ONLY — see rule 2. An editor cannot
     reach it at all, so there is no per-branch case left to answer.
+
+19. Filter date boxes are TEXT inputs showing dd/mm/yyyy — 12 Aug 2026.
+    Do not convert them back to `<input type="date">`.
+
+    "Dari tanggal" and "Sampai tanggal" in the shared filter bar are
+    `<input type="text">` with a dd/mm/yyyy placeholder, plus a small
+    calendar button that opens a hidden `<input type="date">` used purely
+    as a picker. Frontend only — no backend, no schema, no data change.
+
+    - **A native date input cannot be told what format to display.**
+      Chrome renders it from the BROWSER UI LANGUAGE, not from the page.
+      Tested 12 Aug 2026 in an English Chrome with `lang="id"` on the
+      input, `lang="id-ID"`, `lang="id"` on a parent element, and an
+      `id-ID` browser locale — all four still printed `03/25/2026` for
+      2026-03-25. There is no HTML attribute, CSS property or JS call
+      that changes it. Setting Chrome's display language DOES work, but
+      that configures one machine, not the app. If a future session
+      "simplifies" this back to `type="date"`, the dd/mm/yyyy requirement
+      silently reverts for every user whose browser is not Indonesian.
+    - **The wire format is UNCHANGED and must stay unchanged.** `tgl_awal`
+      and `tgl_akhir` are still yyyy-mm-dd, and PERIODE\_PILIHAN still
+      stores yyyy-mm-dd. Only the on-screen text is dd/mm/yyyy.
+    - **Always go through `tglGet(id)` and `tglSet(id, iso)`.** Never read
+      `$("fA").value` directly — that is display text now, and treating it
+      as ISO yields a wrong date without erroring. The one deliberate raw
+      read is the validity check inside the change handler.
+    - **Bad input is REFUSED, never coerced.** A half-typed `25/03` or an
+      impossible `31/02/2026` turns the box red and does NOT reload the
+      dashboard. Without that, `tglGet()` returns "" and the filter
+      silently becomes "all dates" — the numbers widen with nothing
+      explaining why, which reads as broken data rather than a typo.
+      `03/25/2026` is refused as well, not read the other way round.
+    - **Validity is computed by hand, not by `new Date()`.**
+      `new Date(2026, 1, 31)` silently becomes 3 March, and a filter that
+      moves the date the user typed is worse than one that says it is
+      wrong. `tglNilai()` checks month length with `Date.UTC(y, m, 0)`, so
+      leap years are right: 29/02/2024 passes, 29/02/2026 does not.
+    - **The hidden date input must stay RENDERED.** `.tglsem` is 1×1 at
+      `opacity:0` — NOT `display:none` and not `visibility:hidden`.
+      Chrome throws on `showPicker()` for an element that is not rendered,
+      so the calendar button would die with no message at all.
+      `showPicker()` is Chrome 99+; the fallback is `.click()`, and if
+      that does nothing the box is still typable, so there is no dead end.
+    - The picker writes into the text box and then dispatches a `change`
+      event, so a date chosen from the calendar takes exactly the same
+      path as a typed one. Do not give the picker its own save path — the
+      same reasoning as "never add a Beranda-only write path" (rule 10).
+    - **One filter bar serves d1, d2, d3 AND d4.** There is a single
+      `fA`/`fB` pair, so Rekonsiliasi changed too. Excluding it would mean
+      splitting the filter bar per dashboard, which nothing else needs.
+    - **Deliberately NOT covered.** The seven date inputs inside the Ubah
+      TBO and Ubah Pencairan dialogs are still `type="date"` and still
+      follow the browser's language, so they can disagree with the filter
+      boxes on the same screen. Dates inside TABLES and in the CSV are
+      still yyyy-mm-dd. The table case is not a one-line fix: `tgl()` is
+      used BOTH to render table cells and to fill filter values, so
+      changing it breaks the filter — it needs a separate display-only
+      function.
+    - Tested with 24 conversion cases (separators `/ - .`, pasted ISO,
+      leap years, round-trip ISO→display→ISO) and rendered in headless
+      Chromium at 360px and 1000px. No test file was kept in the repo. If
+      this logic changes, the cases that matter are the ones that fail
+      QUIETLY: an unparseable box that still loads the dashboard, and a
+      coerced 31 February.

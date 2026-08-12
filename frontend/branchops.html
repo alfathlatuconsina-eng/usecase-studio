@@ -90,6 +90,26 @@ select,input[type=text],input[type=password],input[type=date],input[type=file],t
 select:focus,input:focus,textarea:focus{border-color:var(--acc)}
 .filters{display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end;margin:14px 0 4px}
 .filters>div{min-width:150px}
+
+/* ---------- kotak tanggal penyaring ----------
+   Kotak "Dari tanggal" / "Sampai tanggal" adalah input TEKS dd/mm/yyyy,
+   bukan <input type="date">. Alasannya ada di komentar tglTampil() di
+   bawah: format tampilan input date ditentukan bahasa antarmuka browser
+   dan tidak bisa diatur dari halaman. Tombol kalender di sebelah kanan
+   membuka pemilih tanggal bawaan lewat satu input date tersembunyi. */
+.tglbox{position:relative}
+.tglbox input[type=text]{padding-right:34px}
+.tglcal{position:absolute;right:1px;top:1px;bottom:1px;width:30px;border:0;padding:0;
+  background:transparent;color:var(--tx2);cursor:pointer;border-radius:0 7px 7px 0;
+  display:flex;align-items:center;justify-content:center}
+.tglcal:hover{color:var(--acc)}
+/* Tersembunyi tapi TETAP DIRENDER. Jangan ganti jadi display:none atau
+   visibility:hidden — Chrome menolak showPicker() pada elemen yang tidak
+   dirender, jadi tombol kalendernya akan mati tanpa pesan apa pun. */
+.tglsem{position:absolute;right:8px;bottom:0;width:1px;height:1px;min-width:0;
+  padding:0;border:0;opacity:0;pointer-events:none}
+/* Ketikan yang belum lengkap atau tanggal yang tidak ada. */
+input.salah{border-color:var(--bad)}
 .btn{background:var(--panel2);border:1px solid var(--line);color:var(--tx2);border-radius:7px;
   padding:8px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;white-space:nowrap}
 .btn:hover{border-color:var(--acc);color:var(--tx)}
@@ -341,8 +361,34 @@ details.sect[open]>summary::after{content:"klik untuk menutup"}
   </div>
   <div id="banner"></div>
   <div class="filters">
-    <div><label>Dari tanggal</label><input type="date" id="fA"></div>
-    <div><label>Sampai tanggal</label><input type="date" id="fB"></div>
+    <div><label>Dari tanggal</label>
+      <div class="tglbox">
+        <input type="text" id="fA" placeholder="dd/mm/yyyy" inputmode="numeric"
+               maxlength="10" autocomplete="off">
+        <button type="button" class="tglcal" id="fAcal" title="Pilih dari kalender"
+                aria-label="Pilih tanggal awal dari kalender">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+            <path d="M3 10h18M8 3v4M16 3v4"></path></svg>
+        </button>
+        <input type="date" id="fApick" class="tglsem" tabindex="-1" aria-hidden="true">
+      </div>
+    </div>
+    <div><label>Sampai tanggal</label>
+      <div class="tglbox">
+        <input type="text" id="fB" placeholder="dd/mm/yyyy" inputmode="numeric"
+               maxlength="10" autocomplete="off">
+        <button type="button" class="tglcal" id="fBcal" title="Pilih dari kalender"
+                aria-label="Pilih tanggal akhir dari kalender">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+            <path d="M3 10h18M8 3v4M16 3v4"></path></svg>
+        </button>
+        <input type="date" id="fBpick" class="tglsem" tabindex="-1" aria-hidden="true">
+      </div>
+    </div>
     <div><label>Cabang</label><select id="fCab"><option value="">Semua cabang</option></select></div>
     <div><label>Tipe</label><select id="fTipe"><option value="">Semua tipe</option>
       <option>KC</option><option>KCP</option><option>Pusat</option></select></div>
@@ -529,6 +575,57 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const N   = v => v == null ? null : Number(v);
 const tgl = s => s ? String(s).slice(0, 10) : "—";
 
+/* ---------- tanggal penyaring: tampil dd/mm/yyyy, dikirim yyyy-mm-dd ----
+   KENAPA kotaknya input teks dan bukan <input type="date">:
+   format tampilan input date ditentukan BAHASA ANTARMUKA BROWSER dan
+   tidak bisa diatur dari halaman. Diuji Agu 2026 di Chrome berbahasa
+   Inggris dengan lang="id" pada input, lang="id-ID", lang="id" pada
+   elemen induk, dan locale id-ID — keempatnya tetap menampilkan
+   mm/dd/yyyy. Tidak ada atribut HTML, CSS atau JS yang mengubahnya.
+   Maka kotaknya diketik sendiri, dan tombol kalender di sebelahnya
+   memakai satu input date tersembunyi hanya untuk membuka pemilih
+   tanggal bawaan.
+
+   Yang dikirim ke API tetap yyyy-mm-dd (tgl_awal / tgl_akhir) dan yang
+   disimpan di PERIODE_PILIHAN juga yyyy-mm-dd. Jangan menyimpan bentuk
+   dd/mm/yyyy di keduanya — itu kontrak dengan backend, bukan tampilan.
+   Lewati SELALU tglGet() dan tglSet(), jangan baca .value langsung. */
+
+/* yyyy-mm-dd -> dd/mm/yyyy. Kosong kalau bukan tanggal ISO. */
+const tglTampil = s => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ""));
+  return m ? m[3] + "/" + m[2] + "/" + m[1] : "";
+};
+
+/* dd/mm/yyyy -> yyyy-mm-dd, atau "" kalau bukan tanggal yang benar-benar
+   ada. Pemisah / - . diterima semua, dan bentuk ISO ikut diterima supaya
+   tanggal yang disalin-tempel dari tempat lain tidak ditolak.
+   Tanggal yang tidak ada DITOLAK, tidak digeser: new Date(2026,1,31)
+   diam-diam menjadi 3 Maret, dan penyaring yang menggeser sendiri
+   tanggalnya lebih buruk daripada penyaring yang bilang salah. */
+const tglNilai = s => {
+  s = String(s || "").trim();
+  if (!s) return "";
+  let h, b, t, m;
+  if ((m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/.exec(s))) {
+    h = +m[1]; b = +m[2]; t = +m[3];                    // dd/mm/yyyy
+  } else if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s))) {
+    t = +m[1]; b = +m[2]; h = +m[3];                    // yyyy-mm-dd
+  } else return "";
+  if (b < 1 || b > 12 || h < 1) return "";
+  /* Date.UTC(t, b, 0) = hari terakhir bulan ke-b, tahun kabisat ikut benar. */
+  if (h > new Date(Date.UTC(t, b, 0)).getUTCDate()) return "";
+  return t + "-" + String(b).padStart(2, "0") + "-" + String(h).padStart(2, "0");
+};
+
+/* Baca kotak tanggal sebagai yyyy-mm-dd ("" kalau kosong / salah ketik). */
+const tglGet = id => tglNilai($(id).value);
+/* Isi kotak tanggal dari yyyy-mm-dd. */
+const tglSet = (id, iso) => {
+  const e = $(id); if (!e) return;
+  e.value = tglTampil(iso); e.classList.remove("salah");
+};
+
 let DATA = null, CHARTS = {}, DUP = false, CSV = [];
 
 /* ------------------------------------------------------------------ */
@@ -545,8 +642,10 @@ const GRID = {color:"rgba(0,0,0,.08)"};
 /* ------------------------------------------------------------------ */
 function params() {
   const p = new URLSearchParams();
-  if ($("fA").value) p.set("tgl_awal", $("fA").value);
-  if ($("fB").value) p.set("tgl_akhir", $("fB").value);
+  /* tglGet() mengubah dd/mm/yyyy di layar menjadi yyyy-mm-dd untuk API. */
+  const a = tglGet("fA"), b = tglGet("fB");
+  if (a) p.set("tgl_awal", a);
+  if (b) p.set("tgl_akhir", b);
   if ($("fCab").value) p.set("branch_code", $("fCab").value);
   if ($("fTipe").value) p.set("branch_type", $("fTipe").value);
   if ($("fStatus") && $("fStatus").value) p.set("status", $("fStatus").value);
@@ -1761,8 +1860,40 @@ async function patch(url, body) {
 ["fA","fB"].forEach(id => {
   const e = $(id);
   if (e) e.onchange = () => {
-    PERIODE_PILIHAN[window.DASH] = {a: $("fA").value, b: $("fB").value};
+    /* Ketikan yang belum selesai ("25/03") atau tanggal yang tidak ada
+       ("31/02/2026") ditandai merah dan TIDAK memuat ulang. Tanpa ini
+       tglGet() mengembalikan "" dan penyaring diam-diam berubah menjadi
+       "semua tanggal": angka di layar melebar tanpa ada yang menjelaskan
+       kenapa, dan itu terbaca sebagai data yang salah. */
+    const salah = ["fA","fB"].filter(x => $(x).value.trim() && !tglNilai($(x).value));
+    ["fA","fB"].forEach(x => $(x).classList.toggle("salah", salah.includes(x)));
+    if (salah.length) return;
+    /* Yang disimpan yyyy-mm-dd, bukan yang tampil. */
+    PERIODE_PILIHAN[window.DASH] = {a: tglGet("fA"), b: tglGet("fB")};
     load();
+  };
+});
+
+/* Tombol kalender. Input date tersembunyi dipakai HANYA untuk membuka
+   pemilih tanggal bawaan browser — isinya tidak pernah terlihat, jadi
+   tidak masalah browser menampilkannya mm/dd/yyyy. Hasil pilihannya
+   ditulis ke kotak teks lalu melewati jalur change yang sama persis
+   dengan ketikan tangan, supaya tidak ada dua cara menyimpan tanggal. */
+[["fA","fApick","fAcal"], ["fB","fBpick","fBcal"]].forEach(([teks, pilih, tombol]) => {
+  const t = $(teks), p = $(pilih), b = $(tombol);
+  if (!t || !p || !b) return;
+  b.onclick = () => {
+    p.value = tglNilai(t.value) || "";      // buka di tanggal yang sedang terisi
+    /* showPicker() ada sejak Chrome 99. Kalau tidak ada, .click() masih
+       membuka kalender di sebagian browser; kalau tetap tidak, kotak
+       teksnya masih bisa diketik — jadi tidak ada jalan buntu. */
+    if (p.showPicker) { try { p.showPicker(); return; } catch (e) {} }
+    p.click();
+  };
+  p.onchange = () => {
+    if (!p.value) return;
+    t.value = tglTampil(p.value);
+    t.dispatchEvent(new Event("change"));
   };
 });
 if ($("bDup")) $("bDup").onclick = e => {
@@ -1870,8 +2001,8 @@ function setPeriodeDefault(paksa) {
   if (!$("fA")) return;
   const d = window.DASH;
   if (!paksa && PERIODE_PILIHAN[d]) {          // pilihan pengguna menang
-    $("fA").value = PERIODE_PILIHAN[d].a;
-    $("fB").value = PERIODE_PILIHAN[d].b;
+    tglSet("fA", PERIODE_PILIHAN[d].a);
+    tglSet("fB", PERIODE_PILIHAN[d].b);
     return;
   }
   const per = (PERIODE.per_jenis || {})[JENIS_DASH[d]];
@@ -1879,8 +2010,8 @@ function setPeriodeDefault(paksa) {
      jatuh ke rentang global — itu justru mengembalikan masalah 1984.
      Dikosongkan saja: penyaring kosong berarti "semua tanggal". */
   const r = per || (PERIODE.per_jenis ? null : PERIODE);
-  $("fA").value = r && r.awal ? tgl(r.awal) : "";
-  $("fB").value = r && r.akhir ? tgl(r.akhir) : "";
+  tglSet("fA", r && r.awal ? tgl(r.awal) : "");
+  tglSet("fB", r && r.akhir ? tgl(r.akhir) : "");
 }
 const JENIS_LABEL = { it_break: "Break IT", pencairan: "Pencairan", tbo: "TBO" };
 const ST_BATCH = { committed: "t-ok", draft: "t-warn", dibatalkan: "t-grey" };
