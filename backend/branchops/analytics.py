@@ -205,6 +205,25 @@ def dash_pencairan(f, sertakan_dup=False):
     base = (f"FROM branchops_pencairan f {_AKTIF % 'f'} "
             f"JOIN branchops_branches br ON br.branch_code=f.branch_code WHERE 1=1{wh}{dup}")
 
+    # Penyaring "Status TBO" untuk tabel Detail transaksi (Agustus 2026).
+    #
+    # Hanya menyentuh rows_detail. "rows" tetap memuat SELURUH pencairan,
+    # karena KPI, kedua grafik harian dan tabel Rincian dihitung darinya.
+    #
+    # Nilainya datang dari _f() di __init__.py, yang sudah menolak apa pun
+    # di luar "punya"/"tanpa". Jadi di sini tidak ada lagi nilai liar, dan
+    # yang tidak dikenal berarti "semua" - tanpa syarat tambahan.
+    #
+    # NOT {_PUNYA_TBO} aman terhadap NULL: syarat pertama di dalamnya
+    # adalah `data_tbo IS NOT NULL`, sehingga baris tanpa Data TBO bernilai
+    # FALSE (bukan NULL) dan NOT-nya benar-benar TRUE.
+    #
+    # _PUNYA_TBO tidak memuat penanda parameter, jadi menambahkannya tidak
+    # menggeser jumlah parameter terhadap daftar p.
+    _SYARAT_TBO = {"punya": f" AND {_PUNYA_TBO}",
+                   "tanpa": f" AND NOT {_PUNYA_TBO}"}
+    syarat_tbo = _SYARAT_TBO.get(f.get("tbo_status") or "", "")
+
     kpi = db.q1(f"""
       SELECT count(*) AS n, COALESCE(sum(f.nominal),0) AS rp_bruto,
         COALESCE(sum(f.nominal) FILTER (WHERE f.arus_dana='Arus Keluar'),0)        AS rp_keluar,
@@ -214,15 +233,21 @@ def dash_pencairan(f, sertakan_dup=False):
         count(*) FILTER (WHERE f.arus_dana='Rollover / DOC')     AS n_rollover,
         count(*) FILTER (WHERE f.arus_dana='Penempatan Kembali') AS n_kembali,
         count(*) FILTER (WHERE f.jenis_pencairan='Sesuai Jatuh Tempo')          AS sjt,
-        count(*) FILTER (WHERE f.jenis_pencairan='Dipercepat dari Jatuh Tempo') AS dipercepat,
+        -- Ejaan baku sejak 15 Agu 2026. Berkas lama dinormalkan di parser
+        -- (_SERAGAM di ingest.py) dan baris lama dimigrasikan sekali jalan
+        -- di schema.sql, jadi hanya SATU ejaan yang boleh ada di kolom ini.
+        count(*) FILTER (WHERE f.jenis_pencairan='Dipercepat (Break)')          AS dipercepat,
         count(*) FILTER (WHERE cardinality(f.flags)=0)      AS bersih,
         count(*) FILTER (WHERE f.checker_eq_approver)       AS ck_eq_ap,
         count(*) FILTER (WHERE 'Tanpa maker/checker/approver' = ANY(f.flags)) AS tanpa_nip,
         -- Jumlah SEBENARNYA baris ber-Data TBO, tanpa dibatasi LIMIT.
-        -- Dipakai layar untuk tahu apakah daftar rows_tbo terpotong: kalau
-        -- rows_tbo.length kurang dari n_tbo, ada yang tidak tertampil dan
-        -- layar harus mengatakannya, bukan menyebut angka yang terlihat
-        -- pasti padahal sebagian.
+        -- Dipakai layar untuk tahu apakah daftar rows_detail terpotong.
+        -- Sejak kotak pilihan "Status TBO" ada, pembandingnya ikut pilihan:
+        -- memiliki TBO -> n_tbo ; tanpa TBO -> n dikurangi n_tbo ;
+        -- semua -> n. Ketiganya dihitung server tanpa LIMIT, jadi tidak
+        -- perlu query tambahan. Kalau rows_detail lebih pendek dari angka
+        -- itu, ada yang tidak tertampil dan layar harus mengatakannya,
+        -- bukan menyebut angka yang terlihat pasti padahal sebagian.
         --
         -- JANGAN menulis tanda persen-s di komentar mana pun di dalam query.
         -- psycopg menghitung penanda parameter di SELURUH teks, termasuk di
@@ -291,27 +316,38 @@ def dash_pencairan(f, sertakan_dup=False):
                            f.skor_lengkap, f.catatan, f.flags,
                            f.data_tbo, f.target_pemenuhan_tbo, f.status_tbo, f.tgl_tbo_lengkap,
                            f.nip_maker, f.nip_checker, f.nip_approver,
+                           -- Sumber dana asal + tujuan transfer (15 Agu 2026).
+                           -- Ditambahkan ke KEDUA daftar supaya bentuk 
+                           -- keduanya tetap sama persis: layar Ubah dan CSV
+                           -- bekerja dari salah satunya (aturan 13).
+                           f.sumber_produk, f.sumber_no_rek,
+                           f.tujuan_bank, f.tujuan_no_rek, f.tujuan_nama,
                            {_HARI_TERLAMBAT_PC} AS hari_terlambat,
                            -- Satu tempat memutuskan baris mana yang "punya TBO",
                            -- supaya layar tidak menebak sendiri dengan aturan
                            -- yang lambat laun berbeda dari parser dan schema.
                            {_PUNYA_TBO} AS punya_tbo
                          {base} ORDER BY f.tgl_input, f.id LIMIT 2000""", p),
-        # Baris ber-Data TBO, DISARING DI SINI dan bukan di layar.
+        # Isi tabel "Detail transaksi", DISARING DI SINI dan bukan di layar.
+        #
+        # Sampai Agustus 2026 daftar ini selalu "hanya yang ber-Data TBO".
+        # Sekarang isinya ditentukan kotak pilihan "Status TBO" di layar:
+        # semua / tanpa TBO / memiliki TBO. Yang TIDAK berubah adalah
+        # tempat penyaringannya - tetap di SQL, sebelum LIMIT.
         #
         # Kenapa query terpisah, bukan menyaring "rows" di JavaScript:
         # "rows" dipotong LIMIT 2000. Menyaring sesudah pemotongan berarti
-        # layar hanya melihat baris ber-TBO yang kebetulan masuk 2000
-        # pencairan paling awal menurut tgl_input. Kalau penyaring tanggal
-        # mengenai lebih dari 2000 baris, baris ber-TBO sesudahnya HILANG
-        # tanpa tanda apa pun - dan layar tetap menyebut angka yang pasti.
-        # Dengan disaring lebih dulu, LIMIT berlaku atas baris ber-TBO,
-        # bukan atas seluruh pencairan.
+        # layar hanya melihat baris yang kebetulan masuk 2000 pencairan
+        # paling awal menurut tgl_input. Kalau penyaring tanggal mengenai
+        # lebih dari 2000 baris, baris yang cocok sesudahnya HILANG tanpa
+        # tanda apa pun - dan layar tetap menyebut angka yang pasti.
+        # Dengan disaring lebih dulu, LIMIT berlaku atas baris yang cocok
+        # dengan pilihan, bukan atas seluruh pencairan.
         #
         # "rows" TIDAK diubah: KPI harian, grafik jenis pencairan dan tabel
         # Rincian di layar dihitung darinya, dan semuanya harus tetap
         # menghitung SELURUH pencairan, bukan yang ber-TBO saja.
-        "rows_tbo": db.q(f"""SELECT f.id, f.branch_code, br.branch_name, f.tgl_input, f.tgl_pencairan,
+        "rows_detail": db.q(f"""SELECT f.id, f.branch_code, br.branch_name, f.tgl_input, f.tgl_pencairan,
                            f.no_deposito, f.nama_pemilik, f.nominal, f.tenor_hari,
                            f.no_cif, f.no_rekening,
                            f.tgl_penempatan, f.tgl_bilyet,
@@ -320,9 +356,15 @@ def dash_pencairan(f, sertakan_dup=False):
                            f.skor_lengkap, f.catatan, f.flags,
                            f.data_tbo, f.target_pemenuhan_tbo, f.status_tbo, f.tgl_tbo_lengkap,
                            f.nip_maker, f.nip_checker, f.nip_approver,
+                           -- Sumber dana asal + tujuan transfer (15 Agu 2026).
+                           -- Ditambahkan ke KEDUA daftar supaya bentuk 
+                           -- keduanya tetap sama persis: layar Ubah dan CSV
+                           -- bekerja dari salah satunya (aturan 13).
+                           f.sumber_produk, f.sumber_no_rek,
+                           f.tujuan_bank, f.tujuan_no_rek, f.tujuan_nama,
                            {_HARI_TERLAMBAT_PC} AS hari_terlambat,
-                           TRUE AS punya_tbo
-                         {base} AND {_PUNYA_TBO}
+                           {_PUNYA_TBO} AS punya_tbo
+                         {base}{syarat_tbo}
                          ORDER BY f.tgl_input, f.id LIMIT 2000""", p),
     }
 
@@ -353,6 +395,25 @@ def dash_tbo(f):
     wh, p = _filter("f", "tgl_input", f)
     base = (f"FROM branchops_tbo f {_AKTIF % 'f'} "
             f"JOIN branchops_branches br ON br.branch_code=f.branch_code WHERE 1=1{wh}")
+
+    # Penyaring "Status TBO" untuk tabel Detail rekening (Agustus 2026).
+    #
+    # Di sini penandanya kolom TERSIMPAN f.ada_tbo, bukan _PUNYA_TBO seperti
+    # di dash_pencairan: branchops_tbo memang punya kolom itu, diisi parser
+    # dengan aturan yang sama (_TIDAK_ADA di ingest.py), dan seluruh
+    # dash_tbo yang lain - KPI dengan_tbo, aging - juga membacanya. Memakai
+    # penanda yang berbeda dari tetangganya di fungsi yang sama adalah cara
+    # tercepat membuat dua angka di satu layar tidak sepakat.
+    #
+    # ada_tbo BOOLEAN NOT NULL DEFAULT TRUE, jadi NOT f.ada_tbo aman: tidak
+    # ada baris NULL yang lolos dari kedua sisi penyaring.
+    #
+    # Hanya menyentuh rows_detail. "rows" tetap utuh, karena rincian per
+    # jenis dokumen, per jenis rekening dan blok "Perlu ditindaklanjuti" di
+    # layar dihitung darinya dan harus menggambarkan SELURUH baris pada
+    # penyaring, bukan sebagian yang sedang dilihat.
+    _SYARAT_ADA_TBO = {"punya": " AND f.ada_tbo", "tanpa": " AND NOT f.ada_tbo"}
+    syarat_tbo = _SYARAT_ADA_TBO.get(f.get("tbo_status") or "", "")
 
     kpi = db.q1(f"""
       SELECT count(*) AS n,
@@ -408,6 +469,31 @@ def dash_tbo(f):
                                 THEN CURRENT_DATE - f.tgl_input END AS aging,
                            f.keterangan, f.flags
                          {base} ORDER BY f.status_tbo, f.tgl_input LIMIT 2000""", p),
+        # Isi tabel "Detail rekening", DISARING DI SINI dan bukan di layar.
+        #
+        # Bentuknya sama persis dengan "rows" di atas - hanya syaratnya yang
+        # bertambah - supaya layar Edit dan CSV bisa bekerja dari keduanya.
+        #
+        # Kenapa query kedua, bukan menyaring "rows" di JavaScript: "rows"
+        # dipotong LIMIT 2000. Menyaring sesudah pemotongan berarti layar
+        # hanya melihat baris yang kebetulan masuk 2000 teratas menurut
+        # status_tbo lalu tgl_input - dan urutan itu justru mengelompokkan
+        # yang sejenis, sehingga satu pilihan bisa kehilangan hampir
+        # seluruh barisnya tanpa tanda apa pun. Alasan yang sama dengan
+        # rows_detail di dash_pencairan (aturan 13 dan 20 di CLAUDE.md).
+        "rows_detail": db.q(f"""SELECT f.id, f.branch_code, br.branch_name, f.tgl_input, f.no_cif,
+                           f.cif_gabungan, f.no_rekening, f.nama_pemilik, f.nominal, f.mata_uang,
+                           f.jenis_rekening, f.jenis_setoran, f.jenis_produk, f.tipe_pembukaan,
+                           f.dokumen_tbo, f.ada_tbo, f.status_tbo, f.tgl_tbo_lengkap,
+                           f.tgl_penempatan, f.tgl_jatuh_tempo,
+                           f.nip_maker, f.nip_checker, f.nip_approver,
+                           f.target_pemenuhan_tbo,
+                           {_HARI_TERLAMBAT} AS hari_terlambat,
+                           CASE WHEN f.status_tbo='Outstanding'
+                                THEN CURRENT_DATE - f.tgl_input END AS aging,
+                           f.keterangan, f.flags
+                         {base}{syarat_tbo}
+                         ORDER BY f.status_tbo, f.tgl_input LIMIT 2000""", p),
     }
 
 
@@ -547,6 +633,11 @@ def ringkasan(scope="", menus=None):
       SELECT 'tbo'::text AS sumber, f.id AS id, f.branch_code AS branch_code,
              br.branch_name AS branch_name,
              f.tgl_input AS tgl_input, f.no_rekening AS no_rekening,
+             -- branchops_tbo TIDAK punya nomor deposito: isinya pembukaan
+             -- rekening, bukan transaksi deposito. NULL ditulis eksplisit
+             -- supaya kedua cabang UNION tetap sebentuk - lihat catatan
+             -- panjang di atas tentang alias per cabang.
+             NULL::varchar AS no_deposito,
              f.nama_pemilik AS nama_pemilik, f.nominal AS nominal,
              f.mata_uang AS mata_uang, f.dokumen_tbo AS dokumen,
              f.target_pemenuhan_tbo AS target_pemenuhan_tbo,
@@ -562,6 +653,7 @@ def ringkasan(scope="", menus=None):
       SELECT 'pencairan'::text AS sumber, f.id AS id,
              f.branch_code AS branch_code, br.branch_name AS branch_name,
              f.tgl_input AS tgl_input, f.no_rekening AS no_rekening,
+             f.no_deposito AS no_deposito,
              f.nama_pemilik AS nama_pemilik, f.nominal AS nominal,
              'IDR'::varchar AS mata_uang, f.data_tbo AS dokumen,
              f.target_pemenuhan_tbo AS target_pemenuhan_tbo,

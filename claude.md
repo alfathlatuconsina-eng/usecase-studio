@@ -43,6 +43,117 @@ This is a personal showcase project. It is now FIVE dashboards served by ONE Fla
 - Never point DATABASE\_URL at the VPS during local development.  
 - Note: README.md still says "install Python 3.12". The version I actually run is 3.13 — trust this file, not the README, until the README is updated.
 
+## STATUS 15 Aug 2026 — seven files changed, UNCOMMITTED. Not deployed.
+
+Supersedes the 12 Aug block below. That block was also WRONG on two
+counts, corrected here — see "what 12 Aug got wrong".
+
+    HEAD           c1604cd "Branch Ops: kotak tanggal penyaring jadi
+                   dd/mm/yyyy" — rule 19, committed and pushed.
+    working tree   SEVEN files modified, none committed:
+                     backend/app.py                     <- rule 22
+                     backend/branchops/schema.sql       <- rules 22, 23
+                     backend/branchops/analytics.py     <- rules 10, 20, 23, 24
+                     backend/branchops/__init__.py      <- rules 20, 23
+                     backend/branchops/ingest.py        <- rule 24
+                     backend/branchops/storage.py       <- rule 24
+                     deploy/buat-template-unggah.py     <- rule 24
+                     contoh/Template-02, Template-03    <- rule 24 (dihasilkan)
+                     frontend/branchops.html            <- rules 10, 20, 21, 22, 23
+                     frontend/branchops-login.html      <- rule 22
+                     CLAUDE.md
+                   `_to_delete/` and a stale `.git/index.lock` were both
+                   cleaned up on 15 Aug; nothing untracked is left holding
+                   the `[1/6]` push guard.
+    origin/main    level with c1604cd. Nothing unpushed.
+    VPS code       NOT verified. Last confirmed deploy 53cef02, 9 Aug.
+    Local DB       Branch Ops data REPLACED from the VPS on 15 Aug 00:20
+                   WIB via `deploy/6-tarik-dari-vps.bat`. Rollback point:
+                   `deploy/cadangan/bo-lokal-sebelum-impor-20260815-0020.sql`.
+                   The eleven tables mirror the VPS; branchops_users and
+                   branchops_audit were NOT touched, as designed.
+
+**What changed in the code (all four rules are written up in full
+below):**
+
+1. "Status TBO" filter box on Dashboard 2 and Dashboard 3 — rule 20.
+2. Search on the Beranda TBO table, by account and deposito number —
+   rule 10. This one also added a column to the `/summary` UNION.
+3. The always-"***" Nasabah column is hidden below 560px — rule 21.
+4. Forced password change on first login, plus a self-service "Ganti
+   sandi" for every role — rule 22. This is the one that touches
+   `app.py`, shared by all five dashboards, and `schema.sql`. The other
+   four dashboards are guarded out; read the rule before deploying.
+
+**Owed before this is finished, in order:**
+
+- **Browser pass on all of it.** Nothing here has been exercised against
+  a running app or a real database. What HAS been checked, so you know
+  what is already ruled out: every touched Python file parses, both
+  inline `<script>` blocks in each of the two HTML files parse under
+  Node, the psycopg placeholder count is unchanged in all three
+  "Status TBO" branches, both `/summary` UNION arms carry identical
+  column lists, the password rule was run against 7 inputs, and the
+  Beranda search, the hidden Nasabah column and the whole forced
+  password-change flow were rendered and DRIVEN in headless Chromium at
+  360px and 1000px against a stubbed API. A stub is not the database:
+  none of the SQL has run, and no bcrypt hash has been written.
+- Hard-refresh after loading — `branchops.html` is cached, and a stale
+  cache looks exactly like a change that failed.
+- **Sign in with an EXISTING account first** (rule 22). It must let you
+  straight in without asking for a new password — that is the only proof
+  the one-time exemption ran. Only then create a test account and check
+  that the new one IS forced.
+- Commit. Nothing untracked is in the way any more.
+- Delete the dumps holding real customer names — still outstanding from
+  8 Aug and now joined by a fresh one:
+  `deploy/masuk/vps-branchops.sql` (re-downloaded 15 Aug),
+  `deploy/keluaran/lokal-branchops.sql`, and `/tmp/*.sql` on the VPS.
+
+**One design decision left OPEN, deliberately not half-built:**
+
+Adding a TBO record by hand from Dashboard 3, reusing the Ubah dialog in
+an "add" mode, was designed but NOT written. It waits on one answer,
+because it decides how the data is stored, not how it looks.
+
+Every row in `branchops_tbo` needs a `batch_id`, and every dashboard
+query hides rows whose batch is not `committed`. So a hand-typed row
+needs a batch that no upload will ever cancel. The proposal was ONE
+permanent `(entri manual)` batch, remembered by a key in
+`branchops_settings`, with `periode_awal`/`periode_akhir` **NULL** and
+`branch_code` NULL — because `commit_batch()` supersedes on identical
+period, and a real upload always carries real dates, so it can never
+match NULL. Give that batch real dates instead and the first upload
+covering the same range silently sets it to `dibatalkan`, taking every
+hand-typed row off every dashboard with no error at all. The cost of the
+shared batch is the mirror image: cancelling it hides ALL manual rows at
+once. The alternative is one batch per entry, which fills the Unggah tab
+with things that are not files.
+
+The rest of the design, if it is ever built: `POST /api/branchops/tbo`
+with `@require("admin","editor")` then `require_menu("d3")` AND
+`scoping.boleh_cabang()` — without the last one an editor can create
+rows for branches they cannot see, which is a new hole in the jatah, not
+a new feature. A separate whitelist `_TBO_BARU` = `_TBO_EDITABLE` plus
+the six identity fields (never a blacklist, rule 7). `ada_tbo` and
+`status_tbo` computed from `dokumen_tbo` with the same `_TIDAK_ADA` rule
+as the parser (rule 6), never typed by the user, and `no_rekening_norm`
+recomputed from the number.
+
+**What the 12 Aug block got wrong**, recorded because both errors are
+the kind that get believed:
+
+- It said rule 19 was uncommitted and one commit was unpushed. Neither
+  was true by 15 Aug: `git status` was clean at c1604cd, level with
+  origin.
+- It said the VPS→local pull "was NOT run". The files say otherwise —
+  `deploy/masuk/vps-branchops.sql` and
+  `deploy/cadangan/bo-lokal-sebelum-impor-20260812-2232.sql` both exist,
+  dated 12 Aug 22:29 and 22:32. That backup is written at step 4/6,
+  AFTER the `YA` prompt, so the import had already started. Lesson worth
+  keeping: a status line about what was run is worth less than the
+  timestamps on the files the script writes.
+
 ## STATUS 12 Aug 2026 — LOCAL IS AHEAD OF THE VPS. Not deployed.
 
 Supersedes the 8 Aug block below, which stays because its push write-ups
@@ -375,6 +486,39 @@ Delete these notes once the data is corrected.
   is 22), every nominal a round million, penalties at exact tenths of a
   percent, an account number containing 1234567. Rows 14–202 are the real
   July data. Batches 10, 11, 12, 14 and 15 are the same file left in draft.
+- **11 Aug 2026, Pencairan — one orphan draft and one template-named
+  upload.** Found 15 Aug while checking what to clean on that date; NO
+  action was taken, nothing was cancelled or deleted. Three batches touch
+  `tgl_input` 2026-08-11:
+
+      43  committed  scope 02001 DAGO   "Template-02-Pencairan-Deposito (1).xlsx"
+                     2 rows total (1 on 11 Aug), by sumirat@mncbank.co.id
+      45  DRAFT      bank-wide          "07a. Pencairan Deposito 10 dan 11 Aug 2026.xlsx"
+                     41 rows, uploaded 17:33:45
+      46  committed  bank-wide          same file, uploaded 17:35:54
+
+  45 and 46 are the same file two minutes apart — the orphan-draft
+  pattern in rule 14: the dialog was closed without choosing, the file
+  was uploaded again, and the second one was committed. 45 is invisible
+  on every dashboard, but its 41 rows still sit in branchops_pencairan.
+  Cancelling or deleting it costs nothing unique, because 46 holds the
+  same file's staging copy.
+
+  43 is the one needing a human decision: the filename is the blank
+  template with a browser's "(1)" suffix, which reads like a test, but it
+  resolved to a real branch. It contributes exactly Rp 200.000.000,00 to
+  11 Aug — committed total 61.258.296.986,30 against 61.058.296.986,30
+  from batch 46 alone.
+
+  No duplicates were found on that date, and no rekon rows point at those
+  pencairan rows, so Dashboard 4 is unaffected either way. Both 45 and 46
+  also carry one row rejected as `tanggal_terbalik`, which never entered
+  the fact table.
+
+  The read-only query that produced all of this is
+  `deploy/keluaran/periksa-pencairan-11agu.sql`. It deliberately selects
+  no customer names.
+
 - **batch 21** — one pencairan row with `tgl\_input` 2025-04-30 but
   `tgl\_pencairan` 2026-07-30, in a file covering 24–31 July 2026. Almost
   certainly a year typo. tgl\_input is a locked field, so fixing it needs a
@@ -791,6 +935,31 @@ looks like it is missing one, check here before assuming it was dropped:
 
     Upload history still exists, on the Unggah tab, from /batches.
 
+    **Search on the Beranda table — added 15 Aug 2026.**
+
+    - Matches NUMBERS ONLY: `no_rekening` and `no_deposito`. Never the
+      customer name, for the same reason spelled out in rule 14 for
+      Dashboard 3 — the name is already "***" on screen, and matching the
+      real one on the backend turns the app into a way to confirm whether
+      a given customer exists in the data.
+    - `no_deposito` had to be ADDED to the union to make this possible.
+      `branchops_tbo` has no such column at all (it records account
+      openings, not deposit transactions), so its arm selects
+      `NULL::varchar AS no_deposito`. Both arms alias it in full, per
+      rule 12 — either arm can stand alone when a menu is revoked.
+    - The column is also DISPLAYED, as a second line under No rekening.
+      A value you can search but cannot see makes a successful search look
+      like a coincidence.
+    - Filtering happens in the browser, over the rows already loaded, and
+      `/summary` caps that list at 2000. So the search cannot reach a row
+      past the cap. When the list IS truncated the info line says so and
+      gives both numbers — a search that silently misses rows is exactly
+      the "precise but partial" failure this file keeps warning about.
+    - The row renderer was extracted into `barisTbo(r)` and is used by
+      both the first paint and every re-search. Do not copy it into a
+      second block: the copy nobody edits is how the search result starts
+      differing from the table it filtered.
+
 11. Tab Unggah — Batal now works on COMMITTED batches. Aug 2026.
 
     The button used to render only for `status === "draft"`, so a committed
@@ -877,10 +1046,15 @@ looks like it is missing one, check here before assuming it was dropped:
     `aggByBranch()` in branchops.html lost its only caller at the same
     time and is marked as such in the file — it is not a missing feature.
 
-    - **Detail transaksi shows ONLY rows with Data TBO**, and the filtering
-      happens in SQL, not in JavaScript. `dash_pencairan` returns a second
-      list, `rows_tbo`, with `AND {_PUNYA_TBO}` applied BEFORE its own
-      `LIMIT 2000`.
+    - **Detail transaksi is filtered in SQL, never in JavaScript.**
+      `dash_pencairan` returns a second list, `rows_detail`, whose WHERE
+      clause is applied BEFORE its own `LIMIT 2000`.
+
+      AMENDED Aug 2026 — see rule 20. This list used to be called
+      `rows_tbo` and was always "TBO rows only"; it now follows the
+      "Status TBO" filter box (all / without TBO / with TBO), and
+      "with TBO" is the default so the opening screen is unchanged.
+      What did NOT change is where the filtering happens.
 
       This is the whole point and it is easy to undo by accident: `rows` is
       capped at 2000 ordered by `tgl_input, id`. Filtering that in the
@@ -891,20 +1065,24 @@ looks like it is missing one, check here before assuming it was dropped:
 
       `rows` itself must stay UNFILTERED: the KPIs, both daily charts and
       the Rincian table are computed from it and have to count every
-      disbursement. `rows` and `rows_tbo` return an identical 33-column
+      disbursement. `rows` and `rows_detail` return an identical 33-column
       shape, so the edit dialog and the CSV work off either.
     - **`kpi.n_tbo`** is the true, uncapped count of TBO rows. The screen
-      compares it against `rows_tbo.length` and shows a warning banner when
-      the list is short. Keep that banner. A precise number that is quietly
-      partial is the failure that goes unnoticed longest.
+      compares it against `rows_detail.length` and shows a warning banner
+      when the list is short. Keep that banner. A precise number that is
+      quietly partial is the failure that goes unnoticed longest.
+      Since rule 20 the comparison follows the filter: with TBO -> `n_tbo`,
+      without TBO -> `n - n_tbo`, all -> `n`. All three are server-side
+      counts with no LIMIT, so no extra query was needed.
     - Columns, in order: No deposito, No rekening, Cabang, Tanggal
       Pencairan, Nasabah, Nominal, Tenor, Target TBO, Terlambat, Aksi.
       Ten columns — header, `<td>` count and `emptyRow(10)` must agree.
-    - Aksi is a plain "Ubah" for admin/editor on every row, because every
-      row here has Data TBO by construction. The rule in item 7 is
-      UNCHANGED: the backend still refuses to edit a pencairan row whose
-      stored data_tbo is empty. The button is uniform now only because
-      such rows are no longer listed.
+    - Aksi checks TWO things since rule 20: role, AND `r.punya_tbo`.
+      It used to check role alone, because every listed row had Data TBO
+      by construction — that assumption died with the "Status TBO" filter.
+      The rule in item 7 is UNCHANGED: the backend still refuses to edit a
+      pencairan row whose stored data_tbo is empty, so a button left
+      showing on a "Tanpa TBO" row 403s and reads as a broken app.
     - **The whole list renders at once — no inner scroll box.** The table
       overrides `.tbl-wrap`'s 520px default to `max-height:none`. A capped
       box was tried and removed: the sticky `<thead>` hides the fact that
@@ -958,10 +1136,13 @@ looks like it is missing one, check here before assuming it was dropped:
     - `TBO_ROWS` is filled from ALL rows, never from the search result, or
       the edit dialog cannot open a row that is currently filtered out.
     - CSV follows what is on screen, including the search result.
-    - Filtering happens on rows already loaded, so it is bounded by the
-      date/branch filters and by `LIMIT 2000`. Unlike Dashboard 2 there is
-      no server-side pre-filter here, because the TBO dashboard is already
-      about TBO rows — nothing is being narrowed away.
+    - Search filters rows already loaded, so it is bounded by the
+      date/branch filters and by `LIMIT 2000`.
+
+      SUPERSEDED Aug 2026 — this used to add "unlike Dashboard 2 there is
+      no server-side pre-filter here". There is one now: the "Status TBO"
+      box feeds `rows_detail`, filtered in SQL. See rule 20. The search
+      box still filters in the browser, on top of that list.
 
     **The in-dashboard upload button** sits in the dashboard header beside
     "Unduh tabel (CSV)". Since Aug 2026 it serves BOTH Dashboard 3 (TBO)
@@ -1330,3 +1511,326 @@ looks like it is missing one, check here before assuming it was dropped:
       this logic changes, the cases that matter are the ones that fail
       QUIETLY: an unparseable box that still loads the dashboard, and a
       coerced 31 February.
+
+20. "Status TBO" filter box on Dashboard 2 (Pencairan) — 15 Aug 2026.
+    Do not undo this, and do not move the filtering into JavaScript.
+
+    A fourth control in the shared filter bar, next to Tipe: Semua /
+    Tanpa TBO / Memiliki TBO. It narrows the "Detail transaksi" table
+    and the CSV built from it. Nothing else on the page moves — KPIs,
+    both daily charts and Rincian per cabang still count every
+    disbursement, because they are computed from `rows`, which is
+    untouched.
+
+    - **The parameter is `tbo_status`, NOT `status`.** `_f()` in
+      `__init__.py` builds ONE filter dict shared by all four dashboards,
+      and `status` is already dash_rekon's reconciliation status. Reusing
+      the name would make a choice on Pencairan silently filter
+      Dashboard 4 as well. `_f()` also whitelists the value to
+      "punya"/"tanpa" and turns anything else into None (= all) — this is
+      a display filter, not an access filter; row access is still
+      `_scope`, which is never read from request.args.
+    - **Filtered in SQL, before LIMIT.** `syarat_tbo` in `dash_pencairan`
+      appends `AND {_PUNYA_TBO}` or `AND NOT {_PUNYA_TBO}` to
+      `rows_detail`. Filtering `rows` in the browser instead would repeat
+      exactly the bug rule 13 exists to prevent: `rows` is capped at 2000
+      ordered by `tgl_input, id`, so any matching row past the cap
+      disappears with no error and a count that looks exact.
+    - `NOT {_PUNYA_TBO}` is NULL-safe on purpose: the first conjunct
+      inside is `data_tbo IS NOT NULL`, so a row with no Data TBO
+      evaluates FALSE (not NULL) and its negation is genuinely TRUE.
+      If that expression is ever rewritten to lead with something else,
+      re-check this.
+    - `_PUNYA_TBO` contains no parameter markers, so none of the three
+      branches shifts the placeholder count against `p`. Keep it that way
+      — and keep the percent-s ban in rule 13 in mind if you add a
+      comment near it.
+    - **`rows_tbo` was renamed `rows_detail`.** A key called `rows_tbo`
+      that can hold rows without TBO is a name that lies, and the next
+      person reads the name, not the query.
+    - **Default is "Memiliki TBO"**, so the screen opens exactly as it did
+      before this box existed. Reset returns it to that default rather
+      than to empty — empty means "Semua" here, so clearing it would
+      change the view to something nobody chose.
+    - The box is shown for Dashboard 2 only (`wrapTbo` in `switchTab`,
+      same pattern as `wrapStatus` for d4 and `wrapDup` for d2), and
+      `params()` only sends it when `window.DASH === 2`.
+    - **Dashboard 3 (TBO) has the same box**, added the same day in a
+      second pass. Same control, same parameter, one difference that
+      matters: d3 filters on the STORED column `f.ada_tbo`, not on
+      `_PUNYA_TBO`. `branchops_tbo` has that column, the parser fills it
+      with the same rule (`_TIDAK_ADA` in ingest.py), and the rest of
+      `dash_tbo` — `kpi.dengan_tbo`, the aging query — already reads it.
+      Using a different marker from its own neighbours is the fastest way
+      to make two numbers on one screen disagree. `ada_tbo` is
+      `BOOLEAN NOT NULL DEFAULT TRUE`, so `NOT f.ada_tbo` needs no
+      COALESCE.
+    - d3 needed its own `rows_detail` rather than a filter on `rows`,
+      because `rows` also feeds `tboDoc`, `tboJenis` and the "Perlu
+      ditindaklanjuti" notes — those must keep describing every row on
+      the current date/branch filter, not the slice being viewed.
+    - d3's truncation banner (`#tboPotong`) is new. The menu never had one;
+      with a filter in front of a `LIMIT 2000` list ordered by
+      `status_tbo, tgl_input` — an order that groups like with like — one
+      choice can lose almost all of its rows at the cap. Its uncapped
+      comparison is `kpi.n` and `kpi.dengan_tbo`.
+    - **The default differs per menu, and that is deliberate.**
+      `TBO_BAWAAN = {2: "punya", 3: ""}`: Pencairan opens on "Memiliki
+      TBO", TBO opens on "Semua" — each matching how that screen looked
+      before the box existed. The choice is then remembered per menu in
+      `TBO_PILIHAN`, like `PERIODE_PILIHAN`, and `switchTab` writes it
+      into the box BEFORE `load()`. One shared value cannot satisfy both
+      defaults, and a menu that suddenly opens with fewer rows than
+      yesterday reads as missing data, not as a filter.
+    - Not tested against a live database by the author of this change —
+      no route to local PostgreSQL from where it was written. What WAS
+      checked: both inline `<script>` blocks parse under Node, both
+      Python files parse, and the placeholder count is unchanged in all
+      three branches. The browser pass is still owed.
+
+21. The Nasabah column is hidden below 560px — 15 Aug 2026.
+
+    Every customer-name cell in this module renders the literal string
+    "***" (rule 1, masked in the backend for every role). On a phone that
+    column is pure width: it pushed the account / deposito number — the
+    thing that actually tells rows apart, and the thing the Beranda and
+    Dashboard 3 search boxes match on — off the right edge of the screen.
+
+    - `.col-nasabah{display:none}` inside the existing
+      `@media(max-width:560px)` block. Applied to FIVE tables: Break
+      Deposito, Pencairan, TBO, Rekonsiliasi and the Beranda TBO list.
+    - **The class is chosen from the column TITLE** in `tabel(cols)`,
+      exactly the way the `num` class has always been chosen on that same
+      line. A new table that calls its column "Nasabah" therefore behaves
+      correctly without anyone remembering this rule. The two tables
+      whose `<th>`s are hand-written — Rekonsiliasi and Beranda — carry
+      the class literally, so if you add a third hand-written table,
+      write it in.
+    - **Display only. The data is still sent, still shown on a wide
+      screen, and still in the CSV.** Do not "optimise" this by dropping
+      the field from the API or from the export: a download whose
+      contents depend on the width of the screen it was triggered from is
+      only discovered after the file is in someone else's hands.
+    - Accepted side effect: the truncated-name marker "…" on Break
+      Deposito and the "gabungan" marker for joint CIF on TBO both ride
+      inside that cell, so they vanish on a phone too. Both are about the
+      source file rather than the row, and both remain on a wide screen.
+    - Measured, not assumed: at 360px the computed style is `none` and
+      the Beranda table's content width falls 1130px -> 1054px, putting
+      No rekening third among the visible columns instead of fourth; at
+      1000px it is `table-cell` and nothing moves.
+
+22. Forced password change on first login + self-service change —
+    15 Aug 2026. Branch Ops ONLY.
+
+    `branchops_users.harus_ganti_sandi BOOLEAN NOT NULL DEFAULT TRUE`.
+    New accounts, and any account whose password an admin sets, must
+    change it before the module will return any data.
+
+    - **Enforced in `require()` in app.py, not on screen.** Login puts a
+      `ganti: true` claim in the JWT; `require()` then refuses EVERY
+      `/api/branchops/*` route except two — `/me` and `/ganti-sandi`.
+      Fails closed: a route added later is refused automatically, with
+      nobody having to remember this rule. Hiding buttons would leave the
+      token perfectly usable from curl.
+    - **The other four dashboards are untouched.** `make_token()`,
+      `require()` and `_do_login()` are shared by all five, so each hook
+      is guarded — `module == "branchops"`, and `getattr(user,
+      "harus_ganti_sandi", False)`, which is False for user models that
+      have no such column. Extending this to PMO / People / Quality /
+      E-Library means adding the column to each of their tables; it will
+      not happen by itself.
+    - **`/ganti-sandi` returns a NEW token, and both screens store it.**
+      The old one still carries `ganti: true` until it expires 12 hours
+      later (`JWT_HOURS`), so without this a successful password change
+      still lands the user in a dashboard that 403s everything — which
+      reads as a broken app, not as a rule.
+    - **The old password is verified even when the account is already
+      required to change it.** A token left behind on a shared machine
+      must not be enough to take the account over.
+    - **Existing accounts were exempted, once.** `ADD COLUMN ... DEFAULT
+      TRUE` would otherwise have forced every current user — including
+      the only admin — to change at next login, which is not what was
+      asked for. The one-time `UPDATE ... SET harus_ganti_sandi = FALSE`
+      is guarded by `wajib_ganti_sandi_migrasi` in `branchops_settings`,
+      the same pattern as `region_class_migrasi` and
+      `pencairan_status_tbo_migrasi`. Never delete that key: without it
+      the block re-runs on every app start and quietly exempts new
+      accounts that have not logged in yet — which cancels the feature.
+    - **The rule lives in ONE function, `sandi_salah()`, used by all
+      three write paths**: admin creates a user, admin sets someone's
+      password, user changes their own. A path that skips it makes the
+      rule vacuous, since one loose entry point is enough.
+    - The rule as specified by the owner: more than 4 characters, at most
+      10, must contain a special character. Whitespace does NOT count as
+      that special character — otherwise "abc d" passes, which is plainly
+      not what was meant. Constants: `_SANDI_MIN`, `_SANDI_MAKS`,
+      `_SANDI_KHUSUS`, `_SANDI_ATURAN`.
+
+      **Recorded objection, deliberately not silently dropped: the
+      10-character CEILING weakens passwords.** bcrypt accepts 72 bytes;
+      there is no technical reason to cut at 10, and the only effect is
+      that long memorable passphrases become impossible. If the limit
+      comes from another system holding the same credentials, write that
+      system down here. Otherwise it is worth raising.
+    - **"Ganti sandi" is NOT a menu key and must not become one.** It
+      sits next to Keluar in the nav bar. Menu keys can be revoked per
+      role by an admin (rule 2), and the ability to change your own
+      password must not be revocable — the same reasoning as "home" in
+      rule 12. Keeping it outside `MENU_KEYS` closes that off entirely.
+      It is `@require()` with no role list, so viewers have it too.
+    - The forced form lives on `branchops-login.html`, not inside the
+      dashboard, so no screen is ever visible before the password is
+      changed. The login page's existing "already signed in" check now
+      reads `harus_ganti_sandi` from `/me` and shows the form instead of
+      redirecting — `/me` is one of the two allowed routes, so without
+      that check a reload would drop the user into a dashboard where
+      every request 403s.
+    - Every change writes `ganti_sandi` to `branchops_audit` through
+      `_catat_audit_branchops()`, which carries the same three guards as
+      the login trail (rule 17): signing in, or changing a password, must
+      never fail because of bookkeeping.
+    - Tested: the rule function against 7 inputs, and the login-page flow
+      driven in headless Chromium — forced panel appears after login,
+      mismatched repeat is caught in the browser, a server rejection is
+      shown verbatim, and a successful change stores the NEW token and
+      redirects. All against a stubbed API. **Not yet exercised against
+      the real database**, and the first thing worth checking there is
+      that existing accounts can still sign in without being asked to
+      change anything.
+    - Deploying this is NOT a data push — schema.sql changed, but
+      `ensure_schema()` applies it at start-up, so the code-only route
+      (`git push` + `git pull --ff-only` + `systemctl restart pmo`) is
+      still the right one. Do not reach for `2-push-ke-vps.bat`.
+
+23. Ubah data pencairan — two fields became pickers, and five new columns
+    for where the money came from and where it went. 15 Aug 2026.
+
+    Requested as four items; two of them would have quietly broken the
+    numbers if written literally, so read the first two bullets before
+    changing anything here.
+
+    - ~~"Dipercepat (Break)" is a label over the old stored value.~~
+      **SUPERSEDED the same day — see rule 24.** The owner chose to make
+      the stored value match the label, so every filter, the parser and
+      299 existing rows were moved together. `optJaga()` still supports
+      label ≠ value, and that ability is the point; it is simply not in
+      use for this column any more.
+    - **A value outside the list is KEPT, as an extra option.** The data
+      holds `Pemindahbukuan` on jenis_penarikan, which is not one of the
+      two choices asked for. Without this, opening the dialog on such a
+      row shows the first option and pressing Simpan overwrites the real
+      value — a destructive edit nobody made deliberately. Empty values
+      get a leading "— belum diisi —" option for the same reason: saving
+      must not invent a value nobody chose. All of this lives in
+      `optJaga()` inside `pcEdit`; it takes [value, label] pairs.
+    - Five new columns on branchops_pencairan: `sumber_produk`,
+      `sumber_no_rek`, `tujuan_bank`, `tujuan_no_rek`, `tujuan_nama`.
+      Added to `_PENCAIRAN_EDITABLE` (still a whitelist, rule 7) and to
+      BOTH `rows` and `rows_detail` in `dash_pencairan`, so the two keep
+      the identical shape rule 13 depends on. The single-row GET uses
+      `SELECT *`, so it needed nothing.
+    - `sumber_produk` has NO CHECK in the database on purpose. The list
+      is enforced once, in the whitelist. A CHECK would mean the same
+      list in two places, and — if these columns are ever fed from Excel
+      — one unexpected value would reject the whole ROW rather than
+      leave one cell empty. Contrast rule 3, where the CHECK on
+      branch_type already costs three places kept in step.
+    - **`tujuan_nama` is WRITE-ONCE on screen** (owner's choice, 15 Aug
+      2026). The input always opens EMPTY, showing only a `***`
+      placeholder; the only way to read the value is the CSV.
+
+      **This is a display choice, NOT a protection, and must never be
+      written down as one.** The real value is still sent to the browser
+      so the CSV can carry it, so anyone allowed to press Unduh can read
+      it in the Network tab regardless of what the screen shows. It is
+      therefore NOT in `masking.py` — putting it there would blank it in
+      the CSV too, which is the opposite of what was asked. Real
+      protection means a server-side CSV endpoint, role-gated and written
+      to `branchops_audit` per download, exactly as rule 1 prescribes.
+
+      **The save path is the part that bites.** Because the box always
+      starts empty, `tujuan_nama` is deliberately NOT part of the body
+      object; it is attached afterwards, and only when something was
+      actually decided — text typed, or the "Kosongkan kolom ini" box
+      ticked. Put it back in the literal and one ordinary Simpan (to fix
+      a date, say) wipes a stored name nobody meant to touch, because the
+      backend loop only skips keys that are ABSENT from the body.
+    - **Excel is untouched.** These five are edit-only, so uploaded rows
+      start empty. If they should ever come from the file, rule 8
+      applies: append at the FAR RIGHT (next free for pencairan is
+      column 21 / `r[20]`), keep them optional, and keep them out of the
+      `wajib` list.
+    - The Dashboard 2 CSV grew to 24 columns and now also carries Jenis
+      penarikan, which it had been dropping. Header and row are built in
+      the same function, so they cannot drift.
+    - Verified in headless Chromium against a stubbed API: the pencairan
+      picker offers label "Dipercepat (Break)" over value "Dipercepat
+      dari Jatuh Tempo"; a row holding "Pemindahbukuan" keeps it as a
+      third option, selected; an empty sumber_produk shows "— belum
+      diisi —" first; and all five inputs render. **No SQL has run** —
+      the five ALTER statements have not touched a real database yet.
+
+24. One canonical spelling per value, enforced in four layers —
+    15 Aug 2026. Excel dropdowns do NOT replace parser normalisation.
+
+    `jenis_pencairan` "Dipercepat dari Jatuh Tempo" became
+    **"Dipercepat (Break)"**, and `jenis_penarikan` "Pemindahbukuan"
+    became **"Pemindah-bukuan"**. Owner's decision: the stored value
+    follows the label, so there is only ever one spelling in the column.
+
+    - **Renaming a stored value touches five code sites, and one of them
+      is not where you would look.** All had to move together:
+
+          analytics.py    kpi.dipercepat filter
+          storage.py      the branch-side filter in jalankan_rekonsiliasi
+          branchops.html  the JDIP constant (2 daily charts + Rincian)
+          schema.sql      the branchops_ref_values seed
+          buat-template-unggah.py   the sample rows
+
+      `storage.py` is the dangerous one: miss it and reconciliation stops
+      matching every break on the branch side, so Dashboard 4 reports the
+      whole file as "Tidak dilaporkan cabang" — plausible-looking output,
+      no error anywhere.
+    - **Existing rows were migrated once**, guarded by
+      `ejaan_baku_migrasi` in `branchops_settings` (same pattern as
+      `region_class_migrasi`). 299 rows on jenis_pencairan, 9 on
+      jenis_penarikan, counted from the dump before the change. The old
+      `branchops_ref_values` row is deleted in the same block.
+    - **`_SERAGAM` in ingest.py maps the old spellings on every parse,
+      forever. Do not delete it because "the template has dropdowns
+      now".** Dropdowns only exist in files created FROM the new
+      template; branches keep copies, and next month's file may be a
+      Save As of a July one. One old file is enough to put the old
+      spelling back and silently drop those rows out of the KPI, both
+      charts, Rincian AND reconciliation. Unknown values pass through
+      UNCHANGED — never guessed into one of the known options, so a
+      genuinely new value stays visible instead of being disguised.
+    - **The Excel templates now carry real dropdowns** (openpyxl
+      DataValidation), written by `deploy/buat-template-unggah.py`:
+      Pencairan K4:K500 and L4:L500, TBO L4:L500 and M4:M500. Lists are
+      inline in the formula (under the 255-char limit), `allow_blank` so
+      an empty cell is still legal — only wrong values are refused. The
+      column NUMBERS are positional, like everything else here: reorder
+      the headers and those numbers must move too (rule 8).
+    - **`jenis_setoran` on branchops_tbo keeps "Pemindahbukuan", no
+      hyphen** — owner's decision, matching the data as it stands. So the
+      two columns spell the same concept differently. That is safe
+      because they live in different TABLES and no code ever compares
+      them, and it is written down here precisely so nobody "tidies" it
+      later without migrating the data first. For the record, TBO had
+      zero rows with that value at the time; all 9 were on the pencairan
+      side.
+    - The four places that must agree on these lists are listed in the
+      comment above `PILIHAN` in the generator: the ref_values seed, the
+      API whitelists in `__init__.py`, `optJaga(...)` in branchops.html,
+      and the generator itself. Nothing enforces the agreement.
+    - Verified: `seragam()` exercised on 9 inputs including mixed case
+      and unknown values; templates regenerated and re-parsed by the real
+      parsers ("SEMUA TEMPLATE LOLOS", 0 rows rejected); and in headless
+      Chromium the pickers offer exactly the new lists, an unmigrated row
+      still shows its old value as a preserved extra option, saving an
+      untouched dialog does NOT send `tujuan_nama`, typing sends it, and
+      ticking Kosongkan sends null. **The migration SQL has not run** —
+      no database has been touched.
+

@@ -369,9 +369,10 @@ ON CONFLICT (kunci) DO NOTHING;
 
 INSERT INTO branchops_ref_values (kategori, nilai, urutan) VALUES
  ('jenis_pencairan','Sesuai Jatuh Tempo',1),
- ('jenis_pencairan','Dipercepat dari Jatuh Tempo',2),
+ ('jenis_pencairan','Dipercepat (Break)',2),
  ('jenis_penarikan','Tunai',1),
  ('jenis_penarikan','Transfer',2),
+ ('jenis_penarikan','Pemindah-bukuan',3),
  ('jenis_rekening','Perorangan',1),
  ('jenis_rekening','Perusahaan (Non Perorangan)',2),
  ('jenis_produk','Deposito',1),
@@ -494,10 +495,115 @@ BEGIN
 END
 $pc_backfill$;
 
+-- =====================================================================
+--  MIGRASI 15 Agu 2026 - penyeragaman ejaan nilai baku
+-- =====================================================================
+--  Dua kolom berganti ejaan baku:
+--    jenis_pencairan : 'Dipercepat dari Jatuh Tempo' -> 'Dipercepat (Break)'
+--    jenis_penarikan : 'Pemindahbukuan'              -> 'Pemindah-bukuan'
+--
+--  KENAPA HARUS DIMIGRASIKAN, bukan dibiarkan dua ejaan hidup bersama:
+--  string lama itu disaring persis di dua tempat - KPI 'dipercepat' di
+--  analytics.py dan penyaring sisi cabang pada rekonsiliasi di
+--  storage.py - plus konstanta JDIP di branchops.html yang menggerakkan
+--  dua grafik harian dan tabel Rincian. Baris yang tertinggal pada ejaan
+--  lama berhenti terhitung di semua tempat itu tanpa satu pun galat.
+--
+--  jenis_setoran pada branchops_tbo SENGAJA TIDAK ikut: keputusan pemilik
+--  15 Agu 2026, kolom itu tetap 'Pemindahbukuan' tanpa tanda hubung,
+--  mengikuti ejaan yang sudah ada di datanya. Kedua kolom ada di tabel
+--  berbeda dan tidak pernah dibandingkan kode mana pun.
+--
+--  Penjaga 'ejaan_baku_migrasi' WAJIB ada. Tanpa itu blok ini jalan lagi
+--  setiap aplikasi start - tidak merusak apa-apa hari ini, tetapi menjadi
+--  perintah UPDATE tanpa alasan pada setiap restart, dan menyulitkan
+--  membedakan mana yang diubah migrasi dan mana yang diubah orang.
+DO $ejaan_baku$
+BEGIN
+  IF to_regclass('public.branchops_pencairan') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM branchops_settings
+                     WHERE kunci = 'ejaan_baku_migrasi') THEN
+
+    UPDATE branchops_pencairan
+       SET jenis_pencairan = 'Dipercepat (Break)'
+     WHERE jenis_pencairan = 'Dipercepat dari Jatuh Tempo';
+
+    UPDATE branchops_pencairan
+       SET jenis_penarikan = 'Pemindah-bukuan'
+     WHERE jenis_penarikan = 'Pemindahbukuan';
+
+    DELETE FROM branchops_ref_values
+     WHERE kategori = 'jenis_pencairan'
+       AND nilai    = 'Dipercepat dari Jatuh Tempo';
+
+    INSERT INTO branchops_settings (kunci, nilai, deskripsi) VALUES
+     ('ejaan_baku_migrasi', '1',
+      'Penanda bahwa baris lama sudah diseragamkan ke ejaan baku 15 Agu '
+      '2026 (Dipercepat (Break) dan Pemindah-bukuan). JANGAN dihapus - '
+      'menghapusnya membuat UPDATE ini berjalan lagi setiap aplikasi start.')
+    ON CONFLICT (kunci) DO NOTHING;
+  END IF;
+END
+$ejaan_baku$;
+
+-- Sumber dana asal dan tujuan transfer (15 Agu 2026), diisi lewat layar
+-- Ubah di menu Pencairan - bukan dari Excel. Berkas unggahan TIDAK berubah,
+-- jadi baris yang baru diunggah memulai dengan kelima kolom ini kosong.
+-- Kalau nanti ingin ikut dari Excel, aturan 8 berlaku: tambahkan di UJUNG
+-- KANAN sheet (kolom bebas berikutnya untuk pencairan adalah kolom 21 /
+-- r[20]) dan jadikan opsional, jangan disisipkan di tengah.
+--
+-- sumber_produk sengaja TANPA CHECK. Daftar pilihannya ditegakkan di
+-- _PENCAIRAN_EDITABLE (satu tempat, lapisan API). CHECK di sini berarti
+-- daftar yang sama harus dijaga di dua tempat, dan kalau kolom ini suatu
+-- saat ikut datang dari Excel, satu nilai tak terduga akan menolak seluruh
+-- barisnya - bukan sekadar mengosongkan satu sel.
+ALTER TABLE IF EXISTS branchops_pencairan
+  ADD COLUMN IF NOT EXISTS sumber_produk  VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS sumber_no_rek  VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS tujuan_bank    VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS tujuan_no_rek  VARCHAR(60),
+  ADD COLUMN IF NOT EXISTS tujuan_nama    VARCHAR(160);
+
 -- Tabel branchops_users dibuat oleh SQLAlchemy di app.py, bukan berkas ini.
 -- IF EXISTS dipakai supaya tidak gagal bila urutan startup berbeda.
 ALTER TABLE IF EXISTS branchops_users
   ADD COLUMN IF NOT EXISTS region_class VARCHAR(60);
+
+-- Wajib ganti sandi pada login pertama (15 Agu 2026). Bawaannya TRUE, jadi
+-- setiap akun BARU - termasuk yang dibuat langsung lewat SQL - mewarisi
+-- kewajiban itu tanpa penulisnya perlu ingat.
+ALTER TABLE IF EXISTS branchops_users
+  ADD COLUMN IF NOT EXISTS harus_ganti_sandi BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- SEKALI SAJA: pengguna yang SUDAH ADA sebelum fitur ini dipasang
+-- dibebaskan. Tanpa blok ini, ADD COLUMN ... DEFAULT TRUE di atas memaksa
+-- SETIAP akun lama - termasuk admin - mengganti sandinya pada login
+-- berikutnya, padahal yang diminta hanya berlaku bagi pengguna baru.
+--
+-- Penjaga 'wajib_ganti_sandi_migrasi' WAJIB ada, pola yang sama dengan
+-- region_class_migrasi dan pencairan_status_tbo_migrasi di berkas ini.
+-- Tanpa penjaga itu blok ini jalan lagi setiap aplikasi start, dan setiap
+-- akun BARU yang belum sempat login akan diam-diam dibebaskan dari
+-- kewajiban ganti sandi - yang persis membatalkan fiturnya.
+DO $wajib_ganti_sandi$
+BEGIN
+  IF to_regclass('public.branchops_users') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM branchops_settings
+                     WHERE kunci = 'wajib_ganti_sandi_migrasi') THEN
+
+    UPDATE branchops_users SET harus_ganti_sandi = FALSE;
+
+    INSERT INTO branchops_settings (kunci, nilai, deskripsi) VALUES
+     ('wajib_ganti_sandi_migrasi', '1',
+      'Penanda bahwa pengguna yang sudah ada saat fitur wajib-ganti-sandi '
+      'dipasang telah dibebaskan sekali. JANGAN dihapus - menghapusnya '
+      'membuat blok ini jalan lagi saat aplikasi restart dan membebaskan '
+      'akun baru yang belum sempat login.')
+    ON CONFLICT (kunci) DO NOTHING;
+  END IF;
+END
+$wajib_ganti_sandi$;
 
 -- SEKALI SAJA: pengguna yang sudah ada sebelum fitur ini dipasang diberi
 -- kelas 'SEMUA' supaya pemasangan tidak mengunci siapa pun.

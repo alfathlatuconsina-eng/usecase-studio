@@ -16,6 +16,7 @@
 """
 import os
 import json
+import re
 import uuid
 import datetime as dt
 from functools import wraps
@@ -26,7 +27,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from sqlalchemy import (create_engine, Integer, String, Numeric, Text,
-                        DateTime, ForeignKey, ARRAY, select, func)
+                        DateTime, Boolean, ForeignKey, ARRAY, select, func)
 from sqlalchemy.orm import (DeclarativeBase, Mapped, mapped_column,
                             sessionmaker)
 from dotenv import load_dotenv
@@ -349,6 +350,16 @@ class BranchopsUser(Base):
     # beda, tabel yang dibuat SQLAlchemy di basis data baru tidak akan sama
     # dengan yang dibuat schema.sql di basis data lama.
     branch_codes: Mapped[list] = mapped_column(ARRAY(Text), nullable=True)
+    # Wajib ganti sandi pada login berikutnya. Menyala untuk akun BARU dan
+    # setiap kali admin menyetel sandi orang lain, sehingga sandi pemberian
+    # admin selalu bersifat sementara. Penegakannya di require(), bukan di
+    # layar — token yang membawa klaim "ganti" tidak bisa menarik data apa
+    # pun, termasuk lewat curl.
+    # Pengguna yang sudah ada sebelum fitur ini dipasang TIDAK terkena:
+    # backfill sekali-jalan di branchops/schema.sql mematikannya untuk
+    # mereka, dijaga kunci 'wajib_ganti_sandi_migrasi'.
+    harus_ganti_sandi: Mapped[bool] = mapped_column(Boolean, nullable=False,
+                                                    default=True, server_default="true")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     def to_dict(self):
@@ -357,6 +368,7 @@ class BranchopsUser(Base):
                 # selalu list di JSON, walau di basis data NULL — layar tidak
                 # perlu membedakan "belum dijatah" dari "dijatah nol cabang"
                 "branch_codes": list(self.branch_codes or []),
+                "harus_ganti_sandi": bool(self.harus_ganti_sandi),
                 "created_at": self.created_at.isoformat() if self.created_at else None}
 
 
@@ -368,11 +380,64 @@ CORS(app)
 # ---------------------------------------------------------------------------
 # Auth helpers
 # ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Aturan sandi Branch Ops — SATU tempat, dipakai tiga jalur:
+#   POST /api/branchops/users            (admin membuat akun)
+#   PUT  /api/branchops/users/<id>       (admin menyetel sandi orang)
+#   POST /api/branchops/ganti-sandi      (pengguna mengganti sandinya sendiri)
+#
+# Kalau salah satu jalur melewatkan pemeriksaan ini, aturannya tidak berlaku
+# sama sekali: cukup satu jalan masuk yang longgar.
+#
+# Ketentuannya ditetapkan pemilik aplikasi (15 Agu 2026): lebih dari 4
+# karakter, paling banyak 10, dan wajib memuat karakter khusus.
+#
+# CATATAN TERBUKA, sengaja ditulis di sini dan bukan dihilangkan: BATAS ATAS
+# 10 karakter melemahkan sandi, bukan menguatkannya. bcrypt menerima sampai
+# 72 byte, jadi tidak ada alasan teknis untuk memotong di 10 - satu-satunya
+# akibatnya adalah frasa-sandi yang panjang dan mudah diingat menjadi tidak
+# mungkin. Kalau batas itu berasal dari sistem lain yang menyimpan sandi yang
+# sama, catat sistemnya di sini; kalau tidak, angka ini layak dinaikkan.
+# Empat konstanta di bawah adalah satu-satunya tempat yang perlu diubah.
+_SANDI_MIN = 5           # "lebih dari 4 karakter"
+_SANDI_MAKS = 10
+# Spasi TIDAK dihitung sebagai karakter khusus - meski tetap boleh dipakai
+# di dalam sandi. "abc d" akan lolos kalau spasi ikut dihitung, dan itu jelas
+# bukan yang dimaksud "termasuk karakter khusus". Hapus \s di bawah kalau
+# memang ingin spasi dihitung.
+_SANDI_KHUSUS = re.compile(r"[^A-Za-z0-9\s]")
+_SANDI_ATURAN = (f"Sandi harus {_SANDI_MIN}-{_SANDI_MAKS} karakter "
+                 f"dan memuat minimal satu karakter khusus "
+                 f"(misalnya ! @ # $ % & * ? -).")
+
+
+def sandi_salah(baru, lama=None):
+    """Kembalikan pesan kesalahan, atau None kalau sandinya memenuhi syarat.
+
+    lama diisi hanya pada jalur ganti sandi sendiri: sandi baru yang sama
+    persis dengan yang lama membuat kewajiban ini jadi formalitas."""
+    baru = baru or ""
+    if len(baru) < _SANDI_MIN or len(baru) > _SANDI_MAKS:
+        return _SANDI_ATURAN
+    if not _SANDI_KHUSUS.search(baru):
+        return _SANDI_ATURAN
+    if lama is not None and baru == lama:
+        return "Sandi baru harus berbeda dari sandi lama."
+    return None
+
+
 def make_token(user, module):
-    """module is 'pmo' or 'people' — a token is only valid for its own module."""
+    """module is 'pmo' or 'people' — a token is only valid for its own module.
+
+    Klaim "ganti" hanya dipasang untuk modul branchops, dan hanya kalau akun
+    itu memang wajib mengganti sandinya. Empat dashboard lain memakai fungsi
+    yang sama dan TIDAK ikut berubah: getattr() di bawah bernilai False untuk
+    model pengguna mereka, yang tidak punya kolom itu."""
     payload = {"uid": user.id, "email": user.email, "role": user.role,
                "module": module,
                "exp": dt.datetime.utcnow() + dt.timedelta(hours=JWT_HOURS)}
+    if module == "branchops" and getattr(user, "harus_ganti_sandi", False):
+        payload["ganti"] = True
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 
@@ -412,6 +477,19 @@ def require(*allowed_roles):
                 expected_module = "pmo"
             if claims.get("module") != expected_module:
                 return jsonify({"error": "Please sign in to this dashboard"}), 403
+            # Token yang wajib ganti sandi TIDAK boleh menarik data apa pun.
+            # Diperiksa DI SINI, bukan di layar: menyembunyikan tombol saja
+            # membuat token itu tetap sah untuk curl dan tab Network.
+            # Dua rute dikecualikan, dan hanya dua - keduanya justru yang
+            # dibutuhkan untuk keluar dari keadaan ini:
+            #   /me           supaya layar tahu siapa yang masuk
+            #   /ganti-sandi  jalur satu-satunya untuk mematikan klaimnya
+            # Gagal-tertutup: rute baru apa pun otomatis ikut ditolak sampai
+            # sandinya diganti, tanpa perlu diingat penulisnya.
+            if (expected_module == "branchops" and claims.get("ganti")
+                    and not request.path.endswith(("/me", "/ganti-sandi"))):
+                return jsonify({"error": "Sandi Anda harus diganti dulu.",
+                                "harus_ganti_sandi": True}), 403
             if allowed_roles and claims.get("role") not in allowed_roles:
                 return jsonify({"error": "You don't have permission for this action"}), 403
             request.user = claims
@@ -444,6 +522,20 @@ def log_audit(s, action, proj, changes=None):
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+def _catat_audit_branchops(email, aksi, entity=None, entity_id=None, detail=None):
+    """Tulis satu baris ke branchops_audit, dengan penjagaan yang sama seperti
+    _catat_login_branchops di bawah: modulnya mungkin gagal diimpor, dan
+    db.audit() sendiri sudah menelan galat basis datanya. Aksi utama tidak
+    boleh gagal gara-gara pembukuan."""
+    bo = globals().get("_branchops")
+    if bo is None:
+        return
+    try:
+        bo.db.audit(email, aksi, entity, entity_id, detail)
+    except Exception:                                             # noqa: BLE001
+        pass
+
+
 def _catat_login_branchops(email, role):
     """Record a successful Branch Ops sign-in in branchops_audit.
 
@@ -482,9 +574,15 @@ def _do_login(model, module):
         # the audit write uses its own psycopg2 connection, and holding this
         # SQLAlchemy session open across it serves no purpose.
         token, uemail, urole = make_token(user, module), user.email, user.role
+        # Dibaca sebelum sesi ditutup, seperti tiga nilai di atas.
+        ganti = bool(getattr(user, "harus_ganti_sandi", False)) if module == "branchops" else False
     if module == "branchops":
         _catat_login_branchops(uemail, urole)
-    return jsonify({"token": token, "email": uemail, "role": urole})
+    # harus_ganti_sandi dikirim supaya halaman login bisa langsung menampilkan
+    # formulirnya. Ini KENYAMANAN, bukan penjagaan - yang menjaga adalah
+    # require() di atas, yang menolak token ini untuk rute lain.
+    return jsonify({"token": token, "email": uemail, "role": urole,
+                    "harus_ganti_sandi": ganti})
 
 
 @app.post("/api/pmo/login")
@@ -557,8 +655,13 @@ def branchops_me():
     except Exception as _e:                                           # noqa: BLE001
         # Kalau modul hak menu bermasalah, jangan sampai login ikut rusak.
         print(f"[branchops] gagal membaca hak menu: {_e}")
+    # Diambil dari KLAIM token, bukan dari basis data: rute ini sengaja
+    # ringan dan dipanggil di setiap pemuatan halaman. Klaimnya sendiri
+    # dibuat ulang oleh /ganti-sandi, jadi tidak bisa tertinggal menyala
+    # setelah sandinya benar-benar diganti.
     return jsonify({"email": request.user["email"], "role": request.user["role"],
-                    "menus": menus})
+                    "menus": menus,
+                    "harus_ganti_sandi": bool(request.user.get("ganti"))})
 
 
 # ---------------------------------------------------------------------------
@@ -1205,6 +1308,11 @@ def create_branchops_user():
     role = data.get("role") or "viewer"
     if not email or not pw:
         return jsonify({"error": "email and password are required"}), 400
+    # Aturan sandi berlaku di SEMUA jalur, termasuk yang dipakai admin.
+    # Kalau jalur ini dilewati, aturannya tidak berlaku sama sekali.
+    buruk = sandi_salah(pw)
+    if buruk:
+        return jsonify({"error": buruk}), 400
     if role not in ROLES:
         return jsonify({"error": "role must be admin, editor, or viewer"}), 400
     kelas, kode, salah = _cek_jatah(data.get("region_class"), data.get("branch_codes"))
@@ -1213,8 +1321,10 @@ def create_branchops_user():
     with Session() as s:
         if s.scalar(select(BranchopsUser).where(BranchopsUser.email == email)):
             return jsonify({"error": "a user with that email already exists"}), 409
+        # harus_ganti_sandi=True: sandi yang diketik admin di sini hanya
+        # sandi sementara. Pemiliknya wajib menggantinya saat login pertama.
         u = BranchopsUser(email=email, role=role, region_class=kelas,
-                          branch_codes=kode,
+                          branch_codes=kode, harus_ganti_sandi=True,
                           pw_hash=bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode())
         s.add(u); s.commit()
         return jsonify(u.to_dict()), 201
@@ -1250,9 +1360,57 @@ def update_branchops_user(uid):
             u.region_class = kelas
             u.branch_codes = kode
         if data.get("password"):
+            buruk = sandi_salah(data["password"])
+            if buruk:
+                return jsonify({"error": buruk}), 400
             u.pw_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt()).decode()
+            # Sandi yang disetel admin SELALU sementara — termasuk kalau
+            # admin menyetel sandinya sendiri. Tanpa baris ini, "Reset sandi"
+            # menghasilkan sandi tetap yang diketahui dua orang.
+            u.harus_ganti_sandi = True
         s.commit()
         return jsonify(u.to_dict())
+
+
+@app.post("/api/branchops/ganti-sandi")
+@require()
+def branchops_ganti_sandi():
+    """Pengguna mengganti sandinya SENDIRI. Semua peran, termasuk viewer.
+
+    Sengaja BUKAN kunci hak menu (privileges.MENU_KEYS): hak menu bisa
+    dicabut admin per peran, dan kemampuan mengganti sandi sendiri tidak
+    boleh bisa dicabut — sama alasannya dengan "home" di aturan 12.
+
+    Rute ini termasuk dua yang dikecualikan di require(), jadi ia tetap bisa
+    dipanggil oleh token yang wajib ganti sandi. Itulah gunanya."""
+    data = request.get_json(force=True, silent=True) or {}
+    lama = data.get("sandi_lama") or ""
+    baru = data.get("sandi_baru") or ""
+    with Session() as s:
+        u = s.get(BranchopsUser, request.user["uid"])
+        if not u:
+            return jsonify({"error": "Akun tidak ditemukan"}), 404
+        # Sandi lama tetap diperiksa walaupun akun ini sedang wajib ganti
+        # sandi. Token yang tercecer di komputer bersama tidak boleh cukup
+        # untuk mengambil alih akun; yang menggantinya harus tahu sandi yang
+        # berlaku sekarang.
+        if not bcrypt.checkpw(lama.encode(), u.pw_hash.encode()):
+            return jsonify({"error": "Sandi lama salah"}), 400
+        buruk = sandi_salah(baru, lama=lama)
+        if buruk:
+            return jsonify({"error": buruk}), 400
+        u.pw_hash = bcrypt.hashpw(baru.encode(), bcrypt.gensalt()).decode()
+        u.harus_ganti_sandi = False
+        s.commit()
+        email, role = u.email, u.role
+        # Token BARU dibuat dari baris yang sudah tersimpan, jadi klaim
+        # "ganti" ikut hilang. Tanpa ini pengguna tetap terkunci sesudah
+        # berhasil mengganti sandinya — token lamanya masih membawa klaim
+        # itu sampai kedaluwarsa 12 jam kemudian, dan layar akan terlihat
+        # rusak padahal penggantiannya berhasil.
+        token = make_token(u, "branchops")
+    _catat_audit_branchops(email, "ganti_sandi", detail={"role": role})
+    return jsonify({"ok": True, "token": token, "email": email, "role": role})
 
 
 @app.delete("/api/branchops/users/<int:uid>")

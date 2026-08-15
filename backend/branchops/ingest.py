@@ -70,6 +70,39 @@ def as_time(v):
     return None
 
 
+# --------------------------------------------------------------------------
+# Penyeragaman ejaan nilai baku (15 Agu 2026)
+# --------------------------------------------------------------------------
+# Ejaan baku berubah: "Dipercepat dari Jatuh Tempo" -> "Dipercepat (Break)"
+# dan "Pemindahbukuan" -> "Pemindah-bukuan" (khusus jenis PENARIKAN pada
+# berkas Pencairan; jenis SETORAN pada berkas TBO sengaja TIDAK ikut, lihat
+# catatan di deploy/buat-template-unggah.py).
+#
+# KENAPA DI PARSER, padahal template sudah punya kotak turun:
+# kotak turun hanya ada pada berkas yang dibuat DARI template baru. Salinan
+# template lama masih beredar di cabang, dan berkas yang dikirim minggu
+# depan bisa saja hasil "Save As" dari berkas Juli. Tanpa penyeragaman di
+# sini, satu berkas lama sudah cukup untuk memasukkan kembali ejaan lama -
+# dan baris itu berhenti terhitung sebagai break di KPI, di dua grafik
+# harian, di tabel Rincian, DAN berhenti dicocokkan oleh rekonsiliasi.
+# Tidak ada galat; angkanya hanya mengecil.
+#
+# JANGAN dihapus dengan alasan "kan sudah ada kotak turun di template".
+# Ejaan yang tidak dikenal dibiarkan APA ADANYA - tidak ditebak, tidak
+# dibuang - supaya nilai baru yang sah tetap terlihat, bukan tersamar
+# menjadi salah satu pilihan lama.
+_SERAGAM = {
+    "jenis_pencairan": {"dipercepat dari jatuh tempo": "Dipercepat (Break)"},
+    "jenis_penarikan": {"pemindahbukuan": "Pemindah-bukuan"},
+}
+
+
+def seragam(kategori, nilai):
+    if nilai is None:
+        return None
+    return _SERAGAM.get(kategori, {}).get(str(nilai).strip().lower(), nilai)
+
+
 class AmbiguousNumber(ValueError):
     """Nominal berupa teks yang tidak bisa ditafsirkan tanpa menebak."""
 
@@ -420,7 +453,8 @@ def parse_pencairan(path, branches: dict, settings: dict) -> ParseResult:
             "nama_pemilik": clean(r[5]),
             "tgl_penempatan": tgl_tempat, "tgl_bilyet": as_date(r[7]), "tgl_pencairan": tgl_cair,
             "tenor_hari": tenor, "nominal": nominal,
-            "jenis_pencairan": clean(r[10]), "jenis_penarikan": clean(r[11]),
+            "jenis_pencairan": seragam("jenis_pencairan", clean(r[10])),
+            "jenis_penarikan": seragam("jenis_penarikan", clean(r[11])),
             "data_tbo": dtbo,
             "target_pemenuhan_tbo": target_pc,
             "status_tbo": "Outstanding" if ada_tbo_pc else "Dikecualikan",

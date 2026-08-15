@@ -208,7 +208,7 @@ def jalankan_rekonsiliasi(toleransi=None):
     Cocokkan branchops_it_break dengan branchops_pencairan lewat nomor rekening ternormalisasi.
 
     Hanya batch committed yang ikut. Pembanding di sisi cabang dibatasi pada
-    'Dipercepat dari Jatuh Tempo', karena data IT memang hanya berisi break;
+    'Dipercepat (Break)', karena data IT memang hanya berisi break;
     pencairan sesuai jatuh tempo tidak akan pernah muncul di sana.
 
     Tindak lanjut yang sudah diisi manusia tidak ditimpa.
@@ -227,7 +227,7 @@ def jalankan_rekonsiliasi(toleransi=None):
       JOIN branchops_batches b ON b.id=p.batch_id AND b.status='committed'
       WHERE p.no_deposito_norm IS NOT NULL
         AND NOT p.dup_dikecualikan
-        AND p.jenis_pencairan = 'Dipercepat dari Jatuh Tempo'
+        AND p.jenis_pencairan = 'Dipercepat (Break)'
       ORDER BY p.no_deposito_norm, p.id
     ), gab AS (
       SELECT

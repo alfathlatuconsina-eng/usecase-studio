@@ -295,6 +295,20 @@ details.sect[open]>summary::after{content:"klik untuk menutup"}
   .filters .btn{flex:1 1 auto}
   /* Tombol di dalam tabel harus cukup besar untuk jari, bukan kursor. */
   .btn.sm{padding:7px 11px;font-size:12px}
+  /* Kolom Nasabah disembunyikan di layar sempit. Isinya SELALU "***" -
+     masking.py menyamarkannya di backend untuk semua peran - jadi kolom
+     ini tidak membawa satu pun informasi, sementara lebarnya mendorong
+     kolom nomor rekening / nomor deposito keluar layar. Padahal nomor
+     itulah yang membedakan baris (lihat catatan pemakaian di masking.py)
+     DAN yang dipakai kotak pencarian di Beranda dan menu TBO.
+     Hanya TAMPILAN yang disembunyikan: datanya tetap dikirim, tetap ada
+     di layar lebar, dan tetap ikut di ekspor CSV - jadi tidak ada berkas
+     unduhan yang berubah isinya karena lebar layar.
+     Akibat kecil yang disengaja: penanda "…" untuk nama terpotong di
+     menu Break Deposito ikut tersembunyi di ponsel. Penanda itu tentang
+     berkas sumber, bukan tentang baris ini, dan tetap terlihat di layar
+     lebar. */
+  .col-nasabah{display:none}
   /* Biar HALAMAN yang menggulir tegak, bukan kotak setinggi 520px di
      dalam layar yang tingginya sendiri sekitar 600px. */
   .tbl-wrap{max-height:none}
@@ -328,6 +342,12 @@ details.sect[open]>summary::after{content:"klik untuk menutup"}
   </span>
   <span class="spacer"></span>
   <span class="who" id="who"></span>
+  <!-- Ganti sandi sengaja BUKAN tab dan BUKAN kunci hak menu.
+       Kunci menu bisa dicabut admin per peran (aturan 2), dan kemampuan
+       mengganti sandi sendiri tidak boleh bisa dicabut dari siapa pun -
+       alasan yang sama dengan "home" di aturan 12. Menaruhnya di luar
+       MENU_KEYS menutup kemungkinan itu sejak awal. -->
+  <a class="item" href="#" id="btnGantiSandi">Ganti sandi</a>
   <a class="item" href="#" id="btnLogout">Keluar</a>
 </div></nav>
 <div class="wrap">
@@ -392,6 +412,23 @@ details.sect[open]>summary::after{content:"klik untuk menutup"}
     <div><label>Cabang</label><select id="fCab"><option value="">Semua cabang</option></select></div>
     <div><label>Tipe</label><select id="fTipe"><option value="">Semua tipe</option>
       <option>KC</option><option>KCP</option><option>Pusat</option></select></div>
+    <!-- Status TBO. HANYA menu Pencairan (Agustus 2026). Yang disaring
+         adalah tabel "Detail transaksi" dan berkas CSV-nya.
+         Penyaringan sesungguhnya terjadi di SQL (rows_detail di
+         analytics.py), bukan di sini: menyaring di layar berarti memotong
+         daftar yang sudah dibatasi LIMIT 2000, sehingga baris yang cocok
+         di luar batas itu hilang tanpa tanda apa pun.
+         Dipakai DUA menu: Pencairan (tabel Detail transaksi) dan TBO
+         (tabel Detail rekening). Bawaannya berbeda per menu - lihat
+         TBO_BAWAAN di bawah - supaya tampilan awal keduanya sama seperti
+         sebelum kotak ini ada. Atribut "selected" di bawah hanya nilai
+         awal DOM; yang menentukan saat menu dibuka adalah switchTab. -->
+    <div id="wrapTbo" class="hidden"><label>Status TBO</label>
+      <select id="fTbo">
+        <option value="">Semua</option>
+        <option value="tanpa">Tanpa TBO</option>
+        <option value="punya" selected>Memiliki TBO</option>
+      </select></div>
     <div id="wrapStatus" class="hidden"><label>Status</label>
       <select id="fStatus"><option value="">Semua status</option>
         <option>Cocok</option><option>Selisih material</option>
@@ -648,6 +685,12 @@ function params() {
   if (b) p.set("tgl_akhir", b);
   if ($("fCab").value) p.set("branch_code", $("fCab").value);
   if ($("fTipe").value) p.set("branch_type", $("fTipe").value);
+  /* Hanya menu Pencairan yang mengenal penyaring ini, jadi hanya dari sana
+     yang mengirimkannya. Namanya tbo_status, BUKAN status - "status" sudah
+     dipakai Dashboard 4 untuk status rekonsiliasi lewat dict filter yang
+     sama di backend. */
+  if ((window.DASH === 2 || window.DASH === 3) && $("fTbo") && $("fTbo").value)
+    p.set("tbo_status", $("fTbo").value);
   if ($("fStatus") && $("fStatus").value) p.set("status", $("fStatus").value);
   if (window.DASH === 2 && DUP) p.set("dup", "1");
   return p.toString();
@@ -756,7 +799,7 @@ function renderIT() {
     return `<tr>
       <td>${esc(r.branch_name)}<div class="muted" style="font-size:11px">${(r.branch_code||"").replace(/^0/,"")}</div></td>
       <td class="muted">${tgl(r.tgl_break)}</td><td class="muted">${r.waktu_awal||"—"}</td>
-      <td>${esc((r.nama_pemilik||"—").slice(0,24))}${r.nama_terpotong?' <span class="fl">…</span>':""}</td>
+      <td class="col-nasabah">${esc((r.nama_pemilik||"—").slice(0,24))}${r.nama_terpotong?' <span class="fl">…</span>':""}</td>
       <td class="num">${fmt(N(r.nominal))}</td>
       <td class="num muted">${dec(N(r.rate)*100,2)}%</td>
       <td class="num ${N(r.penalti)?"":"muted"}">${N(r.penalti)?fmt(N(r.penalti)):"—"}</td>
@@ -772,6 +815,16 @@ function renderIT() {
 /* ================================================================== */
 function renderPencairan() {
   const k = DATA.kpi, rows = DATA.rows;
+  /* Pilihan kotak "Status TBO" yang sedang berlaku. Dipakai HANYA untuk
+     kata-kata di layar dan untuk memilih pembanding jumlah; penyaringan
+     barisnya sendiri sudah dikerjakan SQL (rows_detail di analytics.py).
+     Kalau kotaknya belum ada di DOM, "" = semua - sama seperti backend. */
+  const TBO_PILIH = ($("fTbo") && $("fTbo").value) || "";
+  const TBO_KATA  = {"": "baris", "tanpa": "baris tanpa Data TBO",
+                     "punya": "baris ber-Data TBO"}[TBO_PILIH];
+  const TBO_LABEL = {"": "seluruh pencairan pada penyaring ini",
+                     "tanpa": "hanya pencairan TANPA Data TBO",
+                     "punya": "hanya pencairan yang membawa Data TBO"}[TBO_PILIH];
   const bruto = N(k.rp_bruto), keluar = N(k.rp_keluar), roll = N(k.rp_rollover), kembali = N(k.rp_kembali);
   $("meta").textContent = `${fmt(k.n)} transaksi · ${k.cabang} cabang melapor`;
   $("cnt").textContent = `${rows.length} baris ditampilkan`;
@@ -819,8 +872,12 @@ function renderPencairan() {
        benar-benar dikerjakan orang, bukan bacaan penutup. Rinciannya
        menyusul di bawah sebagai bagian yang bisa dibuka-tutup, mengikuti
        susunan menu TBO. -->
-  <h2>Detail transaksi <span class="sub" style="text-transform:none;font-weight:400">— hanya pencairan yang membawa Data TBO${
-      window.ROLE !== "viewer" ? ", ubah lewat kolom terakhir" : ""}</span></h2>
+  <h2>Detail transaksi <span class="sub" style="text-transform:none;font-weight:400">— ${TBO_LABEL}${
+      /* "ubah lewat kolom terakhir" hanya benar kalau ada baris yang memang
+         bisa diubah. Pada pilihan "Tanpa TBO" tidak ada satu pun, karena
+         backend menolak menyunting baris pencairan yang data_tbo-nya kosong
+         (aturan 7 di CLAUDE.md). */
+      (window.ROLE !== "viewer" && TBO_PILIH !== "tanpa") ? ", ubah lewat kolom terakhir" : ""}</span></h2>
   <!-- Pencarian nomor deposito. Menyaring baris yang SUDAH ADA di layar,
        tidak memanggil server: seluruh baris pada filter tanggal/cabang
        sekarang memang sudah ada di DATA.rows. Karena itu hasilnya terbatas
@@ -870,7 +927,10 @@ function renderPencairan() {
      Fungsinya TIDAK dihapus - menu lain masih memakainya. */
 
   /* ---- analisa jenis pencairan: dipercepat vs sesuai jatuh tempo (slide 2-4) ---- */
-  const JSJT = "Sesuai Jatuh Tempo", JDIP = "Dipercepat dari Jatuh Tempo";
+  /* Ejaan baku sejak 15 Agu 2026. Harus sama persis dengan yang disaring
+     analytics.py (KPI dipercepat) dan storage.py (rekonsiliasi), dan dengan
+     yang dihasilkan _SERAGAM di ingest.py. */
+  const JSJT = "Sesuai Jatuh Tempo", JDIP = "Dipercepat (Break)";
   const days = [...new Set(rows.map(r => tgl(r.tgl_input)))].sort();
   const dayAgg = days.map(d => {
     const rr = rows.filter(r => tgl(r.tgl_input) === d);
@@ -915,19 +975,26 @@ function renderPencairan() {
      disalin ke variabel sendiri.
      punya_tbo datang dari backend (_PUNYA_TBO di analytics.py), bukan
      ditebak di sini, supaya layar dan API tidak berbeda pendapat. */
-  /* Baris ber-Data TBO datang SUDAH TERSARING dari backend (rows_tbo).
-     Jangan kembali menyaring `rows` di sini: `rows` dipotong LIMIT 2000,
-     jadi menyaringnya sesudah itu diam-diam menghilangkan baris ber-TBO
-     yang berada di luar 2000 pencairan paling awal.
+  /* Baris tabel datang SUDAH TERSARING dari backend (rows_detail), sesuai
+     kotak "Status TBO". Jangan kembali menyaring `rows` di sini: `rows`
+     dipotong LIMIT 2000, jadi menyaringnya sesudah itu diam-diam
+     menghilangkan baris yang cocok tetapi berada di luar 2000 pencairan
+     paling awal.
      Cadangan filter di layar hanya untuk backend versi lama; kalau itu yang
      terpakai, angkanya bisa kurang — karena itu peringatan di bawah memakai
-     k.n_tbo yang dihitung server tanpa LIMIT. */
-  const rowsTbo = Array.isArray(DATA.rows_tbo)
-    ? DATA.rows_tbo
-    : rows.filter(r => r.punya_tbo);
-  /* n_tbo = jumlah sebenarnya di basis data. Kalau daftar lebih pendek dari
-     itu, daftarnya terpotong dan layar WAJIB mengatakannya. */
-  const nTboAsli = k.n_tbo == null ? rowsTbo.length : N(k.n_tbo);
+     angka yang dihitung server tanpa LIMIT. */
+  const rowsDetail = Array.isArray(DATA.rows_detail)
+    ? DATA.rows_detail
+    : rows.filter(r => TBO_PILIH === "" ? true
+                     : TBO_PILIH === "punya" ? r.punya_tbo : !r.punya_tbo);
+  /* Jumlah SEBENARNYA di basis data untuk pilihan yang sedang aktif -
+     ketiganya dihitung server tanpa LIMIT, jadi tidak perlu query tambahan.
+     Kalau daftar lebih pendek dari angka ini, daftarnya terpotong dan layar
+     WAJIB mengatakannya. */
+  const nAsli = k.n_tbo == null ? rowsDetail.length
+              : TBO_PILIH === "punya" ? N(k.n_tbo)
+              : TBO_PILIH === "tanpa" ? N(k.n) - N(k.n_tbo)
+              : N(k.n);
 
   /* Nomor deposito dibandingkan setelah dibuang tanda bacanya. Nomor yang
      sama ditulis "0012-3456" di berkas dan "00123456" oleh orang yang
@@ -940,20 +1007,20 @@ function renderPencairan() {
      berubah, jadi tidak boleh menyentuh KPI, grafik, atau memanggil server. */
   function gambarDetail(cari) {
     const q = normDep(cari);
-    const tampil = q ? rowsTbo.filter(r => normDep(r.no_deposito).includes(q)) : rowsTbo;
+    const tampil = q ? rowsDetail.filter(r => normDep(r.no_deposito).includes(q)) : rowsDetail;
 
     $("cnt").textContent = q
-      ? `${fmt(tampil.length)} cocok dari ${fmt(rowsTbo.length)} baris ber-Data TBO`
-      : `${fmt(rowsTbo.length)} baris ber-Data TBO dari ${fmt(N(k.n))} pencairan`;
+      ? `${fmt(tampil.length)} cocok dari ${fmt(rowsDetail.length)} ${TBO_KATA}`
+      : `${fmt(rowsDetail.length)} ${TBO_KATA} dari ${fmt(N(k.n))} pencairan`;
 
     /* Daftar terpotong: katakan terus terang. Angka yang tampak pasti
        padahal sebagian adalah kesalahan yang paling lama tidak ketahuan —
        tidak ada yang curiga pada tabel yang kelihatan baik-baik saja. */
-    const terpotong = nTboAsli > rowsTbo.length;
+    const terpotong = nAsli > rowsDetail.length;
     $("pcPotong").innerHTML = terpotong
       ? `<div class="banner b-warn" style="margin:10px 0 0">
-           <b>Daftar ini terpotong.</b> Ada ${fmt(nTboAsli)} baris ber-Data TBO pada
-           penyaring sekarang, tetapi hanya ${fmt(rowsTbo.length)} yang bisa diambil sekaligus.
+           <b>Daftar ini terpotong.</b> Ada ${fmt(nAsli)} ${TBO_KATA} pada
+           penyaring sekarang, tetapi hanya ${fmt(rowsDetail.length)} yang bisa diambil sekaligus.
            Persempit rentang tanggal atau pilih satu cabang untuk melihat sisanya —
            jangan memakai angka di halaman ini sebagai jumlah keseluruhan.</div>`
       : "";
@@ -968,28 +1035,38 @@ function renderPencairan() {
        di layarnya — dan itu ketahuan belakangan, saat berkasnya sudah dipakai
        orang lain. */
     CSV = [["No deposito","No rekening","No CIF","Cabang","Kode","Tgl input","Tanggal Pencairan","Nasabah",
-            "Nominal","Tenor","Arus dana","Keyakinan","Jenis pencairan","Data TBO",
-            "Target Pemenuhan TBO","Jumlah Hari Terlambat","Status TBO","Catatan"]];
+            "Nominal","Tenor","Arus dana","Keyakinan","Jenis pencairan","Jenis penarikan","Data TBO",
+            "Target Pemenuhan TBO","Jumlah Hari Terlambat","Status TBO",
+            "Sumber dana - produk","Sumber dana - no rekening",
+            "Tujuan - bank","Tujuan - no rekening","Tujuan - nama","Catatan"]];
     /* Baris disimpan supaya layar Edit bisa mengisi formulir tanpa memanggil
        server lagi. Isinya sudah tersamar oleh _out() di backend.
-       Diisi dari rowsTbo, BUKAN dari `tampil`: sesudah menyimpan, pcEdit
+       Diisi dari rowsDetail, BUKAN dari `tampil`: sesudah menyimpan, pcEdit
        memanggil load() dan tabel digambar ulang dari awal, tapi bila kelak
        ada jalur lain yang membuka baris di luar hasil pencarian, formulirnya
        tetap terisi. */
     PC_ROWS = {};
-    rowsTbo.forEach(r => { PC_ROWS[r.id] = r; });
+    rowsDetail.forEach(r => { PC_ROWS[r.id] = r; });
 
     $("tb").innerHTML = tampil.map(r => {
       CSV.push([r.no_deposito, r.no_rekening, r.no_cif, r.branch_name, r.branch_code,
         tgl(r.tgl_input), tgl(r.tgl_pencairan),
         r.nama_pemilik, N(r.nominal), r.tenor_hari, r.arus_dana, r.arus_keyakinan, r.jenis_pencairan,
-        r.data_tbo, tgl(r.target_pemenuhan_tbo), r.hari_terlambat, r.status_tbo, r.catatan]);
-      /* Seluruh baris di tabel ini sudah pasti punya Data TBO, jadi yang
-         menentukan tinggal PERAN. Backend tetap menolak sendiri lewat
-         @require("admin","editor") dan pemeriksaan data_tbo tersimpan. */
-      const aksi = (window.ROLE === "admin" || window.ROLE === "editor")
+        r.jenis_penarikan, r.data_tbo, tgl(r.target_pemenuhan_tbo), r.hari_terlambat, r.status_tbo,
+        r.sumber_produk, r.sumber_no_rek, r.tujuan_bank, r.tujuan_no_rek, r.tujuan_nama,
+        r.catatan]);
+      /* DUA syarat sejak kotak "Status TBO" ada (Agustus 2026): peran, DAN
+         baris ini memang membawa Data TBO. Sebelumnya syarat kedua tidak
+         perlu ditulis karena tabel ini hanya memuat baris ber-TBO.
+         Backend MENOLAK menyunting baris pencairan yang data_tbo
+         tersimpannya kosong (aturan 7), jadi tombol yang tetap tampil di
+         baris "Tanpa TBO" akan gagal - dan kegagalan seperti itu terbaca
+         sebagai aplikasi rusak, bukan sebagai batasan yang disengaja.
+         punya_tbo datang dari backend (_PUNYA_TBO), bukan ditebak di sini. */
+      const bolehUbahPc = (window.ROLE === "admin" || window.ROLE === "editor") && r.punya_tbo;
+      const aksi = bolehUbahPc
         ? `<button class="btn sm" onclick="pcEdit(${r.id})">Ubah</button>`
-        : '<span class="muted">—</span>';
+        : `<span class="muted" title="${r.punya_tbo ? "" : "Baris tanpa Data TBO tidak bisa disunting"}">—</span>`;
       /* hari_terlambat null = tidak ada target, atau TBO sudah selesai.
          Sengaja "—", bukan 0: nol berarti "tepat waktu", bukan "tak berlaku". */
       const lt = r.hari_terlambat;
@@ -998,7 +1075,7 @@ function renderPencairan() {
         <td class="muted" style="font-size:11.5px">${esc(r.no_rekening||"—")}</td>
         <td>${esc(r.branch_name)}</td>
         <td class="muted">${tgl(r.tgl_pencairan)}</td>
-        <td>${esc((r.nama_pemilik||"—").slice(0,28))}</td>
+        <td class="col-nasabah">${esc((r.nama_pemilik||"—").slice(0,28))}</td>
         <td class="num">${fmt(N(r.nominal))}</td>
         <td class="num muted">${r.tenor_hari==null?"—":r.tenor_hari+" h"}</td>
         <td class="muted" style="font-size:11.5px">${r.target_pemenuhan_tbo?tgl(r.target_pemenuhan_tbo):'<span class="fl">belum diisi</span>'}</td>
@@ -1059,6 +1136,31 @@ window.pcEdit = async (id, sesudah) => {
   const ro = v => `<div class="ed-ro">${esc(v == null || v === "" ? "—" : v)}</div>`;
   const opt = (nilai, kini) => nilai.map(v =>
     `<option value="${esc(v)}"${v === kini ? " selected" : ""}>${esc(v)}</option>`).join("");
+  /* Kotak pilihan yang TIDAK MENGHILANGKAN nilai yang sudah ada.
+     Dua alasan, keduanya dari data nyata:
+
+     1. LABEL boleh berbeda dari NILAI. Sejak 15 Agu 2026 keduanya kebetulan
+        SAMA untuk jenis pencairan: ejaan baku diseragamkan jadi "Dipercepat
+        (Break)" di parser, di baris lama, dan di semua penyaring. Kemampuan
+        memisahkan label dari nilai tetap dipertahankan - begitu ada kolom
+        yang labelnya ingin diperhalus sementara nilainya dipakai query,
+        inilah tempatnya. Mengubah nilai tersimpan tanpa ikut mengubah
+        seluruh penyaringnya membuat baris berhenti terhitung, tanpa galat.
+     2. Nilai di luar daftar DIPERTAHANKAN sebagai pilihan tambahan. Data
+        yang ada memuat "Pemindahbukuan" pada jenis penarikan; tanpa ini,
+        membuka dialog pada baris tersebut menampilkan opsi pertama dan
+        menekan Simpan menimpanya diam-diam.
+
+     Kalau nilainya kosong, opsi kosong ditaruh paling depan supaya
+     menyimpan tidak mengarang nilai yang tidak pernah dipilih siapa pun. */
+  const optJaga = (pasangan, kini) => {
+    const kosong = kini == null || kini === "";
+    let semua = pasangan.slice();
+    if (kosong) semua = [["", "— belum diisi —"]].concat(semua);
+    else if (!semua.some(([v]) => v === kini)) semua = semua.concat([[kini, kini]]);
+    return semua.map(([v, l]) =>
+      `<option value="${esc(v)}"${v === kini ? " selected" : ""}>${esc(l)}</option>`).join("");
+  };
 
   const bg = document.createElement("div");
   bg.className = "ed-bg";
@@ -1132,9 +1234,53 @@ window.pcEdit = async (id, sesudah) => {
           </div></div>
 
         <div class="ed-f"><label>Jenis pencairan</label>
-          <input type="text" id="pcJPen" value="${esc(r.jenis_pencairan || "")}" maxlength="60"></div>
+          <select id="pcJPen">${optJaga([
+            ["Sesuai Jatuh Tempo", "Sesuai Jatuh Tempo"],
+            ["Dipercepat (Break)", "Dipercepat (Break)"]], r.jenis_pencairan)}</select></div>
         <div class="ed-f"><label>Jenis penarikan</label>
-          <input type="text" id="pcJTar" value="${esc(r.jenis_penarikan || "")}" maxlength="60"></div>
+          <select id="pcJTar">${optJaga([
+            ["Transfer", "Transfer"], ["Tunai", "Tunai"],
+            ["Pemindah-bukuan", "Pemindah-bukuan"]], r.jenis_penarikan)}</select></div>
+
+        <div class="ed-f full"><hr style="border:0;border-top:1px solid var(--line,#e2e8f0);margin:4px 0"></div>
+        <div class="ed-f full"><b style="font-size:12.5px">Sumber Dana Asal</b>
+          <div class="muted" style="font-size:11px">Rekening asal dana sebelum dicairkan.</div></div>
+        <div class="ed-f"><label>Produk (sumber dana)</label>
+          <select id="pcSumProd">${optJaga([
+            ["Tabungan", "Tabungan"], ["Deposito", "Deposito"]], r.sumber_produk)}</select></div>
+        <div class="ed-f"><label>Nomor rekening / deposito</label>
+          <input type="text" id="pcSumRek" value="${esc(r.sumber_no_rek || "")}" maxlength="60"></div>
+
+        <div class="ed-f full"><hr style="border:0;border-top:1px solid var(--line,#e2e8f0);margin:4px 0"></div>
+        <div class="ed-f full"><b style="font-size:12.5px">Tujuan Transfer</b>
+          <span class="muted" style="font-size:11px">— jika tidak memiliki rekening MNCB</span>
+          <div class="muted" style="font-size:11px">Ketiganya boleh dikosongkan untuk pencairan
+            tunai atau ke rekening MNCB sendiri.</div></div>
+        <div class="ed-f"><label>Nama bank tujuan</label>
+          <input type="text" id="pcTujBank" value="${esc(r.tujuan_bank || "")}" maxlength="120"></div>
+        <div class="ed-f"><label>Nomor rekening tujuan</label>
+          <input type="text" id="pcTujRek" value="${esc(r.tujuan_no_rek || "")}" maxlength="60"></div>
+        <div class="ed-f full"><label>Nama pemilik rekening tujuan</label>
+          <!-- SEKALI TULIS. Isinya tidak pernah ditampilkan di layar, termasuk
+               di sini: kotaknya selalu mulai kosong, dan yang terlihat hanya
+               penanda "***" pada placeholder.
+               INI PILIHAN TAMPILAN, BUKAN PENGAMANAN - dan jangan pernah
+               ditulis sebagai pengamanan di dokumen mana pun. Nilai aslinya
+               tetap dikirim API ke peramban supaya bisa masuk ke berkas CSV,
+               jadi siapa pun yang boleh menekan Unduh tetap bisa membacanya
+               lewat tab Network. Perlindungan sungguhan berarti CSV dibuat di
+               server, dibatasi peran, dan dicatat ke branchops_audit tiap kali
+               diunduh (lihat aturan 1 di CLAUDE.md). -->
+          <input type="text" id="pcTujNama" value="" maxlength="160"
+                 placeholder="${r.tujuan_nama ? "*** — tersimpan, tidak ditampilkan" : "belum diisi"}">
+          <div class="muted" style="font-size:11px;margin-top:3px">
+            Sekali tulis: isinya tidak pernah ditampilkan, bahkan di layar ini.
+            Biarkan kosong untuk mempertahankan yang tersimpan; isi hanya bila ingin
+            <b>menggantinya</b>. Satu-satunya cara membacanya adalah Unduh tabel (CSV).
+            <label style="display:inline-flex;gap:5px;align-items:center;margin-top:4px">
+              <input type="checkbox" id="pcTujNamaHapus"> Kosongkan kolom ini
+            </label>
+          </div></div>
 
         <div class="ed-f"><label>NIP maker</label>
           <input type="text" id="pcMaker" value="${esc(r.nip_maker || "")}" maxlength="20"></div>
@@ -1197,13 +1343,28 @@ window.pcEdit = async (id, sesudah) => {
       tgl_bilyet:           $("pcBilyet").value || null,
       nominal:              $("pcNominal").value.trim() || null,
       arus_dana:            $("pcArus").value,
-      jenis_pencairan:      $("pcJPen").value.trim() || null,
-      jenis_penarikan:      $("pcJTar").value.trim() || null,
+      jenis_pencairan:      $("pcJPen").value || null,
+      jenis_penarikan:      $("pcJTar").value || null,
+      sumber_produk:        $("pcSumProd").value || null,
+      sumber_no_rek:        $("pcSumRek").value.trim() || null,
+      tujuan_bank:          $("pcTujBank").value.trim() || null,
+      tujuan_no_rek:        $("pcTujRek").value.trim() || null,
       nip_maker:            $("pcMaker").value.trim() || null,
       nip_checker:          $("pcChecker").value.trim() || null,
       nip_approver:         $("pcApprover").value.trim() || null,
       catatan:              $("pcCatatan").value.trim() || null,
     };
+    /* tujuan_nama TIDAK ikut di objek di atas, dan itu disengaja.
+       Kolomnya tidak pernah menampilkan isinya, jadi kotaknya selalu mulai
+       KOSONG. Kalau nilai kosong itu ikut terkirim, satu kali menekan
+       Simpan - untuk mengubah tanggal, misalnya - akan MENGHAPUS nama yang
+       sudah tersimpan tanpa ada yang memintanya.
+       Aturannya: kunci hanya dikirim kalau ada yang benar-benar diputuskan.
+       Backend melewati kunci yang tidak ada di body (perulangan
+       _PENCAIRAN_EDITABLE di __init__.py), sehingga nilai lama tetap utuh. */
+    const tujNama = $("pcTujNama").value.trim();
+    if ($("pcTujNamaHapus").checked) b.tujuan_nama = null;
+    else if (tujNama) b.tujuan_nama = tujNama;
     $("pcSimpan").disabled = true;
     $("pcErr").textContent = "";
     const r2 = await authFetch("/api/branchops/pencairan/" + id, {
@@ -1224,6 +1385,30 @@ window.pcEdit = async (id, sesudah) => {
 /* ================================================================== */
 function renderTBO() {
   const k = DATA.kpi, rows = DATA.rows;
+  /* Pilihan kotak "Status TBO". Dipakai HANYA untuk kata-kata di layar dan
+     untuk memilih pembanding jumlah; penyaringan barisnya sudah dikerjakan
+     SQL (rows_detail di analytics.py, memakai kolom f.ada_tbo). */
+  const TBO_PILIH = ($("fTbo") && $("fTbo").value) || "";
+  const TBO_KATA  = {"": "baris", "tanpa": "rekening tanpa dokumen TBO",
+                     "punya": "rekening ber-TBO"}[TBO_PILIH];
+  /* Baris tabel datang SUDAH TERSARING dari backend. Jangan menyaring
+     `rows` di sini: `rows` dipotong LIMIT 2000 dan diurutkan status_tbo
+     lalu tgl_input - urutan yang justru mengelompokkan yang sejenis, jadi
+     satu pilihan bisa kehilangan hampir seluruh barisnya tanpa tanda apa
+     pun. `rows` sendiri TETAP dipakai apa adanya oleh rincian per dokumen,
+     per jenis rekening dan blok "Perlu ditindaklanjuti" di bawah, yang
+     memang harus menggambarkan seluruh baris pada penyaring. */
+  const rowsDetail = Array.isArray(DATA.rows_detail)
+    ? DATA.rows_detail
+    : rows.filter(r => TBO_PILIH === "" ? true
+                     : TBO_PILIH === "punya" ? r.ada_tbo : !r.ada_tbo);
+  /* Jumlah SEBENARNYA di basis data untuk pilihan yang aktif - ketiganya
+     dihitung server tanpa LIMIT (kpi.n dan kpi.dengan_tbo), jadi tidak
+     perlu query tambahan. */
+  const nAsli = k.dengan_tbo == null ? rowsDetail.length
+              : TBO_PILIH === "punya" ? N(k.dengan_tbo)
+              : TBO_PILIH === "tanpa" ? N(k.n) - N(k.dengan_tbo)
+              : N(k.n);
   $("meta").textContent = `${fmt(k.n)} rekening · ${k.cabang} cabang melapor`;
   $("cnt").textContent = `${rows.length} baris ditampilkan`;
 
@@ -1278,6 +1463,7 @@ function renderTBO() {
     <span id="tbCariInfo" class="muted" style="font-size:11.5px"></span>
   </div>
   ${tabel(["Cabang","Tgl input","Nasabah","No rekening","Nominal","Produk","Tipe","Dokumen TBO","Aging","Target TBO","Terlambat","Status","Aksi"])}
+  <div id="tboPotong"></div>
 
   <!-- Dua bagian di bawah tertutup saat halaman dibuka.
        Memakai <details>/<summary> bawaan peramban, bukan JavaScript:
@@ -1364,20 +1550,36 @@ function renderTBO() {
      server lagi. Isinya sudah tersamar (nama nasabah "***") karena datang
      lewat _out() di backend — jadi menyimpannya di sini tidak membocorkan
      apa pun yang tidak sudah tampil di layar.
-     Diisi dari SELURUH baris, bukan dari hasil pencarian: layar edit harus
-     tetap bisa membuka baris mana pun. */
+     Diisi dari SELURUH baris yang tampil, bukan dari hasil pencarian: layar
+     edit harus tetap bisa membuka baris mana pun yang ada di tabel.
+     `rows` ikut dimasukkan supaya baris yang sedang tersaring keluar tetap
+     bisa dibuka lewat jalur lain; kalau id-nya tetap tidak ada, tboEdit
+     jatuh ke ambilSatu() yang menariknya dari server. */
   TBO_ROWS = {};
   rows.forEach(r => { TBO_ROWS[r.id] = r; });
+  rowsDetail.forEach(r => { TBO_ROWS[r.id] = r; });
 
   /* Menggambar ulang HANYA isi tabel. Dipanggil lagi setiap pencarian
      berubah, jadi tidak boleh menyentuh KPI, grafik, atau memanggil server. */
   function gambarDetailTbo(cari) {
     const q = normRek(cari);
-    const tampil = q ? rows.filter(r => normRek(r.no_rekening).includes(q)) : rows;
+    const tampil = q ? rowsDetail.filter(r => normRek(r.no_rekening).includes(q)) : rowsDetail;
 
     $("cnt").textContent = q
-      ? `${fmt(tampil.length)} cocok dari ${fmt(rows.length)} baris`
-      : `${fmt(rows.length)} baris ditampilkan`;
+      ? `${fmt(tampil.length)} cocok dari ${fmt(rowsDetail.length)} ${TBO_KATA}`
+      : `${fmt(rowsDetail.length)} ${TBO_KATA} ditampilkan`;
+
+    /* Daftar terpotong: katakan terus terang, sama seperti di menu
+       Pencairan. Sebelum ada penyaring ini menu TBO tidak punya peringatan
+       tersebut sama sekali - dan justru dengan penyaring, terpotongnya jadi
+       lebih mudah terjadi tanpa disadari. */
+    $("tboPotong").innerHTML = (nAsli > rowsDetail.length)
+      ? `<div class="banner b-warn" style="margin:10px 0 0">
+           <b>Daftar ini terpotong.</b> Ada ${fmt(nAsli)} ${TBO_KATA} pada penyaring
+           sekarang, tetapi hanya ${fmt(rowsDetail.length)} yang bisa diambil sekaligus.
+           Persempit rentang tanggal atau pilih satu cabang untuk melihat sisanya —
+           jangan memakai angka di halaman ini sebagai jumlah keseluruhan.</div>`
+      : "";
     $("tbCariInfo").textContent = (q && !tampil.length)
       ? "Tidak ada yang cocok pada rentang tanggal dan cabang yang sedang dipilih." : "";
 
@@ -1405,7 +1607,7 @@ function renderTBO() {
     return `<tr>
       <td>${esc(r.branch_name)}</td>
       <td class="muted">${tgl(r.tgl_input)}</td>
-      <td>${esc((r.nama_pemilik||"—").slice(0,26))}${r.cif_gabungan?' <span class="fl">gabungan</span>':""}</td>
+      <td class="col-nasabah">${esc((r.nama_pemilik||"—").slice(0,26))}${r.cif_gabungan?' <span class="fl">gabungan</span>':""}</td>
       <td class="muted" style="font-size:11.5px">${esc(r.no_rekening||"—")}</td>
       <td class="num">${fmt(N(r.nominal))}${r.mata_uang!=="IDR"?` <span class="fl">${esc(r.mata_uang)}</span>`:""}</td>
       <td class="muted" style="font-size:11.5px">${esc(r.jenis_produk||"—")}</td>
@@ -1668,7 +1870,7 @@ function renderRekon() {
     <div class="h-note" style="margin:0">Diurutkan dari selisih terbesar.
       ${window.ROLE!=="viewer" ? "Ubah tindak lanjut lewat menu di kolom terakhir — perubahan tercatat di jejak audit." : ""}</div>
     <div class="tbl-wrap"><table><thead><tr>
-      <th>Status</th><th>Cabang</th><th>No rekening</th><th>Nasabah</th>
+      <th>Status</th><th>Cabang</th><th>No rekening</th><th class="col-nasabah">Nasabah</th>
       <th class="num">Nominal IT</th><th class="num">Nominal cabang</th><th class="num">Selisih</th>
       <th>Catatan cabang</th><th>Tindak lanjut</th></tr></thead>
       <tbody id="tb"></tbody></table></div>
@@ -1704,7 +1906,7 @@ function renderRekon() {
       <td><span class="tag ${ST[r.status]}">${r.status}</span></td>
       <td>${esc(r.branch_name||"—")}</td>
       <td class="muted" style="font-size:11.5px">${esc(r.rek_norm)}</td>
-      <td>${esc((r.nasabah_it||r.nasabah_cabang||"—").slice(0,24))}</td>
+      <td class="col-nasabah">${esc((r.nasabah_it||r.nasabah_cabang||"—").slice(0,24))}</td>
       <td class="num">${r.nominal_it==null?"—":fmt(N(r.nominal_it))}</td>
       <td class="num">${r.nominal_cabang==null?"—":fmt(N(r.nominal_cabang))}</td>
       <td class="num" style="${besar?"color:var(--bad);font-weight:640":""}">${r.selisih==null?"—":fmt(Math.abs(N(r.selisih)))}</td>
@@ -1732,7 +1934,10 @@ function card(judul, note, canvasId, extra) {
 function tabel(cols) {
   return `<div class="card" style="padding:14px 16px"><div class="tbl-wrap" style="margin-top:0">
     <table><thead><tr>${cols.map(c =>
-      `<th class="${["Nominal","Tenor","Rate","Penalti","Aging"].includes(c)?"num":""}">${c}</th>`).join("")}</tr></thead>
+      /* Kelas dipilih dari JUDUL kolom, mengikuti cara "num" sudah bekerja
+         di sini sejak awal, supaya tabel baru ikut berperilaku sama tanpa
+         perlu diingat. "col-nasabah" disembunyikan di layar <=560px. */
+      `<th class="${["Nominal","Tenor","Rate","Penalti","Aging"].includes(c)?"num":c==="Nasabah"?"col-nasabah":""}">${c}</th>`).join("")}</tr></thead>
     <tbody id="tb"></tbody></table></div></div>`;
 }
 function qrow(label, barPct, color, right) {
@@ -1851,10 +2056,91 @@ async function patch(url, body) {
   return true;
 }
 
+/* ------------------------------------------------------------------ *
+ * Ganti sandi sendiri. Tersedia untuk SEMUA peran, termasuk viewer.
+ *
+ * Aturan panjang dan karakter khusus diputuskan BACKEND (sandi_salah()
+ * di app.py). Di sini hanya ditulis ulang sebagai keterangan, dan hanya
+ * kesamaan kolom "ulangi" yang diperiksa - salah ketik pada kolom itu
+ * bukan urusan server. Kalau aturannya diubah, ubah di app.py; kalimat
+ * di bawah ini ikut menyesatkan kalau dibiarkan, jadi ubah juga.
+ * ------------------------------------------------------------------ */
+function gantiSandi() {
+  const bg = document.createElement("div");
+  bg.className = "ed-bg";
+  bg.innerHTML = `<div class="ed-box" role="dialog" aria-modal="true" aria-label="Ganti sandi"
+       style="max-width:430px">
+    <div class="ed-hd">
+      <div><h3>Ganti sandi</h3>
+        <div class="muted" style="font-size:11.5px">${esc(window.EMAIL || "")}</div></div>
+      <button class="btn sm" id="gsX" aria-label="Tutup">✕</button>
+    </div>
+    <div class="ed-bd">
+      <div class="ed-f"><label>Sandi sekarang</label>
+        <input type="password" id="gsLama" autocomplete="current-password"></div>
+      <div class="ed-f"><label>Sandi baru</label>
+        <input type="password" id="gsBaru" autocomplete="new-password"></div>
+      <div class="ed-f"><label>Ulangi sandi baru</label>
+        <input type="password" id="gsUlang" autocomplete="new-password"></div>
+      <div class="muted" style="font-size:11.5px;margin-top:4px">
+        Sandi harus 5-10 karakter dan memuat minimal satu karakter khusus
+        (misalnya ! @ # $ % &amp; * ? -).</div>
+      <div id="gsPesan" style="margin-top:8px"></div>
+    </div>
+    <div class="ed-ft">
+      <button class="btn" id="gsBatal">Batal</button>
+      <button class="btn primary" id="gsSimpan">Simpan</button>
+    </div></div>`;
+  document.body.appendChild(bg);
+  const tutup = () => bg.remove();
+  $("gsX").onclick = tutup;
+  $("gsBatal").onclick = tutup;
+  bg.onclick = e => { if (e.target === bg) tutup(); };
+  document.addEventListener("keydown", function escGs(e) {
+    if (e.key === "Escape") { tutup(); document.removeEventListener("keydown", escGs); }
+  });
+
+  $("gsSimpan").onclick = async () => {
+    const pesan = $("gsPesan");
+    const lama = $("gsLama").value, baru = $("gsBaru").value, ulang = $("gsUlang").value;
+    if (baru !== ulang) {
+      pesan.innerHTML = `<div class="banner b-bad">Ulangi sandi baru tidak sama.</div>`;
+      return;
+    }
+    $("gsSimpan").disabled = true;
+    const r = await authFetch("/api/branchops/ganti-sandi", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sandi_lama: lama, sandi_baru: baru }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      pesan.innerHTML = `<div class="banner b-bad">${esc(j.error || "Gagal mengganti sandi.")}</div>`;
+      $("gsSimpan").disabled = false;
+      return;
+    }
+    /* Token BARU disimpan. Sandi lama sudah tidak berlaku, tetapi token
+       lama masih sah sampai kedaluwarsa - dan kalau akun ini tadi sedang
+       wajib ganti sandi, token lamanya masih membawa klaim itu. Menyimpan
+       yang baru adalah satu-satunya cara keluar dari keadaan tersebut
+       tanpa memaksa orangnya masuk ulang. */
+    if (j.token) localStorage.setItem("branchops_token", j.token);
+    pesan.innerHTML = `<div class="banner b-ok">Sandi berhasil diganti.</div>`;
+    setTimeout(tutup, 1200);
+  };
+  $("gsLama").focus();
+}
+
 /* ------------------------------------------------------------------ */
 /* kendali halaman                                                     */
 /* ------------------------------------------------------------------ */
+$("btnGantiSandi").onclick = e => { e.preventDefault(); gantiSandi(); };
 ["fCab","fTipe","fStatus"].forEach(id => { const e = $(id); if (e) e.onchange = load; });
+/* fTbo ditangani terpisah: pilihannya diingat per menu dulu, baru memuat
+   ulang - pola yang sama dengan kotak tanggal di bawah. */
+if ($("fTbo")) $("fTbo").onchange = () => {
+  TBO_PILIHAN[window.DASH] = $("fTbo").value;
+  load();
+};
 /* Tanggal ditangani terpisah: pilihannya diingat per dashboard dulu,
    baru memuat ulang. */
 ["fA","fB"].forEach(id => {
@@ -1902,6 +2188,11 @@ if ($("bDup")) $("bDup").onclick = e => {
 };
 $("bReset").onclick = () => {
   ["fCab","fTipe","fStatus"].forEach(id => { if ($(id)) $(id).value = ""; });
+  /* Status TBO kembali ke BAWAAN MENU INI, bukan ke kosong. Kosong berarti
+     "Semua", jadi mengosongkannya bukan reset di menu Pencairan - itu
+     justru mengubah tampilan menjadi sesuatu yang belum pernah dipilih. */
+  TBO_PILIHAN[window.DASH] = TBO_BAWAAN[window.DASH] ?? "";
+  if ($("fTbo")) $("fTbo").value = TBO_PILIHAN[window.DASH];
   /* Reset juga mengembalikan tanggal ke rentang penuh dashboard ini.
      Sebelumnya tanggal dibiarkan, jadi "Reset" tidak benar-benar
      mengembalikan tampilan ke keadaan awal. */
@@ -1995,6 +2286,15 @@ const JENIS_DASH = {1: "it_break", 2: "pencairan", 3: "tbo", 4: "rekon"};
 /* Tanggal yang DIPILIH SENDIRI pengguna, disimpan per dashboard. Tanpa ini,
    berpindah tab lalu kembali akan membuang penyempitan tanggal yang baru
    saja diketik — terasa seperti aplikasi melawan. */
+/* Pilihan "Status TBO" diingat PER MENU, seperti PERIODE_PILIHAN.
+   Bawaannya sengaja BERBEDA: Pencairan "Memiliki TBO", TBO "Semua" -
+   masing-masing sama dengan tampilan menu itu sebelum kotak ini ada.
+   Satu nilai bersama tidak bisa memenuhi keduanya sekaligus, dan menu
+   yang tiba-tiba membuka dengan lebih sedikit baris daripada kemarin
+   terbaca sebagai data hilang, bukan sebagai penyaring. */
+const TBO_BAWAAN  = {2: "punya", 3: ""};
+const TBO_PILIHAN = Object.assign({}, TBO_BAWAAN);
+
 const PERIODE_PILIHAN = {};
 
 function setPeriodeDefault(paksa) {
@@ -2115,6 +2415,43 @@ async function renderHome(){
      bergeser. */
   const adaAksi = bolehTulis && tr.some(r => bolehUbahBaris(r.sumber));
 
+  /* Satu penggambar baris, dipakai dua kali: sekali saat Beranda digambar,
+     sekali lagi setiap pencarian berubah. Sengaja BUKAN disalin menjadi dua
+     blok serupa - salinan yang tidak ikut disunting adalah cara paling sunyi
+     membuat tabel hasil pencarian berbeda dari tabel aslinya. */
+  const barisTbo = r => {
+          const lt = r.hari_terlambat;
+          /* sumber menentukan endpoint mana yang dipanggil. id 7 dari
+             branchops_tbo dan id 7 dari branchops_pencairan adalah dua
+             baris berbeda — tanpa sumber, tombol akan menyunting yang salah. */
+          const src = r.sumber === "pencairan"
+            ? '<span class="tag t-roll">Pencairan</span>'
+            : '<span class="tag t-acc">Pembukaan</span>';
+          const aksi = !adaAksi ? ""
+            : (bolehUbahBaris(r.sumber) ? `<td><div style="display:flex;gap:5px;flex-wrap:wrap">
+              <button class="btn sm primary" onclick="homeLengkap('${r.sumber}',${r.id})">Tandai lengkap</button>
+              <button class="btn sm" onclick="homeUbah('${r.sumber}',${r.id})">Ubah</button>
+            </div></td>` : `<td class="muted">—</td>`);
+          return `<tr>
+            <td>${src}</td>
+            <td>${esc(r.branch_name || r.branch_code || "—")}</td>
+            <td class="muted">${tgl(r.tgl_input)}</td>
+            <td class="col-nasabah">${esc((r.nama_pemilik || "—").slice(0, 26))}</td>
+            <td class="muted" style="font-size:11.5px">${esc(r.no_rekening || "—")}${
+              /* Nomor deposito hanya ada pada baris PENCAIRAN - branchops_tbo
+                 tidak punya kolomnya. Ditampilkan supaya orang bisa melihat
+                 nilai yang baru saja mereka cari; tanpa itu, pencarian yang
+                 berhasil terlihat seperti kebetulan. */
+              r.no_deposito ? `<div style="font-size:10.5px;opacity:.8">${esc(r.no_deposito)}</div>` : ""}</td>
+            <td class="num">${fmt(N(r.nominal))}${r.mata_uang !== "IDR" ? ` <span class="fl">${esc(r.mata_uang)}</span>` : ""}</td>
+            <td class="muted" style="font-size:11.5px;max-width:190px;word-break:break-word">${esc(r.dokumen || "—")}</td>
+            <td class="muted" style="font-size:11.5px">${r.target_pemenuhan_tbo ? tgl(r.target_pemenuhan_tbo) : '<span class="fl">belum diisi</span>'}</td>
+            <td class="num ${lt > 0 ? "" : "muted"}">${lt == null ? "—" : (lt > 0 ? `<span class="ed-late on">${lt} h</span>` : "0 h")}</td>
+            <td class="num ${r.aging > 14 ? "" : "muted"}">${r.aging == null ? "—" : r.aging + " h"}</td>
+            ${aksi}
+          </tr>`;
+  };
+
   /* Daftar ini menggabungkan baris milik Dashboard 3 (pembukaan rekening)
      dan Dashboard 2 (pencairan). Peran yang tidak berhak atas keduanya
      tidak mendapat bagian ini sama sekali — backend sudah tidak
@@ -2165,38 +2502,33 @@ async function renderHome(){
               : "Sumber: pencairan yang membawa Data TBO.")}
         Diurutkan dari yang paling lama lewat target; yang belum
         punya target menyusul, dari yang paling lama menggantung.</div>
+
+      <!-- Pencarian NO. REKENING dan NO. DEPOSITO saja - bukan nama nasabah.
+           Alasannya sama persis dengan Dashboard 3 (aturan 14 di CLAUDE.md):
+           nama sudah disamarkan jadi "***" oleh masking.py sebelum data
+           meninggalkan API, jadi mencocokkannya di layar akan mengenai semua
+           baris atau tidak sama sekali; dan mencocokkannya di backend berarti
+           mencocokkan nama ASLI, yang membuat aplikasi bisa dipakai
+           memastikan seorang nasabah ada di dalam data. Itu yang dicegah
+           aturan 1.
+           Menyaring baris yang SUDAH ADA di layar; tidak memanggil server. -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 0">
+        <input id="hmCari" type="search" inputmode="latin" autocomplete="off"
+               placeholder="Cari no. rekening atau no. deposito…"
+               aria-label="Cari nomor rekening atau nomor deposito"
+               style="max-width:280px;flex:1 1 200px">
+        <button class="btn" id="hmCariBtn" type="button">Cari</button>
+        <button class="btn" id="hmCariClr" type="button">Bersihkan</button>
+        <span id="hmCariInfo" class="muted" style="font-size:11.5px"></span>
+      </div>
+
       <div class="tbl-wrap" style="max-height:none;margin-top:8px"><table><thead><tr>
-        <th>Sumber</th><th>Cabang</th><th>Tgl input</th><th>Nasabah</th><th>No rekening</th>
+        <th>Sumber</th><th>Cabang</th><th>Tgl input</th><th class="col-nasabah">Nasabah</th>
+        <th>No rekening<br><span class="muted" style="font-weight:400">/ no deposito</span></th>
         <th class="num">Nominal</th><th>Dokumen TBO</th><th>Target</th>
         <th class="num">Terlambat</th><th class="num">Aging</th>
-        ${adaAksi ? "<th>Aksi</th>" : ""}</tr></thead><tbody>`
-      + tr.map(r => {
-          const lt = r.hari_terlambat;
-          /* sumber menentukan endpoint mana yang dipanggil. id 7 dari
-             branchops_tbo dan id 7 dari branchops_pencairan adalah dua
-             baris berbeda — tanpa sumber, tombol akan menyunting yang salah. */
-          const src = r.sumber === "pencairan"
-            ? '<span class="tag t-roll">Pencairan</span>'
-            : '<span class="tag t-acc">Pembukaan</span>';
-          const aksi = !adaAksi ? ""
-            : (bolehUbahBaris(r.sumber) ? `<td><div style="display:flex;gap:5px;flex-wrap:wrap">
-              <button class="btn sm primary" onclick="homeLengkap('${r.sumber}',${r.id})">Tandai lengkap</button>
-              <button class="btn sm" onclick="homeUbah('${r.sumber}',${r.id})">Ubah</button>
-            </div></td>` : `<td class="muted">—</td>`);
-          return `<tr>
-            <td>${src}</td>
-            <td>${esc(r.branch_name || r.branch_code || "—")}</td>
-            <td class="muted">${tgl(r.tgl_input)}</td>
-            <td>${esc((r.nama_pemilik || "—").slice(0, 26))}</td>
-            <td class="muted" style="font-size:11.5px">${esc(r.no_rekening || "—")}</td>
-            <td class="num">${fmt(N(r.nominal))}${r.mata_uang !== "IDR" ? ` <span class="fl">${esc(r.mata_uang)}</span>` : ""}</td>
-            <td class="muted" style="font-size:11.5px;max-width:190px;word-break:break-word">${esc(r.dokumen || "—")}</td>
-            <td class="muted" style="font-size:11.5px">${r.target_pemenuhan_tbo ? tgl(r.target_pemenuhan_tbo) : '<span class="fl">belum diisi</span>'}</td>
-            <td class="num ${lt > 0 ? "" : "muted"}">${lt == null ? "—" : (lt > 0 ? `<span class="ed-late on">${lt} h</span>` : "0 h")}</td>
-            <td class="num ${r.aging > 14 ? "" : "muted"}">${r.aging == null ? "—" : r.aging + " h"}</td>
-            ${aksi}
-          </tr>`;
-        }).join("")
+        ${adaAksi ? "<th>Aksi</th>" : ""}</tr></thead><tbody id="hmTbody">`
+      + tr.map(barisTbo).join("")
       + `</tbody></table></div>`;
     if (nTerbuka > tr.length) {
       html += `<div class="banner b-warn" style="margin:10px 0 0">
@@ -2216,6 +2548,49 @@ async function renderHome(){
   }
   }   /* tutup if (sumberTbo.length) */
   el.innerHTML = html;
+
+  /* ---- pencarian pada tabel "Seluruh TBO yang masih terbuka" ----------
+   * Menyaring baris yang SUDAH dimuat; tidak memanggil server. Cocok
+   * dengan cara kerja Dashboard 2 dan 3, dan dengan alasan yang sama:
+   * satu-satunya yang dicocokkan adalah NOMOR - nomor rekening dan nomor
+   * deposito - tidak pernah nama nasabah.
+   *
+   * Batasnya jujur disebut: /summary memotong daftar ini pada 2000 baris,
+   * jadi pencarian hanya mencakup yang dimuat. Nomor yang ada di basis
+   * data tapi di luar potongan itu akan terlihat seperti "tidak ada" -
+   * karena itu keterangannya menyebutkan jumlah yang dimuat, bukan hanya
+   * jumlah yang cocok.                                                  */
+  const hmCari = $("hmCari");
+  if (hmCari) {
+    /* Dibandingkan setelah tanda bacanya dibuang, supaya "300-010-002"
+       tetap cocok dengan "300010002" dan "DEP-2026-0001" dengan
+       "dep20260001". Sama dengan normDep/normRek di dua dashboard. */
+    const normNo = v => String(v == null ? "" : v).toLowerCase().replace(/[^a-z0-9]/g, "");
+    const kolom = adaAksi ? 11 : 10;
+    const gambarHm = (cari) => {
+      const q = normNo(cari);
+      const tampil = q
+        ? tr.filter(r => normNo(r.no_rekening).includes(q)
+                      || normNo(r.no_deposito).includes(q))
+        : tr;
+      $("hmTbody").innerHTML = tampil.map(barisTbo).join("")
+        || `<tr><td colspan="${kolom}" class="muted" style="padding:14px 4px">
+              Tidak ada nomor yang cocok pada baris yang sedang dimuat.</td></tr>`;
+      $("hmCariInfo").textContent = q
+        ? `${fmt(tampil.length)} cocok dari ${fmt(tr.length)} baris yang dimuat`
+          + (nTerbuka > tr.length
+              ? ` — daftar ini terpotong dari ${fmt(nTerbuka)}, jadi pencarian tidak mencakup semuanya.`
+              : "")
+        : "";
+    };
+    $("hmCariBtn").onclick = () => gambarHm(hmCari.value);
+    $("hmCariClr").onclick = () => { hmCari.value = ""; gambarHm(""); };
+    hmCari.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); gambarHm(hmCari.value); } };
+    /* Tanpa ini, menekan tanda silang bawaan peramban mengosongkan kotaknya
+       tetapi tabel tetap tersaring - kotak kosong dengan tabel yang masih
+       menyaring terbaca sebagai data hilang. */
+    hmCari.addEventListener("search", () => gambarHm(hmCari.value));
+  }
 }
 
 /* ---- tindakan dari Beranda ----------------------------------------- *
@@ -3143,6 +3518,11 @@ function switchTab(tab){
     $("dashTitle").textContent = DASH_TITLES[window.DASH];
     $("wrapStatus").classList.toggle("hidden", window.DASH !== 4);
     $("wrapDup").classList.toggle("hidden", window.DASH !== 2);
+    $("wrapTbo").classList.toggle("hidden", window.DASH !== 2 && window.DASH !== 3);
+    /* Pilihan diingat per menu, jadi harus disetel SEBELUM load() - sama
+       alasannya dengan setPeriodeDefault() di bawah: kalau tidak, menu
+       baru dimuat memakai pilihan menu sebelumnya. */
+    if ($("fTbo")) $("fTbo").value = TBO_PILIHAN[window.DASH] ?? "";
     $("bRerun").classList.toggle("hidden",
       window.DASH !== 4 || window.ROLE === "viewer");
     /* Tombol unggah hanya di menu yang memang punya berkas unggahan, dan
@@ -3187,6 +3567,7 @@ document.querySelectorAll("nav .item[data-tab]").forEach(a =>
   if (!me.ok) return;
   const u = await me.json();
   window.ROLE = u.role;
+  window.EMAIL = u.email;      /* dipakai judul dialog Ganti sandi */
   $("who").innerHTML = "<b>" + esc(u.email) + "</b><span class='role " + esc(u.role) + "'>" + esc(u.role) + "</span>";
 
   /* Tab dibangun dari hak menu yang dikirim backend (/me -> menus).

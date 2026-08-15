@@ -96,6 +96,16 @@ def _pilihan(v, sah):
     return s
 
 
+def _pilihan_opsional(v, sah):
+    """Seperti _pilihan, tetapi kosong berarti "belum diisi" - bukan galat.
+
+    Dipakai kolom yang memang boleh tidak terisi (mis. sumber dana asal
+    pada baris lama yang datang dari Excel sebelum kolom ini ada)."""
+    if v in (None, ""):
+        return None
+    return _pilihan(v, sah)
+
+
 def _bool(v):
     if isinstance(v, bool):
         return v
@@ -163,6 +173,22 @@ _PENCAIRAN_EDITABLE = {
     "nip_checker":          lambda v: _teks_opsional(v, 20),
     "nip_approver":         lambda v: _teks_opsional(v, 20),
     "catatan":              lambda v: _teks_opsional(v, 4000),
+    # --- Sumber dana asal + tujuan transfer (15 Agu 2026) ---------------
+    # Tetap DAFTAR PUTIH, alasan yang sama seperti sisanya (aturan 7):
+    # kolom yang ditambahkan nanti tidak bisa disunting sampai ada yang
+    # sengaja menuliskannya di sini.
+    "sumber_produk":        lambda v: _pilihan_opsional(v, ("Tabungan", "Deposito")),
+    "sumber_no_rek":        lambda v: _teks_opsional(v, 60),
+    "tujuan_bank":          lambda v: _teks_opsional(v, 120),
+    "tujuan_no_rek":        lambda v: _teks_opsional(v, 60),
+    # CATATAN PENYAMARAN: ini nama pemilik rekening di bank lain, jadi
+    # sebetulnya nama nasabah juga. Ia sengaja TIDAK didaftarkan di
+    # masking.py, karena gunanya justru untuk menelusuri ke mana dana
+    # dikirim - kalau tersamar, petugas yang mengetiknya tidak akan pernah
+    # bisa membacanya kembali untuk diperiksa atau dikoreksi. Keputusan
+    # sadar, bukan kelalaian; kalau berubah, tambahkan "tujuan_nama" ke
+    # NAMA_NASABAH di masking.py dan kolom ini menjadi sekali-tulis.
+    "tujuan_nama":          lambda v: _teks_opsional(v, 160),
 }
 
 # Aturan yang SAMA dengan _TIDAK_ADA di ingest.py dan dengan blok backfill
@@ -239,6 +265,18 @@ def create_blueprint(require):
                 "branch_code": request.args.get("branch_code") or None,
                 "branch_type": request.args.get("branch_type") or None,
                 "status": request.args.get("status") or None,
+                # Penyaring "Status TBO" di menu Pencairan (Agustus 2026).
+                # Kunci SENDIRI, bukan "status" di atas: kunci itu dipakai
+                # dash_rekon() untuk status rekonsiliasi, dan keduanya lewat
+                # dict filter yang sama. Satu nama untuk dua arti berarti
+                # pilihan di menu Pencairan diam-diam ikut menyaring
+                # Dashboard 4.
+                # Nilai di luar daftar sengaja jadi None (= semua), bukan
+                # galat: ini penyaring TAMPILAN, bukan penyaring hak akses -
+                # jatah cabang tetap dijaga "_scope" di bawah.
+                "tbo_status": (request.args.get("tbo_status")
+                               if request.args.get("tbo_status") in ("punya", "tanpa")
+                               else None),
                 "_scope": scoping.scope_aktif()}
 
     @bp.get("/dash/<int:no>")

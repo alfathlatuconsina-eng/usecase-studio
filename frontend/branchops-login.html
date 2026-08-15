@@ -30,7 +30,7 @@
     border-radius: 7px; font-size: 14px; color: #1e2329; outline: none; transition: border-color .15s; }
   .login-box input::placeholder { color: #9aa3ad; }
   .login-box input:focus { border-color: var(--accent); }
-  #login-error { color: #e05252; font-size: 12px; margin-top: 10px; min-height: 16px; }
+  #login-error, #ganti-error { color: #e05252; font-size: 12px; margin-top: 10px; min-height: 16px; }
   /* Pemberitahuan keluar otomatis. Sengaja BUKAN warna galat merah:
      ini bukan kesalahan siapa pun, dan tampilan galat membuat orang
      mengira aplikasinya rusak lalu melapor. */
@@ -68,8 +68,8 @@
         <div class="sub">Branch Operations</div>
       </div>
     </div>
-    <div class="login-heading">Sign In</div>
-    <div class="login-sub">Enter your credentials to access this module.</div>
+    <div class="login-heading" id="judul-masuk">Sign In</div>
+    <div class="login-sub" id="sub-masuk">Enter your credentials to access this module.</div>
     <div id="idle-note">Anda dikeluarkan otomatis karena layar dibiarkan menganggur.
       Silakan masuk lagi untuk melanjutkan.</div>
     <label for="login-email">Email</label>
@@ -81,6 +81,28 @@
     </div>
     <div id="login-error"></div>
     <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
+
+    <!-- Wajib ganti sandi pada login pertama.
+         Ditaruh di HALAMAN MASUK, bukan di dalam dashboard: dengan begini
+         tidak ada satu layar pun yang sempat terlihat sebelum sandinya
+         diganti. Ini hanya tampilan - yang benar-benar menjaga adalah
+         require() di app.py, yang menolak token ber-klaim "ganti" untuk
+         setiap rute /api/branchops/* selain /me dan /ganti-sandi. -->
+    <div id="ganti-panel" style="display:none">
+      <div class="login-heading" style="margin-top:6px">Ganti sandi</div>
+      <div class="login-sub" id="ganti-sub">Sandi Anda diberikan oleh admin dan
+        harus diganti sebelum dashboard bisa dibuka.</div>
+      <label for="g-lama">Sandi sekarang</label>
+      <input type="password" id="g-lama" autocomplete="current-password">
+      <label for="g-baru">Sandi baru</label>
+      <input type="password" id="g-baru" autocomplete="new-password">
+      <label for="g-ulang">Ulangi sandi baru</label>
+      <input type="password" id="g-ulang" autocomplete="new-password">
+      <div class="login-sub" style="margin:6px 0 0">Sandi harus 5-10 karakter dan
+        memuat minimal satu karakter khusus (misalnya ! @ # $ % &amp; * ? -).</div>
+      <div id="ganti-error"></div>
+      <button class="btn-primary" id="ganti-btn" onclick="doGanti()">Simpan sandi baru</button>
+    </div>
     <a href="https://usecase-studio.xyz/" class="login-home-link">← Back to Home</a>
     <div class="login-footer"><a href="/about" style="color:inherit;text-decoration:underline">© 2026 Alfath Latuconsina</a> · USECASE-STUDIO.xyz<sup>™</sup> · Beta Version</div>
   </div>
@@ -88,6 +110,23 @@
 
 <script>
   const REDIRECT_TO = '/branchops';
+
+  /* Satu tempat untuk berpindah dari layar masuk ke layar ganti sandi.
+     Kolom email dan sandi disembunyikan supaya tidak ada dua tombol yang
+     tampak sama-sama bisa ditekan. */
+  function tampilkanGanti(pesan) {
+    /* Judul "Sign In" ikut disembunyikan. Membiarkannya di atas judul
+       "Ganti sandi" membuat satu layar terlihat menawarkan dua hal. */
+    ['login-email', 'login-pw', 'login-btn', 'judul-masuk', 'sub-masuk', 'idle-note'].forEach(id => {
+      const e = document.getElementById(id);
+      if (e) (e.closest('.pw-wrap') || e).style.display = 'none';
+    });
+    document.querySelectorAll('label[for="login-email"], label[for="login-pw"]')
+      .forEach(e => e.style.display = 'none');
+    document.getElementById('ganti-panel').style.display = 'block';
+    if (pesan) document.getElementById('ganti-sub').textContent = pesan;
+    document.getElementById('g-lama').focus();
+  }
 
   /* Dikeluarkan karena menganggur (?idle=1 dari branchops.html). Tanpa
      penjelasan ini, layar masuk yang muncul tiba-tiba di tengah pekerjaan
@@ -99,7 +138,17 @@
   const existing = localStorage.getItem('branchops_token');
   if (existing) {
     fetch('/api/branchops/me', { headers: { 'Authorization': 'Bearer ' + existing } })
-      .then(r => { if (r.ok) location.href = REDIRECT_TO; })
+      .then(async r => {
+        if (!r.ok) return;
+        const u = await r.json().catch(() => ({}));
+        /* Token sah TAPI masih wajib ganti sandi: jangan dilempar ke
+           dashboard. Rute /me memang boleh diakses token seperti itu -
+           kalau di sini tetap dialihkan, orangnya masuk ke layar yang
+           setiap permintaan datanya ditolak 403, dan itu terbaca sebagai
+           aplikasi rusak. */
+        if (u.harus_ganti_sandi) tampilkanGanti();
+        else location.href = REDIRECT_TO;
+      })
       .catch(() => {});
   }
 
@@ -122,6 +171,11 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Login failed.');
       localStorage.setItem('branchops_token', data.token);
+      if (data.harus_ganti_sandi) {
+        btn.innerHTML = 'Sign In'; btn.disabled = false;
+        tampilkanGanti();
+        return;
+      }
       location.href = REDIRECT_TO;
     } catch (e) {
       err.textContent = e.message || 'Login failed.';
@@ -132,6 +186,45 @@
 
   document.getElementById('login-pw').addEventListener('keydown', e => {
     if (e.key === 'Enter') doLogin();
+  });
+
+  async function doGanti() {
+    const btn = document.getElementById('ganti-btn');
+    const err = document.getElementById('ganti-error');
+    const lama = document.getElementById('g-lama').value;
+    const baru = document.getElementById('g-baru').value;
+    const ulang = document.getElementById('g-ulang').value;
+    err.textContent = '';
+    /* Kedua isian dibandingkan DI SINI, bukan di server: salah ketik pada
+       kolom ulangi bukan urusan backend, dan menanyakannya bolak-balik
+       hanya memperlambat. Aturan panjang dan karakter khusus tetap
+       diputuskan server - itu yang mengikat. */
+    if (baru !== ulang) { err.textContent = 'Ulangi sandi baru tidak sama.'; return; }
+    btn.innerHTML = '<span class="spinner"></span>';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/branchops/ganti-sandi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'Authorization': 'Bearer ' + localStorage.getItem('branchops_token') },
+        body: JSON.stringify({ sandi_lama: lama, sandi_baru: baru }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Gagal mengganti sandi.');
+      /* Token BARU wajib disimpan. Token lama masih membawa klaim "ganti"
+         sampai kedaluwarsa, jadi tanpa baris ini penggantian yang berhasil
+         tetap berakhir di dashboard yang menolak semua datanya. */
+      localStorage.setItem('branchops_token', data.token);
+      location.href = REDIRECT_TO;
+    } catch (e) {
+      err.textContent = e.message || 'Gagal mengganti sandi.';
+      btn.innerHTML = 'Simpan sandi baru';
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('g-ulang').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doGanti();
   });
 
   document.getElementById('pw-toggle').addEventListener('click', () => {

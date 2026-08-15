@@ -26,6 +26,7 @@ import sys
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 AKAR = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(AKAR / "backend"))
@@ -41,6 +42,69 @@ TEBAL = Font(bold=True)
 # Kode cabang HARUS sudah ada di branchops_branches, kalau tidak seluruh
 # baris ditolak dengan "Kode cabang tidak dikenal".
 CABANG = ["01006", "01001", "01008", "01003", "01004"]
+
+
+# ==========================================================================
+#  DAFTAR PILIHAN (kotak turun di Excel)
+# ==========================================================================
+#  Kolom yang nilainya baku diberi Data Validation, sehingga di Excel
+#  petugas cabang MEMILIH, bukan mengetik. Ini menutup sumber utama
+#  perbedaan ejaan - berkas yang isinya diketik tangan adalah alasan
+#  parser masih perlu menormalkan teks lama (lihat _SERAGAM di ingest.py).
+#
+#  PENTING: kotak turun hanya berlaku untuk berkas yang dibuat DARI
+#  template ini. Salinan template lama yang masih beredar di cabang tidak
+#  punya validasi apa pun, jadi normalisasi di parser tetap wajib ada -
+#  jangan dihapus dengan alasan "kan sudah ada kotak turun".
+#
+#  Daftar ini harus SEPAKAT dengan tiga tempat lain, dan tidak ada satu
+#  pun yang memaksanya:
+#    - branchops_ref_values di schema.sql (daftar acuan di basis data)
+#    - _PENCAIRAN_EDITABLE / _TBO_EDITABLE di branchops/__init__.py
+#      (yang ditegakkan saat menyimpan lewat layar Ubah)
+#    - optJaga(...) di branchops.html (isi kotak pilihan di layar)
+#  Kalau salah satu diubah, ubah semuanya.
+PILIHAN = {
+    "jenis_pencairan": ["Sesuai Jatuh Tempo", "Dipercepat (Break)"],
+    "jenis_penarikan": ["Transfer", "Tunai", "Pemindah-bukuan"],
+    "jenis_rekening":  ["Perorangan", "Perusahaan (Non Perorangan)"],
+    # EJAAN BERBEDA DARI jenis_penarikan DI ATAS, dan itu disengaja
+    # (keputusan pemilik, 15 Agu 2026): kolom ini mengikuti ejaan yang
+    # sudah ada di data, tanpa tanda hubung. Kedua kolom ada di TABEL
+    # BERBEDA (branchops_tbo vs branchops_pencairan) dan tidak pernah
+    # dibandingkan satu sama lain oleh kode mana pun, jadi perbedaan ini
+    # tidak memecah laporan apa pun. Jangan "diseragamkan" tanpa
+    # memigrasikan datanya lebih dulu.
+    "jenis_setoran":   ["Transfer", "Tunai", "Pemindahbukuan"],
+}
+
+BARIS_VALIDASI = 500      # sampai baris berapa kotak turun dipasang
+
+
+def pasang_pilihan(ws, kolom, baris_awal, daftar, judul):
+    """Pasang kotak turun pada satu kolom, dari baris_awal sampai 500.
+
+    Daftar ditulis langsung di dalam rumus (bukan menunjuk lembar lain)
+    supaya berkasnya tetap satu lembar data + satu lembar petunjuk, tanpa
+    lembar bantu yang bisa terhapus orang. Batasnya 255 karakter untuk
+    seluruh teks daftar - masih jauh, tapi ingat kalau menambah pilihan.
+
+    allow_blank=True: kolom boleh dikosongkan. Yang dicegah hanya nilai
+    yang SALAH, bukan sel yang belum diisi.
+    """
+    isi = ",".join(daftar)
+    assert len(isi) < 250, f"daftar {judul} terlalu panjang untuk validasi inline"
+    dv = DataValidation(type="list", formula1=f'"{isi}"', allow_blank=True,
+                        showErrorMessage=True, showInputMessage=True)
+    dv.error = ("Nilai tidak dikenal. Pilih salah satu dari daftar - "
+                "ejaan yang berbeda akan membuat baris ini tidak terhitung "
+                "di dashboard.")
+    dv.errorTitle = f"{judul} tidak dikenal"
+    dv.prompt = "Pilih dari daftar: " + " / ".join(daftar)
+    dv.promptTitle = judul
+    huruf = get_column_letter(kolom)
+    dv.add(f"{huruf}{baris_awal}:{huruf}{BARIS_VALIDASI}")
+    ws.add_data_validation(dv)
 
 
 def tulis(ws, baris_judul, judul, catatan, baris_data, lebar_khusus=()):
@@ -234,12 +298,12 @@ def pencairan():
     data = [
         [None, 1, "1006 - GREEN GARDEN (KCP)", d(2026, 8, 3), "DEP-2026-0001",
          "BUDI HARTONO", d(2026, 2, 3), d(2026, 2, 3), d(2026, 8, 3),
-         500_000_000, "Sesuai Jatuh Tempo", "Pemindahbukuan",
+         500_000_000, "Sesuai Jatuh Tempo", "Pemindah-bukuan",
          "Form Penempatan belum lengkap", "202500304", "200923685", "200923686",
          "Nasabah hadir di cabang", "959001", "0100612345671", d(2026, 8, 20)],
         [None, 2, "1001 - JKT WISMA BUMIPUTERA (KCP)", d(2026, 8, 3), "DEP-2026-0002",
          "PT CONTOH SEJAHTERA", d(2026, 7, 4), None, d(2026, 8, 3),
-         3_000_000_000, "Dipercepat dari Jatuh Tempo", "Transfer",
+         3_000_000_000, "Dipercepat (Break)", "Transfer",
          None, "202500305", "200923685", "200923686",
          "Ditempatkan kembali dengan nominal yg sama", None, None, None],
         [None, 3, "1008 - PURI INDAH (KCP)", d(2026, 8, 4), "DEP-2026-0003",
@@ -249,16 +313,21 @@ def pencairan():
          "Rollover otomatis", "959002", "0100812345672", d(2026, 8, 15)],
         [None, 4, "1003 - WOLTER (KCP)", d(2026, 8, 4), "DEP-2026-0004",
          "DEWI ANGGRAINI", d(2026, 5, 4), d(2026, 5, 4), d(2026, 8, 4),
-         750_000_000, "Sesuai Jatuh Tempo", "Pemindahbukuan",
+         750_000_000, "Sesuai Jatuh Tempo", "Pemindah-bukuan",
          "tidak ada", "202500307", "200923689", "200923690",
          None, "959003", "0100312345673", None],
         [None, 5, "1004 - ROXY (KCP)", d(2026, 8, 5), "DEP-2026-0005",
          "CV MITRA CONTOH", d(2026, 8, 4), None, d(2026, 8, 5),
-         1_000_000_000, "Dipercepat dari Jatuh Tempo", "Transfer",
+         1_000_000_000, "Dipercepat (Break)", "Transfer",
          "Spesimen tanda tangan", "202500308", "200923691", "200923691",
          "Checker dan approver sama", "959004", "0100412345674", d(2026, 7, 30)],
     ]
 
+    # Kolom K (11) Jenis Pencairan dan L (12) Jenis Penarikan dipilih dari
+    # daftar, tidak diketik. Indeksnya ikut POSISI kolom - kalau susunan
+    # judul di atas berubah, angka di sini harus ikut (aturan 8).
+    pasang_pilihan(ws, 11, 4, PILIHAN["jenis_pencairan"], "Jenis Pencairan")
+    pasang_pilihan(ws, 12, 4, PILIHAN["jenis_penarikan"], "Jenis Penarikan")
     tulis(ws, 3, judul, catatan, data,
           lebar_khusus=[13, 6, 32, 16, 17, 26, 16, 15, 17, 16, 22, 17, 28,
                         12, 12, 12, 30, 13, 17, 20])
@@ -358,6 +427,11 @@ def tbo():
          "Deposito valas", d(2026, 8, 19)],
     ]
 
+    # Kolom L (12) Jenis Rekening dan M (13) Jenis Setoran dipilih dari
+    # daftar. Keduanya sudah baku di data yang ada - tidak ada nilai lain
+    # yang ditemukan - jadi membatasinya tidak menutup kasus yang sah.
+    pasang_pilihan(ws, 12, 4, PILIHAN["jenis_rekening"], "Jenis Rekening")
+    pasang_pilihan(ws, 13, 4, PILIHAN["jenis_setoran"], "Jenis Setoran")
     tulis(ws, 3, judul, catatan, data,
           lebar_khusus=[13, 6, 32, 16, 16, 19, 26, 16, 17, 20, 20, 24, 17,
                         28, 12, 12, 12, 30, 20])
