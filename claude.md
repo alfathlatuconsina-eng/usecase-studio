@@ -43,35 +43,54 @@ This is a personal showcase project. It is now FIVE dashboards served by ONE Fla
 - Never point DATABASE\_URL at the VPS during local development.  
 - Note: README.md still says "install Python 3.12". The version I actually run is 3.13 — trust this file, not the README, until the README is updated.
 
-## STATUS 15 Aug 2026 — seven files changed, UNCOMMITTED. Not deployed.
+## STATUS 15 Aug 2026 — committed, PUSHED, and deployed to the VPS.
 
 Supersedes the 12 Aug block below. That block was also WRONG on two
 counts, corrected here — see "what 12 Aug got wrong".
 
-    HEAD           c1604cd "Branch Ops: kotak tanggal penyaring jadi
-                   dd/mm/yyyy" — rule 19, committed and pushed.
-    working tree   SEVEN files modified, none committed:
-                     backend/app.py                     <- rule 22
-                     backend/branchops/schema.sql       <- rules 22, 23
-                     backend/branchops/analytics.py     <- rules 10, 20, 23, 24
-                     backend/branchops/__init__.py      <- rules 20, 23
-                     backend/branchops/ingest.py        <- rule 24
-                     backend/branchops/storage.py       <- rule 24
-                     deploy/buat-template-unggah.py     <- rule 24
-                     contoh/Template-02, Template-03    <- rule 24 (dihasilkan)
-                     frontend/branchops.html            <- rules 10, 20, 21, 22, 23
-                     frontend/branchops-login.html      <- rule 22
-                     CLAUDE.md
-                   `_to_delete/` and a stale `.git/index.lock` were both
-                   cleaned up on 15 Aug; nothing untracked is left holding
-                   the `[1/6]` push guard.
-    origin/main    level with c1604cd. Nothing unpushed.
-    VPS code       NOT verified. Last confirmed deploy 53cef02, 9 Aug.
-    Local DB       Branch Ops data REPLACED from the VPS on 15 Aug 00:20
-                   WIB via `deploy/6-tarik-dari-vps.bat`. Rollback point:
-                   `deploy/cadangan/bo-lokal-sebelum-impor-20260815-0020.sql`.
-                   The eleven tables mirror the VPS; branchops_users and
-                   branchops_audit were NOT touched, as designed.
+    HEAD           7ebb8eb "Branch Ops: penyaring Status TBO, cari di
+                   Beranda, wajib ganti sandi, sumber dana dan tujuan
+                   transfer, penyeragaman ejaan" — rules 20-24 in one
+                   commit, 14 files.
+    origin/main    7ebb8eb. Level.
+    VPS code       7ebb8eb, VERIFIED — first time since 9 Aug that this
+                   line is read off the machine rather than inferred.
+                   `Updating c1604cd..7ebb8eb`, Fast-forward.
+    working tree   ONE file: deploy/8-cadangkan-sebelum-restart.bat, and
+                   it is a LINE-ENDING difference only (git stores LF,
+                   the file on disk is CRLF, so all 169 lines read as
+                   changed). Every other .bat in deploy/ is LF and runs
+                   fine. `git checkout -- <file>` clears it.
+    Local DB       migrated and in use. Branch Ops data was pulled from
+                   the VPS on 15 Aug 00:20 WIB, then all three schema
+                   migrations ran at the first restart.
+                   Rollback point before that restart:
+                   `deploy/cadangan/bo-sebelum-restart-20260815-1135.sql`
+                   — 4.57 MB, and unlike the import backups it INCLUDES
+                   branchops_users and branchops_audit.
+    VPS DB         REPLACED from local at 04:48 UTC. Its own rollback
+                   points, on the VPS: `~/pmo-sebelum-push-20260815-0448.sql`
+                   (whole database) and `~/bo-vps-sebelum-push-20260815-0448.sql`
+                   (branchops tables only).
+
+**The push itself, from `deploy/keluaran/push-log-20260815-1148.txt`
+(86 KB, read end to end):** no ERROR, no FATAL, no "does not exist"
+anywhere. Fast-forward at 2/7; `3 baris khusus versi baru dibuang` at 4a
+(PG18 dump into PG16, rule 3 of the push failures); schema.sql at 5/7
+produced CREATE/ALTER plus "already exists, skipping" and nothing else;
+service `active` at 7/7. Row counts on the VPS afterwards: pencairan
+1042, it_break 1561, rekon 474, tbo 176, branches 44, batches 50, and
+users 12 — untouched, because `2-push-ke-vps.bat` exports ELEVEN tables
+and deliberately not branchops_users or branchops_audit. Zero users left
+without a jatah.
+
+Two checks that ran read-only before the push, both worth repeating next
+time because both were cheap and one settled an old rumour:
+`0-cek-vps.bat` for disk, and `1-lihat-suntingan-vps.bat` which produced
+a **ZERO-BYTE diff** — no file has been edited directly on the VPS. That
+is the SECOND time this has been proven (see failure 5). The warning in
+`deploy/0-sebelum-push.md` about "six files edited on the VPS" is stale
+and should be rewritten or deleted.
 
 **What changed in the code (all four rules are written up in full
 below):**
@@ -85,30 +104,33 @@ below):**
    `app.py`, shared by all five dashboards, and `schema.sql`. The other
    four dashboards are guarded out; read the rule before deploying.
 
-**Owed before this is finished, in order:**
+**Done locally:** the three migrations ran at the first restart, an
+existing account still signed straight in (proving the rule 22
+exemption), and the two spelling counters went to zero — checked by
+running `8-cadangkan-sebelum-restart.bat` a second time, which prints
+them. Before the restart it read 316 and 9.
 
-- **Browser pass on all of it.** Nothing here has been exercised against
-  a running app or a real database. What HAS been checked, so you know
-  what is already ruled out: every touched Python file parses, both
-  inline `<script>` blocks in each of the two HTML files parse under
-  Node, the psycopg placeholder count is unchanged in all three
-  "Status TBO" branches, both `/summary` UNION arms carry identical
-  column lists, the password rule was run against 7 inputs, and the
-  Beranda search, the hidden Nasabah column and the whole forced
-  password-change flow were rendered and DRIVEN in headless Chromium at
-  360px and 1000px against a stubbed API. A stub is not the database:
-  none of the SQL has run, and no bcrypt hash has been written.
-- Hard-refresh after loading — `branchops.html` is cached, and a stale
-  cache looks exactly like a change that failed.
-- **Sign in with an EXISTING account first** (rule 22). It must let you
-  straight in without asking for a new password — that is the only proof
-  the one-time exemption ran. Only then create a test account and check
-  that the new one IS forced.
-- Commit. Nothing untracked is in the way any more.
-- Delete the dumps holding real customer names — still outstanding from
-  8 Aug and now joined by a fresh one:
-  `deploy/masuk/vps-branchops.sql` (re-downloaded 15 Aug),
-  `deploy/keluaran/lokal-branchops.sql`, and `/tmp/*.sql` on the VPS.
+**Still owed on the VPS at the time of writing — NOT yet confirmed:**
+
+- **`UPDATE branchops_users SET harus_ganti_sandi = FALSE;` on the VPS.**
+  Read the trap under rule 22 before skipping this: without it, every
+  production account is forced to change password at next sign-in. The
+  owner chose to exempt them, matching local behaviour.
+- Confirm the six new columns actually landed there (five on
+  branchops_pencairan, `harus_ganti_sandi` on branchops_users). The
+  push script's own check query predates them and lists only the August
+  2026 columns, so a clean run proves nothing about these.
+- Confirm the VPS spelling counters read 0 / 0 / ~316.
+- Browser pass on the live site, hard-refreshed. The single most telling
+  screen is **Dashboard 4**: `storage.py` filters the branch side on the
+  NEW spelling, so if reconciliation is populated, the code and the data
+  agree. Empty, or everything reading "Tidak dilaporkan cabang", means
+  they do not.
+- Prune `/root/*.sql` on the VPS — this push added another ~30 MB pair
+  to an 8.7 GB disk, and nothing ever deletes them (failure 1).
+- Delete the dumps holding real customer names:
+  `deploy/masuk/vps-branchops.sql`, `deploy/keluaran/lokal-branchops.sql`,
+  and `/tmp/lokal-branchops.sql` on the VPS. Outstanding since 8 Aug.
 
 **One design decision left OPEN, deliberately not half-built:**
 
@@ -392,6 +414,27 @@ but keep using the explicit form in scripts anyway — `--ff-only` is the
 part that matters. It refuses rather than inventing a merge commit if the
 VPS ever has commits of its own, which is exactly the situation
 `1b-samakan-git-vps.bat` exists to clean up.
+
+### 8. A guarded migration NEVER runs on the VPS after a data push
+
+15 Aug 2026, found before it did damage — but only because someone
+traced what the push actually copies.
+
+`2-push-ke-vps.bat` copies `branchops_settings`, and that is where every
+one-time migration keeps its guard key. The far side therefore receives
+the key ALREADY SET, and its own `schema.sql` run skips the block. Any
+`ADD COLUMN ... DEFAULT`, however, has already applied.
+
+So a push can leave the VPS with the column but WITHOUT the backfill
+that was supposed to soften it. On 15 Aug that meant every production
+account would have been forced to change password — from a push whose
+whole point was that VPS logins were not being touched. See rule 22 for
+the one-line repair.
+
+Before any push that carries data: list the guarded blocks in
+schema.sql, and for each one ask what its effect should be on the VPS.
+Apply those by hand afterwards. Nothing in the tooling does it for you,
+and nothing warns you.
 
 ### Deploying a CODE-ONLY change — do not use 2-push-ke-vps.bat
 
@@ -1698,10 +1741,28 @@ looks like it is missing one, check here before assuming it was dropped:
       the real database**, and the first thing worth checking there is
       that existing accounts can still sign in without being asked to
       change anything.
-    - Deploying this is NOT a data push — schema.sql changed, but
+    - Deploying this alone is NOT a data push — schema.sql changed, but
       `ensure_schema()` applies it at start-up, so the code-only route
       (`git push` + `git pull --ff-only` + `systemctl restart pmo`) is
-      still the right one. Do not reach for `2-push-ke-vps.bat`.
+      enough on its own.
+    - **TRAP, and it will recur on EVERY future one-time migration:
+      a guarded backfill never runs on the VPS after a data push.**
+      `2-push-ke-vps.bat` copies `branchops_settings` — the very table
+      the guard keys live in. So the VPS receives
+      `wajib_ganti_sandi_migrasi` already set, schema.sql sees it, and
+      SKIPS the exemption UPDATE. Meanwhile `ADD COLUMN ... DEFAULT
+      TRUE` has already fired on every account there. Net effect: a push
+      that was supposed to change nothing about VPS logins forces EVERY
+      production user to change their password at next sign-in.
+      Fix, run by hand after the push (owner's choice, 15 Aug 2026):
+
+          ssh root@159.65.139.45 "sudo -u postgres psql -d pmo \
+            -c \"UPDATE branchops_users SET harus_ganti_sandi = FALSE;\""
+
+      New accounts are unaffected — they still get TRUE from the column
+      default and from the API. The general lesson: after any push that
+      carries branchops_settings, ask which guarded blocks were skipped
+      on the far side, and apply their effect there by hand.
 
 23. Ubah data pencairan — two fields became pickers, and five new columns
     for where the money came from and where it went. 15 Aug 2026.
