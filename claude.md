@@ -52,15 +52,18 @@ counts, corrected here — see "what 12 Aug got wrong".
                    Beranda, wajib ganti sandi, sumber dana dan tujuan
                    transfer, penyeragaman ejaan" — rules 20-24 in one
                    commit, 14 files.
-    origin/main    7ebb8eb. Level.
+    origin/main    9eea0f6. Level. (The doc commit needed a second
+                   attempt - the first failed with `Could not resolve
+                   host: github.com`, DNS rather than git.)
     VPS code       7ebb8eb, VERIFIED — first time since 9 Aug that this
                    line is read off the machine rather than inferred.
                    `Updating c1604cd..7ebb8eb`, Fast-forward.
-    working tree   ONE file: deploy/8-cadangkan-sebelum-restart.bat, and
-                   it is a LINE-ENDING difference only (git stores LF,
-                   the file on disk is CRLF, so all 169 lines read as
-                   changed). Every other .bat in deploy/ is LF and runs
-                   fine. `git checkout -- <file>` clears it.
+    working tree   clean on Windows. NOTE for anyone reading this repo
+                   from a Linux box or a mounted share: .bat files will
+                   read as "modified" there, because Git for Windows has
+                   core.autocrlf=true - it stores LF and checks out CRLF,
+                   and a git without that setting compares raw bytes.
+                   Nothing is actually wrong; do not "fix" it.
     Local DB       migrated and in use. Branch Ops data was pulled from
                    the VPS on 15 Aug 00:20 WIB, then all three schema
                    migrations ran at the first restart.
@@ -110,27 +113,34 @@ exemption), and the two spelling counters went to zero — checked by
 running `8-cadangkan-sebelum-restart.bat` a second time, which prints
 them. Before the restart it read 316 and 9.
 
-**Still owed on the VPS at the time of writing — NOT yet confirmed:**
+**Confirmed ON THE VPS after the push, by query, 15 Aug:**
 
-- **`UPDATE branchops_users SET harus_ganti_sandi = FALSE;` on the VPS.**
-  Read the trap under rule 22 before skipping this: without it, every
-  production account is forced to change password at next sign-in. The
-  owner chose to exempt them, matching local behaviour.
-- Confirm the six new columns actually landed there (five on
-  branchops_pencairan, `harus_ganti_sandi` on branchops_users). The
-  push script's own check query predates them and lists only the August
-  2026 columns, so a clean run proves nothing about these.
-- Confirm the VPS spelling counters read 0 / 0 / ~316.
+    six new columns present   sumber_produk, sumber_no_rek, tujuan_bank,
+                              tujuan_no_rek, tujuan_nama on
+                              branchops_pencairan; harus_ganti_sandi on
+                              branchops_users
+    UPDATE 12                 the rule 22 exemption applied by hand -
+                              see the trap in that rule, it does NOT
+                              happen by itself on a data push
+    0 / 0 / 316               old jenis_pencairan spelling, old
+                              jenis_penarikan spelling, new spelling.
+                              Rule 24 landed intact on both sides.
+
+The dumps holding real customer names are gone: `lokal-branchops.sql`
+deleted locally, `/tmp/lokal-branchops.sql` shredded on the VPS,
+`deploy/masuk/vps-branchops.sql` deleted. That item had been outstanding
+since 8 Aug.
+
+**Still owed:**
+
 - Browser pass on the live site, hard-refreshed. The single most telling
   screen is **Dashboard 4**: `storage.py` filters the branch side on the
-  NEW spelling, so if reconciliation is populated, the code and the data
-  agree. Empty, or everything reading "Tidak dilaporkan cabang", means
-  they do not.
+  NEW spelling, so if reconciliation is populated, code and data agree.
+  Empty, or everything reading "Tidak dilaporkan cabang", means they do
+  not. Also worth one test Excel upload, then Batalkan — that is what
+  proves the sequences on the VPS.
 - Prune `/root/*.sql` on the VPS — this push added another ~30 MB pair
   to an 8.7 GB disk, and nothing ever deletes them (failure 1).
-- Delete the dumps holding real customer names:
-  `deploy/masuk/vps-branchops.sql`, `deploy/keluaran/lokal-branchops.sql`,
-  and `/tmp/lokal-branchops.sql` on the VPS. Outstanding since 8 Aug.
 
 **One design decision left OPEN, deliberately not half-built:**
 
@@ -978,6 +988,74 @@ looks like it is missing one, check here before assuming it was dropped:
 
     Upload history still exists, on the Unggah tab, from /batches.
 
+    **AMENDED 16 Aug 2026 — the table is no longer only open TBO.**
+    A "Status TBO" picker sits beside the search box: Masih terbuka
+    (default) / Lengkap / Dikecualikan / Semua.
+
+    - **It narrows the TABLE only. The orange banner above stays about
+      Outstanding**, always. `ringkasan()` therefore builds the union
+      TWICE from one pattern — `gabung_kpi`, pinned to Outstanding, and
+      `gabung_baris`, which follows the picker. The banner is the number
+      people quote in meetings; it must not change meaning because
+      somebody was browsing another status. Same shape as rules 13 and 20:
+      KPI whole, detail list filtered.
+    - **Filtered in SQL, and the picker re-fetches.** Do not filter the
+      loaded rows in the browser: the list is capped at 2000, so a row
+      that matches but falls outside the cap would vanish silently. The
+      search box still filters client-side — that is deliberate and its
+      note says so.
+    - `_STATUS_BERANDA` in analytics.py is a WHITELIST; the request value
+      never reaches SQL. Anything unknown falls back to **Outstanding**,
+      not to "all" — a hand-edited URL must never WIDEN what is shown.
+      The reply echoes `status`, and the screen titles itself from that
+      echo rather than from what it asked for.
+    - **`total_pilihan`** is the uncapped count FOR THE CHOSEN STATUS, and
+      it is what the "list is truncated" banner compares against. Using
+      `kpi.total` there would invent a truncation warning that is wrong,
+      or hide a real one. It is skipped (reusing `kpi.total`) when the
+      choice is Outstanding, since then they are the same number.
+    - **The card is now drawn even when nothing is Outstanding.** It used
+      to live inside `if (!nTerbuka) ... else`, so the moment every TBO
+      was completed the picker disappeared — exactly when someone would
+      want it, to look at the completed ones.
+    - **The "Terlambat" column was removed** (owner, 16 Aug). The ORDER BY
+      still uses `hari_terlambat DESC NULLS LAST` — dropping the column
+      does not drop the ordering, and NULLS LAST still matters.
+    - **A "Kantor cabang" picker sits beside it** (16 Aug 2026), for a
+      Region Head whose jatah covers several branches and who wants one
+      at a time. It NARROWS INSIDE the jatah and can never widen it: the
+      jatah clause `{swh}` stays in every UNION arm and comes FIRST, so a
+      branch code outside the jatah yields zero rows rather than a leak.
+      That is why `branch_code` may come from `request.args` while
+      `_scope` may never (rule 4).
+    - **The picker is filled from `window.CABANG`, stashed at init from
+      `/cabang`** — the same list the dashboard filter bar uses, and
+      already jatah-filtered by `daftar_cabang(scope_aktif())` on the
+      server. Do not build a second branch list for this screen; two
+      lists drift, and the one nobody looks at is the one that goes
+      stale.
+    - **TRAP: the banner query and the table query now carry DIFFERENT
+      parameter counts.** The branch filter applies to `gabung_baris`
+      only, so there are two parameter lists — `sp_gab` for the banner
+      and `sp_baris` (= `(scope params + [kode]) * number of arms`) for
+      the table. Reuse one for both and psycopg counts placeholders that
+      do not match the parameters, and the query dies at runtime. The
+      order inside each arm is load-bearing too: `{swh}` first, then the
+      branch clause, matching how the list is built.
+    - `total_pilihan`'s shortcut (reuse `kpi.total` when the status is
+      Outstanding) is only valid when NO branch is selected. With one
+      selected, the KPI still counts the whole jatah while the table
+      shows one branch.
+    - **"Tandai lengkap" stays**, but the first button now follows the
+      ROW's status, not the picker: Outstanding gets "Tandai lengkap",
+      anything else gets "Buka lagi", mirroring Dashboard 3 so nobody has
+      to remember two behaviours. `homeLengkap(sumber, id, status)` takes
+      the target status; omitted means "Lengkap", the old behaviour.
+      Both still go through the same endpoints as the dashboards — role
+      checks, jatah and audit apply identically. Marking complete from
+      the Ubah dialog also works and always did; it is simply a second
+      route to the same field.
+
     **Search on the Beranda table — added 15 Aug 2026.**
 
     - Matches NUMBERS ONLY: `no_rekening` and `no_deposito`. Never the
@@ -1704,18 +1782,30 @@ looks like it is missing one, check here before assuming it was dropped:
       three write paths**: admin creates a user, admin sets someone's
       password, user changes their own. A path that skips it makes the
       rule vacuous, since one loose entry point is enough.
-    - The rule as specified by the owner: more than 4 characters, at most
-      10, must contain a special character. Whitespace does NOT count as
-      that special character — otherwise "abc d" passes, which is plainly
-      not what was meant. Constants: `_SANDI_MIN`, `_SANDI_MAKS`,
-      `_SANDI_KHUSUS`, `_SANDI_ATURAN`.
+    - The rule as specified by the owner, TIGHTENED on the afternoon of
+      15 Aug 2026: **more than 6 characters and fewer than 12** — so 7 to
+      11 — and it must contain a special character. It was 5 to 10 for
+      the first few hours of that day. Whitespace does NOT count as the
+      special character; otherwise "abc d" passes, which is plainly not
+      what was meant. Constants, and the only place to change any of
+      this: `_SANDI_MIN`, `_SANDI_MAKS`, `_SANDI_KHUSUS`,
+      `_SANDI_ATURAN` in app.py — the message string is derived from the
+      two numbers, so it can never disagree with them. The two sentences
+      shown on screen (`branchops-login.html` and the dialog in
+      `branchops.html`) are hand-written and DO NOT derive from them:
+      change the numbers, change those two too.
 
-      **Recorded objection, deliberately not silently dropped: the
-      10-character CEILING weakens passwords.** bcrypt accepts 72 bytes;
-      there is no technical reason to cut at 10, and the only effect is
-      that long memorable passphrases become impossible. If the limit
-      comes from another system holding the same credentials, write that
-      system down here. Otherwise it is worth raising.
+      **Existing passwords are unaffected.** The rule runs only when a
+      password is SET, so an account still on a 5- or 6-character
+      password keeps working until someone changes it.
+
+      **Recorded objection, still standing after the tightening: a
+      CEILING weakens passwords.** It moved 10 → 11, which changes
+      nothing about the argument. bcrypt accepts 72 bytes; there is no
+      technical reason to cut here, and the only effect is that long
+      memorable passphrases stay impossible. If the limit comes from
+      another system holding the same credentials, write that system
+      down here. Otherwise it is still worth removing.
     - **"Ganti sandi" is NOT a menu key and must not become one.** It
       sits next to Keluar in the nav bar. Menu keys can be revoked per
       role by an admin (rule 2), and the ability to change your own
@@ -1894,4 +1984,79 @@ looks like it is missing one, check here before assuming it was dropped:
       untouched dialog does NOT send `tujuan_nama`, typing sends it, and
       ticking Kosongkan sends null. **The migration SQL has not run** —
       no database has been touched.
+
+25. Dashboard 1 (Break Deposito) — "Konsentrasi nasabah" was DELETED,
+    16 Aug 2026. It is not missing; do not put it back without deciding
+    the thing that made it useless.
+
+    The block listed the top ten customers by nominal, with a bar each.
+    Every label in it read `***`, because masking.py replaces customer
+    names before the data leaves the API (rule 1). The GROUPING was
+    correct — the SQL grouped on the REAL name — but the result was ten
+    bars nobody could attribute to anyone.
+
+    - The query `top_nasabah` in `dash_it()` was removed too, not just
+      the screen block. It was that block's only consumer, so keeping it
+      meant a GROUP BY over every break row on every Dashboard 1 load,
+      for output nobody rendered. This differs from the rule 13
+      deletions, where `tak_lapor` was left in place; the difference is
+      that this one is the sole consumer relationship, and it is
+      documented here so the asymmetry is deliberate rather than sloppy.
+    - **The `"nama"` entry in `NAMA_NASABAH` (masking.py) STAYS.** It
+      costs nothing and it protects immediately if some future query
+      reuses that alias. Removing it is the kind of tidy-up that silently
+      re-opens rule 1.
+    - If this is ever wanted back, the question to answer FIRST is how to
+      identify a customer without showing their name — account number,
+      CIF, a stable hash — not how to restore the block. Restoring it
+      as-is just recreates ten anonymous bars.
+
+    **Two more columns went the same day: "Rekonsiliasi" and "Catatan"
+    in Detail transaksi.** Also the owner's call, also not a loss of
+    function:
+
+    - Reconciliation status still lives on Dashboard 4, the screen built
+      to act on it — and it is STILL in this table's CSV, together with
+      the Selisih column. The download was deliberately left richer than
+      the screen: the CSV is where follow-up actually gets done, and
+      dropping it there would cost something real. Rule 21 already set
+      that precedent for the Nasabah column.
+    - "Catatan" rendered `flags`, the validation findings. Those are
+      still stored in branchops_stg and branchops_issues and readable on
+      the Unggah tab under the batch.
+    - The table is now EIGHT columns. Header, `<td>` count and
+      `emptyRow(8)` must agree — the same invariant rule 13 states for
+      Dashboard 2. Verified in headless Chromium: 8 headers, 8 cells in
+      the first row.
+    - `r.rekon` and `r.rekon_selisih` are still SELECTed and still used
+      by the CSV; only the `REK` colour map was deleted. Do not remove
+      them from the query on the assumption they are now unused.
+
+    **Search by deposit number was added the same day — and the column it
+    searches is NOT called that.**
+
+    - `branchops_it_break` has **no `no_deposito` and no `no_cif`**. The
+      IT export carries `rek_pendebetan` (normalised into `rek_norm`) and
+      `rek_pencairan`, nothing else account-like. What the branch files
+      call "No. Deposito" is what the IT file calls "Rekening
+      Pendebetan": `storage.py` reconciles on
+      `it.rek_norm = pc.no_deposito_norm`. Same number, two names — so
+      the search box is labelled No. deposito and matches
+      `rek_pendebetan` / `rek_norm`.
+    - **Searching by CIF is impossible here and no amount of frontend
+      work fixes it.** `parse_it` reads r[0]–r[25] and none of them is a
+      CIF. It would take a new column from IT Group, appended at the FAR
+      RIGHT of their export (rule 8, next free index r[26]).
+    - A "No deposito" COLUMN was added at the same time, second from the
+      left. Searching by a value the table does not show is the failure
+      already hit on Beranda: the match looks like a coincidence. That
+      takes the table back to NINE columns — header, `<td>` and
+      `emptyRow(9)` must agree.
+    - Name search is deliberately absent, same reason as rule 14: names
+      are already `***` when they reach the browser.
+    - Matching strips punctuation on both sides, and the CSV follows what
+      is on screen including the search result — both the same rules the
+      other three screens use. Verified in headless Chromium: full number
+      matches, `3000-1000-2826-025` matches `300010002826025`, Bersihkan
+      restores all rows, and a miss says so in words.
 

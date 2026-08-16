@@ -155,13 +155,23 @@ def dash_it(f):
                             {base} GROUP BY 1 ORDER BY 1""", p),
         "per_rate": db.q(f"""SELECT round(f.rate*100,2) AS rate, count(*) AS n, sum(f.nominal) AS rp
                              {base} GROUP BY 1 ORDER BY 1""", p),
-        "top_nasabah": db.q(f"""SELECT f.nama_pemilik AS nama, count(*) AS n, sum(f.nominal) AS rp,
-                                  bool_or(f.nama_terpotong) AS terpotong
-                                {base} GROUP BY 1 ORDER BY rp DESC LIMIT 10""", p),
+        # "top_nasabah" DIHAPUS 16 Agu 2026 bersama bagian "Konsentrasi
+        # nasabah" di layar - itu satu-satunya pemakainya, jadi query ini
+        # tinggal beban: satu GROUP BY atas seluruh baris break pada setiap
+        # pemuatan Dashboard 1, untuk daftar yang seluruh labelnya "***".
+        # Alias "nama" masih terdaftar di NAMA_NASABAH pada masking.py.
+        # BIARKAN di sana: ia tidak menyakiti apa pun dan langsung
+        # melindungi kalau kelak ada query lain memakai alias yang sama.
         "rows": db.q(f"""SELECT f.id, f.branch_code, br.branch_name, f.tgl_break, f.waktu_awal,
                            f.nama_pemilik, f.nama_terpotong, f.nominal, f.penalti, f.rate,
                            f.break_sejati, f.sisa_hari, f.durasi_detik, f.luar_jam,
-                           f.rek_norm, f.flags,
+                           -- rek_pendebetan = "No. Deposito" versi berkas IT.
+                           -- Namanya berbeda, nomornya sama: rekonsiliasi
+                           -- mencocokkan it.rek_norm dengan
+                           -- pc.no_deposito_norm (storage.py). Dikirim apa
+                           -- adanya untuk DITAMPILKAN; yang dicocokkan saat
+                           -- mencari tetap rek_norm, yang sudah digit saja.
+                           f.rek_pendebetan, f.rek_norm, f.flags,
                            r.status AS rekon, r.selisih AS rekon_selisih
                          FROM branchops_it_break f {_AKTIF % 'f'}
                          JOIN branchops_branches br ON br.branch_code=f.branch_code
@@ -569,7 +579,22 @@ def dash_rekon(f):
 # ==========================================================================
 # beranda
 # ==========================================================================
-def ringkasan(scope="", menus=None):
+# Pilihan kotak "Status TBO" di Beranda (15 Agu 2026).
+#
+# DAFTAR PUTIH, bukan teks yang ditempel apa adanya ke SQL. Nilai dari
+# request.args tidak pernah masuk ke query; yang masuk hanya salah satu
+# potongan di bawah ini. Nilai tak dikenal jatuh ke Outstanding - bawaan
+# layar - bukan ke "semua", supaya URL yang diutak-atik tidak pernah
+# MELEBARKAN apa yang terlihat.
+_STATUS_BERANDA = {
+    "Outstanding":  "f.status_tbo = 'Outstanding'",
+    "Lengkap":      "f.status_tbo = 'Lengkap'",
+    "Dikecualikan": "f.status_tbo = 'Dikecualikan'",
+    "SEMUA":        "TRUE",
+}
+
+
+def ringkasan(scope="", menus=None, status_tbo="Outstanding", branch_code=None):
     """Angka untuk tab Beranda.
 
     Ikut dibatasi jatah wilayah — kalau tidak, pengguna wilayah A melihat
@@ -647,7 +672,7 @@ def ringkasan(scope="", menus=None):
         FROM branchops_tbo f
         JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
         JOIN branchops_branches br ON br.branch_code=f.branch_code
-       WHERE f.status_tbo='Outstanding' AND f.ada_tbo{swh}"""
+       WHERE {{ST}} AND f.ada_tbo{swh}{{KODE}}"""
 
     lengan_pencairan = f"""
       SELECT 'pencairan'::text AS sumber, f.id AS id,
@@ -663,7 +688,7 @@ def ringkasan(scope="", menus=None):
         FROM branchops_pencairan f
         JOIN branchops_batches b ON b.id=f.batch_id AND b.status='committed'
         JOIN branchops_branches br ON br.branch_code=f.branch_code
-       WHERE f.status_tbo='Outstanding' AND {_PUNYA_TBO}{swh}"""
+       WHERE {{ST}} AND {_PUNYA_TBO}{swh}{{KODE}}"""
 
     # Cabang UNION dipilih menurut hak menu: baris branchops_tbo milik
     # Dashboard 3, baris branchops_pencairan milik Dashboard 2. Peran yang
@@ -679,8 +704,43 @@ def ringkasan(scope="", menus=None):
     # yang benar-benar dipakai. Dulu angka 2 ditulis tetap; sekarang
     # jumlahnya berubah-ubah, dan menghitungnya dari len() adalah satu-
     # satunya cara agar parameter tidak bergeser diam-diam.
-    gabung_tbo = "\n      UNION ALL\n".join(lengan)
-    sp_gab = sp * len(lengan)
+    gabung_pola = "\n      UNION ALL\n".join(lengan)
+    sp_gab = sp * len(lengan)          # untuk gabung_kpi (tanpa kode cabang)
+
+    # DUA bentuk dari pola yang sama - ini inti keputusan 15 Agu 2026:
+    #   gabung_kpi   selalu Outstanding. Spanduk oranye di Beranda adalah
+    #                angka tetap "berapa yang masih menggantung"; ia tidak
+    #                boleh ikut berubah saat orang melihat-lihat status
+    #                lain, atau angka yang dikutip orang di rapat berubah
+    #                arti tanpa ada yang sadar.
+    #   gabung_baris mengikuti kotak Status TBO. Hanya ISI TABEL.
+    # Pola yang sama dengan Dashboard 2 dan 3: KPI utuh, daftar detail
+    # yang menyaring (aturan 13, 20).
+    syarat_status = _STATUS_BERANDA.get(status_tbo or "", _STATUS_BERANDA["Outstanding"])
+
+    # Penyaring kantor cabang (16 Agu 2026). Untuk pemegang jatah beberapa
+    # cabang - Region Head - yang ingin menyempitkan ke satu cabang.
+    #
+    # Ini MENYEMPITKAN di dalam jatah, tidak pernah melebarkannya: klausa
+    # jatah ({swh}) tetap ada dan berdiri lebih dulu di setiap cabang UNION.
+    # Kode yang tidak ada di jatah menghasilkan nol baris, bukan kebocoran.
+    kode = (str(branch_code).strip() or None) if branch_code else None
+    syarat_kode = " AND f.branch_code = %s" if kode else ""
+
+    gabung_kpi = (gabung_pola.replace("{ST}", _STATUS_BERANDA["Outstanding"])
+                             .replace("{KODE}", ""))
+    gabung_baris = (gabung_pola.replace("{ST}", syarat_status)
+                               .replace("{KODE}", syarat_kode))
+    gabung_tbo = gabung_kpi        # nama lama, dipakai blok KPI di bawah
+
+    # DUA daftar parameter, dan ini bukan kerapian - keduanya kini berbeda
+    # jumlah penandanya. Spanduk (gabung_kpi) tidak memakai penyaring
+    # cabang, tabel (gabung_baris) memakainya. Memakai satu daftar untuk
+    # keduanya membuat psycopg menghitung penanda yang tidak cocok dengan
+    # parameter, dan query gagal saat dijalankan - persis jenis kesalahan
+    # yang diperingatkan di dash_pencairan.
+    par_arm = list(sp) + ([kode] if kode else [])
+    sp_baris = par_arm * len(lengan)   # untuk gabung_baris (dengan kode cabang)
 
     if not lengan:
         # Tidak berhak atas d2 maupun d3: tidak ada yang perlu ditanyakan
@@ -691,6 +751,7 @@ def ringkasan(scope="", menus=None):
                    "lewat_target": 0, "tanpa_target": 0, "terlambat_max": 0,
                    "rp": 0, "cabang": 0}
         tbo_rows = []
+        total_pilihan = 0
     else:
         tbo_kpi = db.q1(f"""
       SELECT count(*) AS total,
@@ -713,9 +774,26 @@ def ringkasan(scope="", menus=None):
         # satu wilayah dengan puluhan ribu baris terbuka tidak membekukan
         # peramban. Layar memberi tahu bila daftarnya terpotong.
         tbo_rows = db.q(f"""
-              SELECT * FROM ({gabung_tbo}) g
+              SELECT * FROM ({gabung_baris}) g
               ORDER BY g.hari_terlambat DESC NULLS LAST, g.tgl_input ASC
-              LIMIT 2000""", sp_gab)
+              LIMIT 2000""", sp_baris)
+
+        # Jumlah SEBENARNYA untuk status yang sedang dipilih, tanpa LIMIT.
+        # Dipakai layar untuk tahu daftarnya terpotong atau tidak. Tidak
+        # bisa memakai tbo_kpi["total"]: sejak ada kotak Status TBO, angka
+        # itu selalu tentang Outstanding, sedangkan tabel bisa menampilkan
+        # status lain - membandingkan keduanya akan mengarang peringatan
+        # "terpotong" yang salah, atau lebih buruk, menyembunyikan yang
+        # benar-benar terpotong.
+        # Saat pilihannya Outstanding keduanya memang sama, dan query ini
+        # dilewati - satu perjalanan ke basis data yang tidak perlu.
+        # Jalan pintas hanya sah kalau TIDAK ada penyaring cabang: dengan
+        # penyaring, tbo_kpi["total"] menghitung seluruh jatah sedangkan
+        # tabelnya satu cabang saja.
+        total_pilihan = (tbo_kpi["total"]
+                         if (syarat_status == _STATUS_BERANDA["Outstanding"] and not kode)
+                         else db.q1(f"SELECT count(*) AS n FROM ({gabung_baris}) g",
+                                    sp_baris)["n"])
 
     hitung = db.q1(f"""
           SELECT (SELECT count(*) FROM branchops_it_break f
@@ -752,7 +830,15 @@ def ringkasan(scope="", menus=None):
             hitung[kunci] = None
 
     return {
-        "tbo_terbuka": {"kpi": tbo_kpi, "rows": tbo_rows},
+        # status = apa yang BENAR-BENAR diterapkan server, bukan apa yang
+        # diminta layar. Kalau URL diutak-atik dengan nilai tak dikenal,
+        # server jatuh ke Outstanding dan layar harus ikut mengatakannya -
+        # bukan menampilkan judul "Lengkap" di atas baris Outstanding.
+        "tbo_terbuka": {"kpi": tbo_kpi, "rows": tbo_rows,
+                        "total_pilihan": total_pilihan,
+                        "branch_code": kode,
+                        "status": next(k for k, v in _STATUS_BERANDA.items()
+                                       if v == syarat_status)},
         "hitung": hitung,
         # Daftar menu ikut dikirim supaya layar membangun kartunya dari
         # jawaban yang sama dengan yang menyaring angkanya. Kalau layar

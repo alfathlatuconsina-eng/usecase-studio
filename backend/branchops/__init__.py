@@ -312,8 +312,21 @@ def create_blueprint(require):
         pemanggil. Tanpa argumen kedua ini, rute ini mengembalikan baris
         branchops_tbo dan branchops_pencairan kepada peran yang hak d3 dan
         d2-nya sudah dicabut."""
+        # status_tbo hanya menyaring ISI TABEL "Seluruh TBO yang masih
+        # terbuka". Angka spanduk di atasnya tetap tentang Outstanding -
+        # lihat gabung_kpi vs gabung_baris di analytics.ringkasan().
+        # Nilainya tidak pernah masuk SQL apa adanya: ringkasan()
+        # memetakannya lewat daftar putih _STATUS_BERANDA, dan apa pun di
+        # luar daftar jatuh ke Outstanding, bukan ke "semua".
+        # branch_code MENYEMPITKAN di dalam jatah, tidak pernah melebarkan:
+        # klausa jatah tetap terpasang di setiap cabang UNION dan berdiri
+        # lebih dulu. Kode di luar jatah menghasilkan nol baris - bukan
+        # kebocoran. Karena itu ia boleh datang dari request.args, tidak
+        # seperti "_scope" yang tidak boleh (lihat _f() di atas).
         return _out(analytics.ringkasan(scoping.scope_aktif(),
-                                        privileges.allowed_menus()))
+                                        privileges.allowed_menus(),
+                                        request.args.get("status_tbo"),
+                                        request.args.get("branch_code")))
 
     @bp.get("/cabang")
     @require()

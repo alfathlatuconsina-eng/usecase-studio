@@ -750,15 +750,47 @@ function renderIT() {
     ${card("Distribusi rate saat break","Nominal per tingkat suku bunga. Rate ekstrem layak diperiksa.","cRate","tall")}
   </div>
 
-  <h2>Konsentrasi nasabah</h2>
-  <div class="card">
-    <div class="h-note">Porsi nominal per nasabah. Nama yang terpotong 20 karakter ditandai —
-      export core banking memotong nama panjang, sehingga nasabah berbeda bisa tampak sama.</div>
-    <div id="konsen"></div>
-  </div>
+  <!-- "Konsentrasi nasabah" DIHAPUS 16 Agu 2026 atas permintaan pemilik.
+       Bukan hilang karena kelalaian: setiap label di daftar itu berbunyi
+       "***", karena masking.py menyamarkan nama nasabah sebelum data
+       meninggalkan API (aturan 1). Pengelompokannya sendiri benar - SQL
+       mengelompokkan nama ASLI - tetapi hasilnya tidak bisa dibaca
+       siapa pun, jadi daftar itu hanya menampilkan sepuluh batang tanpa
+       identitas. Kalau suatu saat ingin dihidupkan lagi, yang perlu
+       diputuskan lebih dulu adalah cara mengenali nasabah tanpa
+       menampilkan namanya - bukan sekadar mengembalikan blok ini. -->
 
   <h2>Detail transaksi</h2>
-  ${tabel(["Cabang","Tgl break","Jam","Nasabah","Nominal","Rate","Penalti","Jenis","Rekonsiliasi","Catatan"])}`;
+  <!-- Kolom "Rekonsiliasi" dan "Catatan" DIHAPUS 16 Agu 2026 atas
+       permintaan pemilik. Keduanya tidak hilang dari sistem:
+         - status rekonsiliasi tetap ada di menu Rekonsiliasi (Dashboard 4),
+           layar yang memang untuk menindaklanjutinya, DAN tetap ikut di
+           berkas CSV tabel ini bersama kolom Selisih;
+         - isi "Catatan" adalah flags hasil validasi, yang tetap tersimpan
+           di branchops_stg dan branchops_issues serta terbaca di tab
+           Unggah lewat catatan batch-nya.
+       Jadi ini bukan fitur yang hilang - yang dihapus dua kolom di layar
+       ini saja. -->
+  <!-- Pencarian NO. DEPOSITO. Di berkas IT kolom itu bernama "Rekening
+       Pendebetan" (rek_pendebetan / rek_norm) - nomor yang sama, nama yang
+       berbeda: rekonsiliasi mencocokkan it.rek_norm dengan
+       pc.no_deposito_norm di storage.py.
+       NO. CIF sengaja TIDAK ada di sini: branchops_it_break memang tidak
+       punya kolomnya, dan parse_it tidak membaca satu pun kolom CIF dari
+       ekspor IT. Menambahkannya berarti meminta IT Group menambah kolom di
+       UJUNG KANAN berkas (aturan 8), bukan menulis kode di layar ini.
+       Nama nasabah TIDAK ikut dicari - alasannya sama dengan Dashboard 3
+       (aturan 14): namanya sudah "***" sebelum meninggalkan API.
+       Menyaring baris yang SUDAH dimuat; tidak memanggil server. -->
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 0">
+    <input id="itCari" type="search" inputmode="latin" autocomplete="off"
+           placeholder="Cari no. deposito…" aria-label="Cari nomor deposito"
+           style="max-width:250px;flex:1 1 190px">
+    <button class="btn" id="itCariBtn" type="button">Cari</button>
+    <button class="btn" id="itCariClr" type="button">Bersihkan</button>
+    <span id="itCariInfo" class="muted" style="font-size:11.5px"></span>
+  </div>
+  ${tabel(["Cabang","No deposito","Tgl break","Jam","Nasabah","Nominal","Rate","Penalti","Jenis"])}`;
 
   chartTren(DATA.per_tgl, "tgl", "rp", "n", "Nominal break");
   const jamMap = Object.fromEntries(DATA.per_jam.map(x => [x.jam, x.n]));
@@ -782,32 +814,63 @@ function renderIT() {
       tooltip:{callbacks:{label:c=>" "+rp(c.raw)}}},
       scales:{y:{ticks:{callback:v=>rpS(v)}, grid:GRID}, x:{grid:{display:false}}}}});
 
-  const tot = N(k.rp);
-  $("konsen").innerHTML = DATA.top_nasabah.map(a => {
-    const p = tot ? 100*N(a.rp)/tot : 0;
-    const c = p>=10 ? "var(--bad)" : p>=5 ? "var(--warn)" : "var(--teal)";
-    return qrow(esc(a.nama) + (a.terpotong ? ' <span class="fl">terpotong</span>' : "")
-      + ` <span class="muted">· ${a.n}x</span>`, Math.min(p*4,100), c, rpS(N(a.rp)));
-  }).join("") || empty();
-
-  const REK = {"Cocok":"t-ok","Selisih material":"t-warn","Tidak dilaporkan cabang":"t-bad"};
-  CSV = [["Cabang","Kode","Tgl break","Jam","Nasabah","Nominal","Rate","Penalti","Jenis","Rekonsiliasi","Selisih"]];
-  $("tb").innerHTML = rows.map(r => {
-    CSV.push([r.branch_name, r.branch_code, tgl(r.tgl_break), r.waktu_awal, r.nama_pemilik,
-      N(r.nominal), N(r.rate), N(r.penalti), r.break_sejati?"Sebelum JT":"Sudah JT",
-      r.rekon||"", N(r.rekon_selisih)]);
-    return `<tr>
+  /* Peta warna REK dibuang bersama kolom Rekonsiliasi (16 Agu 2026).
+     Nilai r.rekon dan r.rekon_selisih TETAP dipakai - keduanya masih
+     ditulis ke berkas CSV di bawah. */
+  /* Satu fungsi baris, dipakai gambar pertama DAN setiap kali pencarian
+     berubah. Sengaja bukan dua blok serupa - salinan yang tidak ikut
+     disunting adalah cara paling sunyi membuat hasil pencarian berbeda
+     dari tabel aslinya. Pola yang sama dengan barisTbo di Beranda. */
+  const barisIT = r => `<tr>
       <td>${esc(r.branch_name)}<div class="muted" style="font-size:11px">${(r.branch_code||"").replace(/^0/,"")}</div></td>
+      <td class="muted" style="font-size:11.5px">${esc(r.rek_pendebetan || r.rek_norm || "—")}</td>
       <td class="muted">${tgl(r.tgl_break)}</td><td class="muted">${r.waktu_awal||"—"}</td>
       <td class="col-nasabah">${esc((r.nama_pemilik||"—").slice(0,24))}${r.nama_terpotong?' <span class="fl">…</span>':""}</td>
       <td class="num">${fmt(N(r.nominal))}</td>
       <td class="num muted">${dec(N(r.rate)*100,2)}%</td>
       <td class="num ${N(r.penalti)?"":"muted"}">${N(r.penalti)?fmt(N(r.penalti)):"—"}</td>
       <td class="muted" style="font-size:11.5px">${r.break_sejati?"Sebelum JT":"Sudah JT"}</td>
-      <td>${r.rekon?`<span class="tag ${REK[r.rekon]||"t-grey"}">${r.rekon==="Tidak dilaporkan cabang"?"Tak dilaporkan":r.rekon}</span>`:'<span class="muted">—</span>'}</td>
-      <td><div class="flagdots">${(r.flags||[]).map(f=>`<span class="fl">${esc(f)}</span>`).join("")}</div></td>
     </tr>`;
-  }).join("") || emptyRow(10);
+
+  /* Nomor dibandingkan setelah tanda bacanya dibuang, supaya
+     "300-010-002" tetap cocok dengan "300010002". Sama dengan normDep /
+     normRek / normNo di tiga layar lain. */
+  const normIT = v => String(v == null ? "" : v).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  /* Menggambar ulang HANYA isi tabel dan CSV-nya. Tidak menyentuh KPI,
+     grafik, atau memanggil server. */
+  const gambarIT = (cari) => {
+    const q = normIT(cari);
+    const tampil = q
+      ? rows.filter(r => normIT(r.rek_pendebetan).includes(q) || normIT(r.rek_norm).includes(q))
+      : rows;
+
+    /* CSV mengikuti apa yang TAMPIL, termasuk hasil pencarian - berkas yang
+       berbeda dari tabel di layarnya baru ketahuan setelah dipakai orang
+       lain. Kolom Rekonsiliasi dan Selisih tetap ikut walau kolomnya sudah
+       tidak ada di layar (aturan 25). */
+    CSV = [["Cabang","Kode","No deposito","Tgl break","Jam","Nasabah","Nominal","Rate","Penalti","Jenis","Rekonsiliasi","Selisih"]];
+    tampil.forEach(r => CSV.push([r.branch_name, r.branch_code,
+      r.rek_pendebetan || r.rek_norm || "", tgl(r.tgl_break), r.waktu_awal, r.nama_pemilik,
+      N(r.nominal), N(r.rate), N(r.penalti), r.break_sejati?"Sebelum JT":"Sudah JT",
+      r.rekon||"", N(r.rekon_selisih)]));
+
+    $("tb").innerHTML = tampil.map(barisIT).join("") || emptyRow(9);
+    $("cnt").textContent = q
+      ? `${fmt(tampil.length)} cocok dari ${fmt(rows.length)} baris`
+      : `${fmt(rows.length)} baris ditampilkan`;
+    $("itCariInfo").textContent = (q && !tampil.length)
+      ? "Tidak ada yang cocok pada rentang tanggal dan cabang yang sedang dipilih." : "";
+  };
+  gambarIT("");
+
+  $("itCariBtn").onclick = () => gambarIT($("itCari").value);
+  $("itCariClr").onclick = () => { $("itCari").value = ""; gambarIT(""); };
+  $("itCari").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); gambarIT($("itCari").value); } };
+  /* Tanpa ini, menekan tanda silang bawaan peramban mengosongkan kotaknya
+     tetapi tabel tetap tersaring - kotak kosong dengan tabel yang masih
+     menyaring terbaca sebagai data hilang. */
+  $("itCari").addEventListener("search", () => gambarIT($("itCari").value));
 }
 
 /* ================================================================== */
@@ -2083,7 +2146,7 @@ function gantiSandi() {
       <div class="ed-f"><label>Ulangi sandi baru</label>
         <input type="password" id="gsUlang" autocomplete="new-password"></div>
       <div class="muted" style="font-size:11.5px;margin-top:4px">
-        Sandi harus 5-10 karakter dan memuat minimal satu karakter khusus
+        Sandi harus 7-11 karakter dan memuat minimal satu karakter khusus
         (misalnya ! @ # $ % &amp; * ? -).</div>
       <div id="gsPesan" style="margin-top:8px"></div>
     </div>
@@ -2321,7 +2384,15 @@ const dtfmt = s => s ? String(s).replace("T", " ").slice(0, 16) : "—";
 async function renderHome(){
   const el = $("homeRoot");
   el.innerHTML = '<div class="loading"><span class="spin"></span> Memuat…</div>';
-  const r = await authFetch("/api/branchops/summary");
+  /* Status TBO yang sedang dipilih untuk TABEL Beranda. Disimpan di luar
+     renderHome supaya bertahan saat layar digambar ulang - renderHome juga
+     dipakai sebagai callback sesudah menyimpan lewat dialog Ubah, dan
+     kembali ke "Outstanding" di situ akan membuang pilihan pengguna tepat
+     setelah ia menyunting baris yang sedang dilihatnya. */
+  const r = await authFetch("/api/branchops/summary?status_tbo="
+                            + encodeURIComponent(window.HOME_STATUS || "Outstanding")
+                            + (window.HOME_CABANG
+                               ? "&branch_code=" + encodeURIComponent(window.HOME_CABANG) : ""));
   if (!r.ok) { el.innerHTML = '<div class="banner b-bad">Gagal memuat ringkasan.</div>'; return; }
   const d = await r.json();
   const h = d.hitung || {};
@@ -2398,6 +2469,9 @@ async function renderHome(){
   const tk = t.kpi || {};
   const tr = t.rows || [];
   const nTerbuka = N(tk.total) || 0;
+  /* Jumlah tak terpotong untuk status yang SEDANG dipilih. Sama dengan
+     nTerbuka hanya kalau pilihannya Outstanding. */
+  const nPilihan = t.total_pilihan == null ? nTerbuka : N(t.total_pilihan);
   const nLewat   = N(tk.lewat_target) || 0;
   /* Kedua tombol menulis ke basis data, jadi peran viewer tidak
      mendapatkannya. Ini hanya tampilan — backend tetap menolak sendiri
@@ -2420,16 +2494,26 @@ async function renderHome(){
      blok serupa - salinan yang tidak ikut disunting adalah cara paling sunyi
      membuat tabel hasil pencarian berbeda dari tabel aslinya. */
   const barisTbo = r => {
-          const lt = r.hari_terlambat;
           /* sumber menentukan endpoint mana yang dipanggil. id 7 dari
              branchops_tbo dan id 7 dari branchops_pencairan adalah dua
              baris berbeda — tanpa sumber, tombol akan menyunting yang salah. */
           const src = r.sumber === "pencairan"
             ? '<span class="tag t-roll">Pencairan</span>'
             : '<span class="tag t-acc">Pembukaan</span>';
+          /* Tombol pertama mengikuti STATUS BARIS, bukan status yang
+             dipilih di kotak - sejak kotak Status TBO ada, satu tabel bisa
+             memuat campuran (pilihan "Semua"). "Tandai lengkap" pada baris
+             yang sudah Lengkap tidak berarti apa-apa; yang berguna di sana
+             adalah kebalikannya. Perilakunya sengaja disamakan dengan
+             Dashboard 3, supaya orang yang memakai kedua layar tidak perlu
+             mengingat dua aturan. */
+          const bukaLagi = r.status_tbo && r.status_tbo !== "Outstanding";
+          const tombol1 = bukaLagi
+            ? `<button class="btn sm" onclick="homeLengkap('${r.sumber}',${r.id},'Outstanding')">Buka lagi</button>`
+            : `<button class="btn sm primary" onclick="homeLengkap('${r.sumber}',${r.id})">Tandai lengkap</button>`;
           const aksi = !adaAksi ? ""
             : (bolehUbahBaris(r.sumber) ? `<td><div style="display:flex;gap:5px;flex-wrap:wrap">
-              <button class="btn sm primary" onclick="homeLengkap('${r.sumber}',${r.id})">Tandai lengkap</button>
+              ${tombol1}
               <button class="btn sm" onclick="homeUbah('${r.sumber}',${r.id})">Ubah</button>
             </div></td>` : `<td class="muted">—</td>`);
           return `<tr>
@@ -2446,7 +2530,6 @@ async function renderHome(){
             <td class="num">${fmt(N(r.nominal))}${r.mata_uang !== "IDR" ? ` <span class="fl">${esc(r.mata_uang)}</span>` : ""}</td>
             <td class="muted" style="font-size:11.5px;max-width:190px;word-break:break-word">${esc(r.dokumen || "—")}</td>
             <td class="muted" style="font-size:11.5px">${r.target_pemenuhan_tbo ? tgl(r.target_pemenuhan_tbo) : '<span class="fl">belum diisi</span>'}</td>
-            <td class="num ${lt > 0 ? "" : "muted"}">${lt == null ? "—" : (lt > 0 ? `<span class="ed-late on">${lt} h</span>` : "0 h")}</td>
             <td class="num ${r.aging > 14 ? "" : "muted"}">${r.aging == null ? "—" : r.aging + " h"}</td>
             ${aksi}
           </tr>`;
@@ -2459,9 +2542,26 @@ async function renderHome(){
      menggantung" kepada orang yang sebenarnya tidak boleh melihatnya
      bukan sekadar kosong, melainkan keliru. */
   const sumberTbo = ["d3", "d2"].filter(bolehMenu);
+  /* Status yang BENAR-BENAR diterapkan server (t.status), bukan yang diminta
+     layar: kalau URL diutak-atik dengan nilai tak dikenal, server jatuh ke
+     Outstanding dan judul di layar harus ikut jujur.
+     Dideklarasikan di sini, bukan di dalam cabang if di bawah, karena
+     dipakai lagi saat memasang kotak pilihannya di akhir fungsi. */
+  const stKini = t.status || "Outstanding";
+  const ST_JUDUL = {
+    Outstanding:  "Seluruh TBO yang masih terbuka",
+    Lengkap:      "TBO yang sudah lengkap",
+    Dikecualikan: "TBO yang dikecualikan",
+    SEMUA:        "Seluruh TBO, semua status",
+  };
   if (sumberTbo.length) {
   html += `<h2>TBO yang masih terbuka</h2>`;
 
+  /* Spanduk hijau ini tentang OUTSTANDING, jadi ia muncul kapan pun angka
+     itu nol - termasuk saat tabel di bawahnya sedang menampilkan status
+     lain. Yang TIDAK boleh terjadi lagi: dulu nol-nya angka ini juga
+     menghapus tabelnya, sehingga begitu semua TBO selesai, kotak Status TBO
+     ikut lenyap dan tidak ada lagi cara melihat yang sudah Lengkap. */
   if (!nTerbuka) {
     /* Kalimatnya mengikuti sumber yang benar-benar diperiksa. Menyebut
        "baik ... maupun ..." padahal hanya satu tabel yang dibaca membuat
@@ -2473,7 +2573,10 @@ async function renderHome(){
             ? "Seluruh pembukaan rekening ber-TBO sudah berstatus"
             : "Seluruh pencairan ber-TBO sudah berstatus")}
       Lengkap atau Dikecualikan.</div>`;
-  } else {
+  }
+  /* Spanduk oranye hanya kalau memang ADA yang outstanding. Isinya angka
+     tetap - tidak ikut kotak Status TBO. */
+  if (nTerbuka) {
     /* Warna banner mengikuti ada-tidaknya yang LEWAT TARGET, bukan sekadar
        ada-tidaknya yang terbuka. TBO terbuka yang belum jatuh tempo adalah
        keadaan normal, bukan sesuatu yang perlu dibunyikan merah. */
@@ -2492,9 +2595,15 @@ async function renderHome(){
            jadi keterlambatannya tidak bisa dihitung.</span>`
         : ""}
     </div>`;
+  }
 
+  /* Kartu tabel SELALU digambar untuk peran yang berhak - juga ketika tidak
+     ada satu pun TBO outstanding. Kalau tidak, kotak Status TBO ikut hilang
+     tepat pada saat orang paling mungkin memakainya: untuk melihat yang
+     sudah Lengkap. */
+  {
     html += `<div class="card" style="padding:14px 16px">
-      <h3>Seluruh TBO yang masih terbuka</h3>
+      <h3>${ST_JUDUL[stKini] || ST_JUDUL.Outstanding}</h3>
       <div class="h-note">${sumberTbo.length === 2
           ? "Dua sumber digabung: pembukaan rekening ber-TBO dan pencairan yang membawa Data TBO."
           : (sumberTbo[0] === "d3"
@@ -2519,6 +2628,26 @@ async function renderHome(){
                style="max-width:280px;flex:1 1 200px">
         <button class="btn" id="hmCariBtn" type="button">Cari</button>
         <button class="btn" id="hmCariClr" type="button">Bersihkan</button>
+        <!-- Status TBO. Menyaring TABEL ini saja; spanduk oranye di atas
+             tetap tentang Outstanding, karena angka yang dikutip orang
+             tidak boleh berubah arti saat seseorang melihat-lihat status
+             lain. Penyaringannya di SQL (gabung_baris di analytics.py),
+             bukan di layar - daftar ini dipotong LIMIT 2000. -->
+        <!-- Kantor cabang. Menyempitkan DI DALAM jatah - pemegang jatah
+             beberapa cabang (Region Head) bisa melihat satu per satu.
+             Isinya window.CABANG, daftar yang sama dengan penyaring di
+             dashboard, dan sudah disaring jatah oleh backend. -->
+        <label class="muted" style="font-size:11.5px;margin-left:auto">Kantor cabang
+          <select id="hmCabang" style="margin-left:6px">
+            <option value="">Semua cabang</option>
+          </select></label>
+        <label class="muted" style="font-size:11.5px">Status TBO
+          <select id="hmStatus" style="margin-left:6px">
+            <option value="Outstanding">Masih terbuka</option>
+            <option value="Lengkap">Lengkap</option>
+            <option value="Dikecualikan">Dikecualikan</option>
+            <option value="SEMUA">Semua</option>
+          </select></label>
         <span id="hmCariInfo" class="muted" style="font-size:11.5px"></span>
       </div>
 
@@ -2526,13 +2655,19 @@ async function renderHome(){
         <th>Sumber</th><th>Cabang</th><th>Tgl input</th><th class="col-nasabah">Nasabah</th>
         <th>No rekening<br><span class="muted" style="font-weight:400">/ no deposito</span></th>
         <th class="num">Nominal</th><th>Dokumen TBO</th><th>Target</th>
-        <th class="num">Terlambat</th><th class="num">Aging</th>
+        <th class="num">Aging</th>
         ${adaAksi ? "<th>Aksi</th>" : ""}</tr></thead><tbody id="hmTbody">`
-      + tr.map(barisTbo).join("")
+      + (tr.map(barisTbo).join("")
+         || `<tr><td colspan="${adaAksi ? 10 : 9}" class="muted" style="padding:14px 4px">
+               Tidak ada baris pada status ini.</td></tr>`)
       + `</tbody></table></div>`;
-    if (nTerbuka > tr.length) {
+    /* Pembanding HARUS total_pilihan, bukan nTerbuka. nTerbuka selalu
+       tentang Outstanding (angka spanduk); tabelnya bisa menampilkan status
+       lain. Membandingkan keduanya akan mengarang peringatan "terpotong"
+       yang salah - atau, lebih buruk, menyembunyikan yang benar terpotong. */
+    if (nPilihan > tr.length) {
       html += `<div class="banner b-warn" style="margin:10px 0 0">
-        Menampilkan ${fmt(tr.length)} baris teratas dari ${fmt(nTerbuka)}.
+        Menampilkan ${fmt(tr.length)} baris teratas dari ${fmt(nPilihan)}.
         Sisanya dipotong agar halaman tetap bisa dibuka` +
         /* Hanya menyarankan dashboard yang benar-benar bisa dibuka orang
            itu. Menyuruh "persempit lewat dashboard Pencairan" kepada peran
@@ -2566,7 +2701,7 @@ async function renderHome(){
        tetap cocok dengan "300010002" dan "DEP-2026-0001" dengan
        "dep20260001". Sama dengan normDep/normRek di dua dashboard. */
     const normNo = v => String(v == null ? "" : v).toLowerCase().replace(/[^a-z0-9]/g, "");
-    const kolom = adaAksi ? 11 : 10;
+    const kolom = adaAksi ? 10 : 9;   /* kolom Terlambat dibuang 15 Agu 2026 */
     const gambarHm = (cari) => {
       const q = normNo(cari);
       const tampil = q
@@ -2578,8 +2713,8 @@ async function renderHome(){
               Tidak ada nomor yang cocok pada baris yang sedang dimuat.</td></tr>`;
       $("hmCariInfo").textContent = q
         ? `${fmt(tampil.length)} cocok dari ${fmt(tr.length)} baris yang dimuat`
-          + (nTerbuka > tr.length
-              ? ` — daftar ini terpotong dari ${fmt(nTerbuka)}, jadi pencarian tidak mencakup semuanya.`
+          + (nPilihan > tr.length
+              ? ` — daftar ini terpotong dari ${fmt(nPilihan)}, jadi pencarian tidak mencakup semuanya.`
               : "")
         : "";
     };
@@ -2590,6 +2725,32 @@ async function renderHome(){
        tetapi tabel tetap tersaring - kotak kosong dengan tabel yang masih
        menyaring terbaca sebagai data hilang. */
     hmCari.addEventListener("search", () => gambarHm(hmCari.value));
+  }
+
+  /* Kotak Status TBO. Memanggil server lagi - BUKAN menyaring baris yang
+     sudah dimuat: daftar ini dipotong 2000 baris, jadi menyaring di layar
+     akan menyembunyikan baris yang cocok tetapi berada di luar potongan.
+     Alasan yang sama dengan aturan 20. */
+  const hmStatus = $("hmStatus");
+  if (hmStatus) {
+    hmStatus.value = stKini;
+    hmStatus.onchange = () => {
+      window.HOME_STATUS = hmStatus.value;
+      renderHome();
+    };
+  }
+
+  const hmCabang = $("hmCabang");
+  if (hmCabang) {
+    (window.CABANG || []).forEach(c => hmCabang.add(new Option(
+      c.branch_code.replace(/^0/, "") + " — " + c.branch_name, c.branch_code)));
+    /* Nilai diambil dari jawaban server (t.branch_code), bukan dari apa
+       yang diminta layar - sama alasannya dengan stKini. */
+    hmCabang.value = t.branch_code || "";
+    hmCabang.onchange = () => {
+      window.HOME_CABANG = hmCabang.value;
+      renderHome();
+    };
   }
 }
 
@@ -2604,22 +2765,30 @@ window.homeUbah = (sumber, id) => {
   else tboEdit(id, renderHome);
 };
 
-window.homeLengkap = async (sumber, id) => {
-  if (!confirm("Tandai TBO ini sebagai Lengkap?\n\n"
-             + "Tanggal TBO lengkap diisi hari ini. Bisa dibuka lagi lewat layar Ubah.")) return;
+window.homeLengkap = async (sumber, id, status) => {
+  /* status kosong = "Lengkap" (perilaku lama, tombol utama). Nilai
+     "Outstanding" dipakai tombol "Buka lagi", yang muncul sejak kotak
+     Status TBO ada dan tabel bisa memuat baris yang sudah selesai. */
+  const ke = status || "Lengkap";
+  const tanya = ke === "Lengkap"
+    ? "Tandai TBO ini sebagai Lengkap?\n\n"
+      + "Tanggal TBO lengkap diisi hari ini. Bisa dibuka lagi lewat layar Ubah."
+    : "Buka lagi TBO ini menjadi Outstanding?\n\n"
+      + "Tanggal TBO lengkap dikosongkan.";
+  if (!confirm(tanya)) return;
 
   /* Dua tabel, dua endpoint, dua kata kerja — tapi keduanya sudah
-     menyetel tgl_tbo_lengkap sendiri saat status menjadi Lengkap, jadi
-     tanggalnya tidak perlu dikirim dari sini. */
+     menyetel tgl_tbo_lengkap sendiri mengikuti status, jadi tanggalnya
+     tidak perlu dikirim dari sini. */
   const ok = sumber === "pencairan"
     ? await (async () => {
         const r = await authFetch("/api/branchops/pencairan/" + id, {
           method: "PUT", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({status_tbo: "Lengkap"})});
+          body: JSON.stringify({status_tbo: ke})});
         if (!r.ok) { const j = await r.json().catch(()=>({})); alert(j.error || "Gagal menyimpan"); }
         return r.ok;
       })()
-    : await patch("/api/branchops/tbo/" + id, {status_tbo: "Lengkap"});
+    : await patch("/api/branchops/tbo/" + id, {status_tbo: ke});
 
   if (ok) renderHome();
 };
@@ -3590,6 +3759,11 @@ document.querySelectorAll("nav .item[data-tab]").forEach(a =>
   try {
     const r = await authFetch("/api/branchops/cabang");
     const d = await r.json();
+    /* Disimpan supaya Beranda bisa memakai daftar yang SAMA. Daftar ini
+       sudah disaring jatah di backend (daftar_cabang(scope_aktif())), jadi
+       seorang Region Head hanya melihat cabangnya sendiri di kedua tempat -
+       dan tidak ada daftar cabang kedua yang bisa lambat laun berbeda. */
+    window.CABANG = d.cabang || [];
     (d.cabang || []).forEach(c => $("fCab").add(new Option(
       c.branch_code.replace(/^0/, "") + " — " + c.branch_name, c.branch_code)));
     /* Rentang tanggal diambil per DASHBOARD, bukan satu nilai global.

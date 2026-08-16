@@ -389,18 +389,23 @@ CORS(app)
 # Kalau salah satu jalur melewatkan pemeriksaan ini, aturannya tidak berlaku
 # sama sekali: cukup satu jalan masuk yang longgar.
 #
-# Ketentuannya ditetapkan pemilik aplikasi (15 Agu 2026): lebih dari 4
-# karakter, paling banyak 10, dan wajib memuat karakter khusus.
+# Ketentuannya ditetapkan pemilik aplikasi. Diperketat 15 Agu 2026 sore:
+# LEBIH DARI 6 karakter dan KURANG DARI 12, dan wajib memuat karakter
+# khusus. Sebelumnya 5-10.
 #
-# CATATAN TERBUKA, sengaja ditulis di sini dan bukan dihilangkan: BATAS ATAS
-# 10 karakter melemahkan sandi, bukan menguatkannya. bcrypt menerima sampai
-# 72 byte, jadi tidak ada alasan teknis untuk memotong di 10 - satu-satunya
-# akibatnya adalah frasa-sandi yang panjang dan mudah diingat menjadi tidak
+# Sandi yang sudah ada TIDAK terpengaruh - aturan ini hanya dijalankan saat
+# sandi DISETEL. Akun dengan sandi 5 atau 6 karakter tetap bisa masuk sampai
+# sandinya diganti; saat itulah aturan baru berlaku.
+#
+# CATATAN TERBUKA, sengaja dipertahankan: BATAS ATAS tetap melemahkan sandi,
+# bukan menguatkannya - sekarang 11, sebelumnya 10. bcrypt menerima sampai
+# 72 byte, jadi tidak ada alasan teknis untuk memotong di sini; satu-satunya
+# akibatnya adalah frasa-sandi panjang yang mudah diingat menjadi tidak
 # mungkin. Kalau batas itu berasal dari sistem lain yang menyimpan sandi yang
-# sama, catat sistemnya di sini; kalau tidak, angka ini layak dinaikkan.
+# sama, catat sistemnya di sini; kalau tidak, angka ini masih layak dinaikkan.
 # Empat konstanta di bawah adalah satu-satunya tempat yang perlu diubah.
-_SANDI_MIN = 5           # "lebih dari 4 karakter"
-_SANDI_MAKS = 10
+_SANDI_MIN = 7           # "lebih dari 6 karakter"
+_SANDI_MAKS = 11         # "kurang dari 12 karakter"
 # Spasi TIDAK dihitung sebagai karakter khusus - meski tetap boleh dipakai
 # di dalam sandi. "abc d" akan lolos kalau spasi ikut dihitung, dan itu jelas
 # bukan yang dimaksud "termasuk karakter khusus". Hapus \s di bawah kalau
