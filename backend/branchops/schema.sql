@@ -258,7 +258,13 @@ CREATE TABLE IF NOT EXISTS branchops_tbo (
     ada_tbo           BOOLEAN NOT NULL DEFAULT TRUE,
     -- pelacakan TBO, diisi lewat aplikasi bukan dari Excel
     status_tbo        VARCHAR(16) NOT NULL DEFAULT 'Outstanding'
-                      CHECK (status_tbo IN ('Outstanding','Lengkap','Dikecualikan')),
+                      -- 'Tidak ada TBO' menggantikan 'Dikecualikan'
+                      -- 16 Agu 2026 (aturan 27). Baris lama dipindahkan
+                      -- oleh blok 'status_tbo_baku_migrasi' di bawah,
+                      -- yang juga membongkar dan memasang ulang CHECK
+                      -- ini - definisi di sini hanya berlaku untuk basis
+                      -- data yang masih kosong.
+                      CHECK (status_tbo IN ('Outstanding','Lengkap','Tidak ada TBO')),
     tgl_tbo_lengkap   DATE,
     tbo_updated_by    VARCHAR(255),
     tbo_updated_at    TIMESTAMPTZ,
@@ -374,7 +380,23 @@ INSERT INTO branchops_ref_values (kategori, nilai, urutan) VALUES
  ('jenis_penarikan','Transfer',2),
  ('jenis_penarikan','Pemindah-bukuan',3),
  ('jenis_rekening','Perorangan',1),
- ('jenis_rekening','Perusahaan (Non Perorangan)',2),
+ -- Ejaan diubah 16 Agu 2026, keputusan pemilik. Baris lama dihapus dan
+ -- 84 baris data ikut dipindahkan oleh blok 'jenis_rekening_baku_migrasi'
+ -- di bawah. Benih ini hanya berlaku untuk basis data yang masih kosong.
+ ('jenis_rekening','Non Perorangan (Perusahaan)',2),
+ -- jenis_setoran (branchops_tbo) belum pernah punya benih sampai 16 Agu
+ -- 2026. Daftarnya kini sama persis dengan jenis_penarikan di atas -
+ -- lihat catatan pembalikan keputusan di blok migrasi ejaan.
+ ('jenis_setoran','Tunai',1),
+ ('jenis_setoran','Transfer',2),
+ ('jenis_setoran','Pemindah-bukuan',3),
+ -- LIMA nilai, dan itu memang lebih banyak daripada TIGA yang ditawarkan
+ -- kotak pilihan di layar Ubah TBO. Bukan kelalaian: jenis_produk tidak
+ -- pernah diketik orang, melainkan DITURUNKAN parse_tbo dari kolom
+ -- Keterangan lewat _PRODUK di ingest.py, dan _PRODUK masih bisa
+ -- menghasilkan kelimanya. Daftar layar dipersempit atas keputusan
+ -- pemilik 16 Agu 2026; daftar di sini tetap menggambarkan apa yang
+ -- betul-betul bisa masuk. Lihat aturan 26 di CLAUDE.md.
  ('jenis_produk','Deposito',1),
  ('jenis_produk','Deposito On Call',2),
  ('jenis_produk','Giro',3),
@@ -452,9 +474,13 @@ DO $pc_status$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
                   WHERE conname = 'ck_bo_pencairan_status_tbo') THEN
+    -- 'Tidak ada TBO' sejak 16 Agu 2026, lihat aturan 27. Basis data
+    -- yang sudah punya CHECK versi lama TIDAK lewat sini - blok
+    -- 'status_tbo_baku_migrasi' di bawah yang membongkar dan memasang
+    -- ulang keduanya.
     ALTER TABLE branchops_pencairan
       ADD CONSTRAINT ck_bo_pencairan_status_tbo
-      CHECK (status_tbo IN ('Outstanding', 'Lengkap', 'Dikecualikan'));
+      CHECK (status_tbo IN ('Outstanding', 'Lengkap', 'Tidak ada TBO'));
   END IF;
 END
 $pc_status$;
@@ -462,11 +488,109 @@ $pc_status$;
 CREATE INDEX IF NOT EXISTS ix_bo_pc_target ON branchops_pencairan (target_pemenuhan_tbo);
 CREATE INDEX IF NOT EXISTS ix_bo_pc_status ON branchops_pencairan (status_tbo);
 
+-- =====================================================================
+--  MIGRASI 16 Agu 2026 - 'Dikecualikan' menjadi 'Tidak ada TBO'
+-- =====================================================================
+--  Keputusan pemilik. Istilah 'Dikecualikan' tidak memberi tahu APA yang
+--  dikecualikan; 'Tidak ada TBO' menyatakan keadaannya langsung.
+--
+--  KENA DUA TABEL, dan itu bukan pilihan melainkan keharusan:
+--  branchops_tbo DAN branchops_pencairan memakai kolom status_tbo yang
+--  sama dengan tiga nilai yang sama, dan _STATUS_BERANDA di analytics.py
+--  adalah SATU penyaring yang dipasang ke KEDUA lengan UNION di Beranda.
+--  Memindahkan satu tabel saja membuat kotak pilihan "Status TBO" di
+--  Beranda cocok dengan baris TBO tetapi tidak dengan baris Pencairan -
+--  tanpa galat, hanya baris yang hilang dari daftar.
+--
+--  KENAPA INI LEBIH AMAN daripada rename jenis_pencairan pada 15 Agu:
+--  tidak ada satu pun KPI, grafik, atau rekonsiliasi yang menyaring pada
+--  'Dikecualikan'. Semuanya menyaring pada 'Outstanding', yang tidak
+--  berubah. Satu-satunya pembanding fungsional adalah _STATUS_BERANDA.
+--
+--  YANG MEMBUATNYA TETAP HARUS HATI-HATI: ada DUA CHECK constraint yang
+--  masih memuat daftar lama. UPDATE akan DITOLAK selama keduanya masih
+--  terpasang, jadi urutannya mengikat - buang CHECK, baru UPDATE, baru
+--  pasang lagi. Membalik urutannya bukan menghasilkan data yang salah,
+--  melainkan migrasi yang gagal di tengah.
+--
+--  Nama constraint-nya DICARI, bukan ditulis tetap. Yang di
+--  branchops_tbo bernama otomatis ('branchops_tbo_status_tbo_check',
+--  karena CHECK-nya menyatu di CREATE TABLE) sedangkan yang di
+--  branchops_pencairan diberi nama sendiri. Mencarinya lewat definisi
+--  membuat blok ini tetap benar walau basis data lain menamainya lain.
+--
+--  VARCHAR(16) - 'Tidak ada TBO' 13 karakter, muat. Kalau suatu saat
+--  istilahnya diganti lagi dengan yang lebih panjang, kolomnya harus
+--  ikut dilebarkan lebih dulu.
+DO $status_tbo_baku$
+DECLARE r RECORD;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM branchops_settings
+                 WHERE kunci = 'status_tbo_baku_migrasi') THEN
+
+    -- 1. Buang SEMUA CHECK yang masih menyebut ejaan lama, di tabel mana
+    --    pun. Tanpa langkah ini UPDATE di bawah ditolak constraint.
+    FOR r IN SELECT conrelid::regclass AS tabel, conname
+               FROM pg_constraint
+              WHERE contype = 'c'
+                AND pg_get_constraintdef(oid) LIKE '%Dikecualikan%'
+    LOOP
+      EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', r.tabel, r.conname);
+      RAISE NOTICE 'CHECK lama dibuang: %.%', r.tabel, r.conname;
+    END LOOP;
+
+    -- 2. Pindahkan datanya, kedua tabel.
+    IF to_regclass('public.branchops_tbo') IS NOT NULL THEN
+      UPDATE branchops_tbo
+         SET status_tbo = 'Tidak ada TBO'
+       WHERE status_tbo = 'Dikecualikan';
+    END IF;
+    IF to_regclass('public.branchops_pencairan') IS NOT NULL THEN
+      UPDATE branchops_pencairan
+         SET status_tbo = 'Tidak ada TBO'
+       WHERE status_tbo = 'Dikecualikan';
+    END IF;
+
+    -- 3. Pasang lagi CHECK-nya dengan daftar baru. Nama yang dipakai
+    --    SAMA PERSIS dengan nama otomatis PostgreSQL untuk yang di
+    --    branchops_tbo, supaya basis data hasil migrasi dan basis data
+    --    yang dibuat dari nol berakhir dengan nama constraint identik.
+    IF to_regclass('public.branchops_tbo') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM pg_constraint
+                        WHERE conname = 'branchops_tbo_status_tbo_check') THEN
+      ALTER TABLE branchops_tbo
+        ADD CONSTRAINT branchops_tbo_status_tbo_check
+        CHECK (status_tbo IN ('Outstanding','Lengkap','Tidak ada TBO'));
+    END IF;
+    IF to_regclass('public.branchops_pencairan') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_bo_pencairan_status_tbo') THEN
+      ALTER TABLE branchops_pencairan
+        ADD CONSTRAINT ck_bo_pencairan_status_tbo
+        CHECK (status_tbo IN ('Outstanding','Lengkap','Tidak ada TBO'));
+    END IF;
+
+    INSERT INTO branchops_settings (kunci, nilai, deskripsi) VALUES
+     ('status_tbo_baku_migrasi', '1',
+      'Penanda bahwa status_tbo pada branchops_tbo dan branchops_pencairan '
+      'sudah dipindahkan dari Dikecualikan ke Tidak ada TBO, 16 Agu 2026, '
+      'berikut kedua CHECK constraint-nya. JANGAN dihapus - menghapusnya '
+      'membuat blok ini membongkar-pasang constraint setiap aplikasi start.')
+    ON CONFLICT (kunci) DO NOTHING;
+  END IF;
+END
+$status_tbo_baku$;
+
 -- SEKALI SAJA: baris lama semuanya dapat 'Outstanding' dari DEFAULT di
 -- atas, termasuk baris yang tidak punya Data TBO sama sekali. Baris itu
--- seharusnya 'Dikecualikan' - kalau dibiarkan, laporan "TBO pencairan
+-- seharusnya 'Tidak ada TBO' - kalau dibiarkan, laporan "TBO pencairan
 -- yang masih terbuka" akan menghitung ribuan baris yang memang tidak
 -- pernah punya TBO.
+--
+-- Nilainya dulu 'Dikecualikan'; berganti 16 Agu 2026, aturan 27. Kalau
+-- basis data ini sudah pernah menjalankan blok tersebut, penjaganya
+-- sudah terpasang dan blok ini dilewati - jadi nilai baru di bawah hanya
+-- berlaku untuk basis data yang belum pernah dimigrasikan sama sekali.
 --
 -- Penjaga di branchops_settings WAJIB ada. Tanpa itu blok ini jalan lagi
 -- setiap aplikasi start, dan keputusan editor yang mengubah status
@@ -477,7 +601,7 @@ BEGIN
                   WHERE kunci = 'pencairan_status_tbo_migrasi') THEN
 
     UPDATE branchops_pencairan
-       SET status_tbo = 'Dikecualikan'
+       SET status_tbo = 'Tidak ada TBO'
      WHERE data_tbo IS NULL
         OR btrim(data_tbo) = ''
         -- Aturan yang SAMA dengan _TIDAK_ADA di ingest.py. Kalau salah
@@ -514,6 +638,16 @@ $pc_backfill$;
 --  mengikuti ejaan yang sudah ada di datanya. Kedua kolom ada di tabel
 --  berbeda dan tidak pernah dibandingkan kode mana pun.
 --
+--  ^^^ KEPUTUSAN ITU DIBALIK 16 Agu 2026. Alinea di atas dibiarkan supaya
+--  jelas apa yang berubah. jenis_setoran pada branchops_tbo kini memakai
+--  'Pemindah-bukuan' juga, jadi kedua tabel akhirnya mengeja sama.
+--  Membaliknya gratis karena dihitung dari cadangan 15 Agu, NOL baris
+--  branchops_tbo memakai ejaan mana pun - isinya 117 'Transfer', 2
+--  'Tunai', 26 kosong, sisanya nilai kolom sebelah. Jadi tidak ada UPDATE
+--  yang perlu dijalankan untuk kolom ini; yang berubah hanya daftar
+--  pilihan di layar, benih ref_values, dropdown template Excel dan
+--  _SERAGAM di ingest.py.
+--
 --  Penjaga 'ejaan_baku_migrasi' WAJIB ada. Tanpa itu blok ini jalan lagi
 --  setiap aplikasi start - tidak merusak apa-apa hari ini, tetapi menjadi
 --  perintah UPDATE tanpa alasan pada setiap restart, dan menyulitkan
@@ -545,6 +679,71 @@ BEGIN
   END IF;
 END
 $ejaan_baku$;
+
+-- =====================================================================
+--  MIGRASI 16 Agu 2026 - ejaan baku jenis_rekening pada branchops_tbo
+-- =====================================================================
+--  'Perusahaan (Non Perorangan)'  ->  'Non Perorangan (Perusahaan)'
+--
+--  Urutan katanya dibalik atas keputusan pemilik 16 Agu 2026, bersamaan
+--  dengan dipasangnya kotak pilihan di layar Ubah TBO (aturan 26).
+--  Terhitung 84 baris dari 176 pada cadangan 15 Agu.
+--
+--  KENAPA nilainya ikut dipindahkan, bukan sekadar labelnya diperhalus:
+--  optJaga() di branchops.html memang bisa menampilkan label berbeda dari
+--  nilai tersimpan, dan itu pilihan yang ditawarkan. Pemilik memilih
+--  memindahkan nilainya supaya kolom ini benar-benar hanya punya satu
+--  ejaan di basis data - itulah tujuan seluruh perubahan ini.
+--
+--  KONSEKUENSINYA, dan ini yang membuat blok ini tidak berdiri sendiri:
+--  begitu nilai tersimpan berubah, berkas Excel LAMA yang masih memuat
+--  ejaan lama akan memasukkannya kembali pada unggahan berikutnya. Karena
+--  itu _SERAGAM di ingest.py mendapat pemetaannya, DAN parse_tbo kini
+--  benar-benar memanggil seragam() untuk kolom ini - sebelum 16 Agu 2026
+--  ia tidak memanggilnya sama sekali, sehingga pemetaan apa pun tidak
+--  akan berpengaruh. Pelajaran yang sama dengan aturan 24.
+--
+--  Berbeda dengan jenis_pencairan pada migrasi 15 Agu, TIDAK ADA
+--  penyaring, KPI, grafik atau rekonsiliasi yang menyaring persis pada
+--  string ini - jenis_rekening hanya ditampilkan dan dikelompokkan
+--  apa adanya (aggGroups di branchops.html). Jadi baris yang tertinggal
+--  pada ejaan lama akan terlihat sebagai kelompok terpisah, bukan hilang
+--  diam-diam. Tetap dimigrasikan supaya laporannya tidak terbelah dua.
+--
+--  34 baris yang jenis_rekening-nya berisi 'Transfer' atau 'Deposito'
+--  SENGAJA TIDAK disentuh blok ini. Itu bukan salah ejaan, melainkan
+--  nilai kolom sebelah yang masuk karena berkas unggahannya bergeser satu
+--  kolom (batch 26 dan 62, aturan 8). Menebak isi yang benar dari sini
+--  berarti mengarang data; perbaikannya adalah mengunggah ulang berkas
+--  yang benar, dan sampai itu terjadi nilai lamanya tetap terlihat.
+--
+--  Penjaga 'jenis_rekening_baku_migrasi' WAJIB ada, alasan sama seperti
+--  blok di atas: tanpa itu UPDATE ini berjalan lagi setiap aplikasi start.
+
+DO $jenis_rekening_baku$
+BEGIN
+  IF to_regclass('public.branchops_tbo') IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM branchops_settings
+                     WHERE kunci = 'jenis_rekening_baku_migrasi') THEN
+
+    UPDATE branchops_tbo
+       SET jenis_rekening = 'Non Perorangan (Perusahaan)'
+     WHERE jenis_rekening = 'Perusahaan (Non Perorangan)';
+
+    DELETE FROM branchops_ref_values
+     WHERE kategori = 'jenis_rekening'
+       AND nilai    = 'Perusahaan (Non Perorangan)';
+
+    INSERT INTO branchops_settings (kunci, nilai, deskripsi) VALUES
+     ('jenis_rekening_baku_migrasi', '1',
+      'Penanda bahwa jenis_rekening pada branchops_tbo sudah dipindahkan '
+      'ke ejaan baku 16 Agu 2026 (Non Perorangan (Perusahaan)). JANGAN '
+      'dihapus - menghapusnya membuat UPDATE ini berjalan lagi setiap '
+      'aplikasi start.')
+    ON CONFLICT (kunci) DO NOTHING;
+  END IF;
+END
+$jenis_rekening_baku$;
 
 -- Sumber dana asal dan tujuan transfer (15 Agu 2026), diisi lewat layar
 -- Ubah di menu Pencairan - bukan dari Excel. Berkas unggahan TIDAK berubah,

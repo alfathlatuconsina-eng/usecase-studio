@@ -266,6 +266,47 @@ $PSQL -c "
                             WHERE b.branch_code = ANY(u.branch_codes))))
    ORDER BY email;"
 
+# =====================================================================
+#  RETENSI CADANGAN - ditambahkan 16 Agu 2026
+# =====================================================================
+#  Ini perbaikan SEBAB, bukan gejala. Langkah 1/7 di atas menulis
+#  ~26 MB pmo-sebelum-push-*.sql dan ~3,5 MB bo-vps-sebelum-push-*.sql
+#  ke /root setiap kali skrip ini berjalan, dan sampai hari ini TIDAK
+#  ADA satu baris pun yang pernah menghapusnya. Lima percobaan dalam
+#  satu malam pada 8 Agu 2026 meninggalkan ~150 MB pada disk yang
+#  ukurannya hanya 8,7 GB - dan disk itu memang sudah pernah penuh
+#  100%. CLAUDE.md mencatat perbaikan yang benar, "having the script
+#  keep only the two most recent", sebagai belum dikerjakan. Ini
+#  pekerjaan itu.
+#
+#  DUA terbaru per keluarga, bukan satu. Satu berarti push yang gagal
+#  langsung menimpa satu-satunya titik mundur yang Anda punya; dua
+#  berarti masih tersisa cadangan dari push SEBELUM yang bermasalah.
+#
+#  LETAKNYA DI PALING AKHIR, dan itu disengaja: pemangkasan hanya
+#  boleh terjadi setelah layanan terbukti hidup lagi di langkah 7/7.
+#  Menaruhnya di awal berarti menghapus cadangan lama demi memberi
+#  tempat pada push yang mungkin justru gagal - persis saat cadangan
+#  itu paling dibutuhkan.
+#
+#  || true di mana-mana: gagal memangkas cadangan bukan alasan untuk
+#  melaporkan push yang sudah berhasil sebagai gagal.
+SIMPAN_CADANGAN=2
+echo
+echo "== Memangkas cadangan lama di ~ (menyimpan $SIMPAN_CADANGAN terbaru per keluarga) =="
+for pola in pmo-sebelum-push bo-vps-sebelum-push; do
+  lama=$(ls -1t ~/${pola}-*.sql 2>/dev/null | tail -n +$((SIMPAN_CADANGAN+1)) || true)
+  if [ -n "$lama" ]; then
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      echo "  hapus   $(du -h "$f" 2>/dev/null | cut -f1)  $f"
+      rm -f -- "$f" || true
+    done <<< "$lama"
+  fi
+  ls -1t ~/${pola}-*.sql 2>/dev/null | head -$SIMPAN_CADANGAN | sed 's/^/  simpan  /' || true
+done
+echo "  sisa ruang sekarang: $(df -h / | tail -1 | awk '{print $4}')"
+
 echo
 echo "SELESAI. Cadangan:"
 echo "  ~/pmo-sebelum-push-$STAMP.sql        (seluruh basis data)"

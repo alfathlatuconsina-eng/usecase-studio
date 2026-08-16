@@ -118,13 +118,38 @@ _TBO_EDITABLE = {
     "tgl_tbo_lengkap":      _tgl,
     "nominal":              _angka,
     "mata_uang":            lambda v: _teks_opsional(v, 8),
+    # Ketiganya mendapat KOTAK PILIHAN di layar pada 16 Agu 2026, tetapi di
+    # sini SENGAJA tetap teks bebas, bukan _pilihan_opsional. Alasannya
+    # konkret, bukan kemalasan:
+    #
+    #   34 dari 176 baris branchops_tbo memuat nilai di luar daftar mana pun
+    #   - 'Transfer' dan 'Deposito' pada jenis_rekening, teks dokumen pada
+    #   jenis_setoran - karena berkas unggahannya bergeser satu kolom (batch
+    #   26 dan 62). optJaga() di layar mempertahankan nilai itu dan
+    #   mengirimkannya kembali apa adanya, persis supaya menyimpan tidak
+    #   menimpanya diam-diam. Kalau di sini dipasang daftar putih, setiap
+    #   penyuntingan apa pun pada baris tersebut - sekadar membetulkan satu
+    #   tanggal - akan ditolak 400 sampai seseorang mengganti kolom yang
+    #   sebenarnya tidak sedang ia urus. Itu terbaca sebagai aplikasi rusak,
+    #   bukan sebagai aturan.
+    #
+    # Preseden yang sama sudah dipakai 15 Agu untuk jenis_pencairan dan
+    # jenis_penarikan di _PENCAIRAN_EDITABLE: kotak pilihan di layar, teks
+    # bebas di API. Yang menegakkan keseragaman adalah parser (_SERAGAM,
+    # yang berlaku pada SEMUA baris yang masuk) dan kotak pilihan, bukan
+    # penolakan di sini.
+    #
+    # Kalau suatu saat 34 baris itu sudah dibereskan dan daftar putih memang
+    # diinginkan, pakai _pilihan_opsional dan periksa dulu tidak ada lagi
+    # nilai di luar daftar - kalau tidak, sebagian baris menjadi tidak bisa
+    # disunting sama sekali.
     "jenis_rekening":       lambda v: _teks_opsional(v, 60),
     "jenis_setoran":        lambda v: _teks_opsional(v, 60),
     "jenis_produk":         lambda v: _teks_opsional(v, 60),
     "tipe_pembukaan":       lambda v: _pilihan(v, ("Baru", "Penempatan Kembali")),
     "dokumen_tbo":          lambda v: _teks_opsional(v, 4000),
     "ada_tbo":              _bool,
-    "status_tbo":           lambda v: _pilihan(v, ("Outstanding", "Lengkap", "Dikecualikan")),
+    "status_tbo":           lambda v: _pilihan(v, ("Outstanding", "Lengkap", "Tidak ada TBO")),
     "nip_maker":            lambda v: _teks_opsional(v, 20),
     "nip_checker":          lambda v: _teks_opsional(v, 20),
     "nip_approver":         lambda v: _teks_opsional(v, 20),
@@ -166,7 +191,7 @@ _PENCAIRAN_EDITABLE = {
     "data_tbo":             lambda v: _teks_opsional(v, 4000),
     "target_pemenuhan_tbo": _tgl,
     "tgl_tbo_lengkap":      _tgl,
-    "status_tbo":           lambda v: _pilihan(v, ("Outstanding", "Lengkap", "Dikecualikan")),
+    "status_tbo":           lambda v: _pilihan(v, ("Outstanding", "Lengkap", "Tidak ada TBO")),
     "arus_dana":            lambda v: _pilihan(v, ("Arus Keluar", "Rollover / DOC",
                                                    "Penempatan Kembali")),
     "nip_maker":            lambda v: _teks_opsional(v, 20),
@@ -671,7 +696,7 @@ def create_blueprint(require):
     def tbo(tid):
         body = request.get_json(silent=True) or {}
         status = body.get("status_tbo")
-        if status not in ("Outstanding", "Lengkap", "Dikecualikan"):
+        if status not in ("Outstanding", "Lengkap", "Tidak ada TBO"):
             return jsonify(error="Status TBO tidak dikenal"), 400
         tgl = body.get("tgl_tbo_lengkap") or (datetime.date.today().isoformat()
                                               if status == "Lengkap" else None)

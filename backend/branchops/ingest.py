@@ -78,6 +78,24 @@ def as_time(v):
 # berkas Pencairan; jenis SETORAN pada berkas TBO sengaja TIDAK ikut, lihat
 # catatan di deploy/buat-template-unggah.py).
 #
+# DIPERLUAS 16 Agu 2026, dua kolom berkas TBO ikut masuk:
+#   jenis_rekening : "Perusahaan (Non Perorangan)" -> "Non Perorangan
+#                    (Perusahaan)". Urutan katanya dibalik atas keputusan
+#                    pemilik, dan 84 baris lama dipindahkan oleh blok
+#                    'jenis_rekening_baku_migrasi' di schema.sql.
+#   jenis_setoran  : "Pemindahbukuan" -> "Pemindah-bukuan". Ini MEMBALIK
+#                    keputusan 15 Agu yang tercatat di alinea atas.
+#                    Membaliknya gratis: nol baris memakai ejaan mana pun.
+#                    Sekalian huruf kecil "transfer" dan "tunai" dirapikan,
+#                    karena 3 baris memang tersimpan sebagai "transfer".
+#
+# PENTING, dan ini yang membuat blok di atas sempat tidak berguna untuk TBO:
+# pemetaan di sini hanya berlaku kalau parser BENAR-BENAR memanggil
+# seragam(). Sampai 16 Agu 2026 parse_tbo tidak memanggilnya sama sekali,
+# jadi entri apa pun untuk kedua kolom TBO tidak akan berpengaruh. Kalau
+# nanti ada kategori baru ditambahkan di sini, periksa dulu bahwa parser
+# yang bersangkutan memanggilnya.
+#
 # KENAPA DI PARSER, padahal template sudah punya kotak turun:
 # kotak turun hanya ada pada berkas yang dibuat DARI template baru. Salinan
 # template lama masih beredar di cabang, dan berkas yang dikirim minggu
@@ -94,6 +112,11 @@ def as_time(v):
 _SERAGAM = {
     "jenis_pencairan": {"dipercepat dari jatuh tempo": "Dipercepat (Break)"},
     "jenis_penarikan": {"pemindahbukuan": "Pemindah-bukuan"},
+    # --- berkas TBO, 16 Agu 2026 -------------------------------------
+    "jenis_rekening": {"perusahaan (non perorangan)": "Non Perorangan (Perusahaan)"},
+    "jenis_setoran": {"pemindahbukuan": "Pemindah-bukuan",
+                      "transfer": "Transfer",
+                      "tunai": "Tunai"},
 }
 
 
@@ -432,7 +455,7 @@ def parse_pencairan(path, branches: dict, settings: dict) -> ParseResult:
                                         "Target Pemenuhan TBO", str(r[19]), kode))
 
         # Baris tanpa Data TBO tidak pernah "menggantung", jadi langsung
-        # Dikecualikan - sama seperti parse_tbo. Aturan _TIDAK_ADA dipakai
+        # 'Tidak ada TBO' - sama seperti parse_tbo. Aturan _TIDAK_ADA dipakai
         # ulang supaya layar Edit dan laporan sepakat baris mana yang
         # dianggap punya TBO.
         dtbo = clean(r[12])
@@ -457,7 +480,7 @@ def parse_pencairan(path, branches: dict, settings: dict) -> ParseResult:
             "jenis_penarikan": seragam("jenis_penarikan", clean(r[11])),
             "data_tbo": dtbo,
             "target_pemenuhan_tbo": target_pc,
-            "status_tbo": "Outstanding" if ada_tbo_pc else "Dikecualikan",
+            "status_tbo": "Outstanding" if ada_tbo_pc else "Tidak ada TBO",
             "arus_dana": arus, "arus_keyakinan": yakin, "arus_manual": False,
             "nip_maker": clean(r[13]), "nip_checker": clean(r[14]), "nip_approver": clean(r[15]),
             "checker_eq_approver": bool(r[14] is not None and str(r[14]).strip() == str(r[15]).strip()),
@@ -595,11 +618,17 @@ def parse_tbo(path, branches: dict, settings: dict) -> ParseResult:
             "nama_pemilik": clean(r[6]),
             "tgl_penempatan": tgl_tempat, "tgl_jatuh_tempo": as_date(r[8]),
             "nominal": nominal, "mata_uang": mata,
-            "jenis_rekening": clean(r[11]), "jenis_setoran": clean(r[12]),
+            # seragam() ditambahkan 16 Agu 2026. Sebelumnya kedua kolom ini
+            # masuk apa adanya, jadi berkas lama tetap bisa memasukkan ejaan
+            # lama walaupun _SERAGAM sudah memuat pemetaannya.
+            "jenis_rekening": seragam("jenis_rekening", clean(r[11])),
+            "jenis_setoran": seragam("jenis_setoran", clean(r[12])),
             "jenis_produk": produk, "tipe_pembukaan": tipe,
             "dokumen_tbo": dok, "ada_tbo": ada_tbo,
-            # status TBO selalu mulai Outstanding; dilengkapi lewat aplikasi
-            "status_tbo": "Outstanding" if ada_tbo else "Dikecualikan",
+            # status TBO mulai Outstanding kalau ada dokumennya, kalau tidak
+            # langsung 'Tidak ada TBO' (dulu 'Dikecualikan', diganti
+            # 16 Agu 2026 - aturan 27). Dilengkapi lewat aplikasi.
+            "status_tbo": "Outstanding" if ada_tbo else "Tidak ada TBO",
             "target_pemenuhan_tbo": target,
             "nip_maker": clean(r[14]), "nip_checker": clean(r[15]), "nip_approver": clean(r[16]),
             "keterangan": ket or None,

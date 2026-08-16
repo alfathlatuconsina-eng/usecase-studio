@@ -612,6 +612,45 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const N   = v => v == null ? null : Number(v);
 const tgl = s => s ? String(s).slice(0, 10) : "—";
 
+/* ---------- kotak pilihan yang TIDAK MENGHILANGKAN nilai yang ada -------
+   Dipakai layar Ubah Pencairan (pcEdit) DAN layar Ubah TBO (tboEdit).
+
+   DIPINDAHKAN ke sini 16 Agu 2026. Sebelumnya fungsi ini hidup di dalam
+   pcEdit, jadi tboEdit tidak bisa menjangkaunya. Menyalinnya adalah
+   godaan yang harus ditolak: salinan yang tidak pernah ikut disunting
+   justru yang lebih dulu berbeda perilaku - alasan yang sama dengan
+   "jangan menyalin dialog unggah per menu" (aturan 15).
+
+   Dua alasan bentuknya seperti ini, keduanya dari data nyata:
+
+   1. LABEL boleh berbeda dari NILAI. Sejak 15 Agu 2026 keduanya kebetulan
+      SAMA untuk jenis pencairan: ejaan baku diseragamkan jadi "Dipercepat
+      (Break)" di parser, di baris lama, dan di semua penyaring. Kemampuan
+      memisahkan label dari nilai tetap dipertahankan - begitu ada kolom
+      yang labelnya ingin diperhalus sementara nilainya dipakai query,
+      inilah tempatnya. Mengubah nilai tersimpan tanpa ikut mengubah
+      seluruh penyaringnya membuat baris berhenti terhitung, tanpa galat.
+   2. Nilai di luar daftar DIPERTAHANKAN sebagai pilihan tambahan, dan itu
+      bukan kehati-hatian teoretis. Dihitung 16 Agu 2026 dari cadangan
+      terakhir: 34 dari 176 baris branchops_tbo memuat nilai kolom
+      SEBELAHNYA pada jenis_rekening / jenis_setoran - berkas unggahannya
+      bergeser satu kolom, terkumpul di batch 26 dan 62 - dan 9 baris
+      pencairan masih memegang "Pemindahbukuan". Tanpa penjagaan ini,
+      membuka dialog pada baris seperti itu menampilkan opsi pertama, dan
+      satu tekan Simpan menimpanya diam-diam. Itu suntingan merusak yang
+      tidak pernah diputuskan siapa pun.
+
+   Kalau nilainya kosong, opsi kosong ditaruh paling depan supaya
+   menyimpan tidak mengarang nilai yang tidak pernah dipilih siapa pun. */
+const optJaga = (pasangan, kini) => {
+  const kosong = kini == null || kini === "";
+  let semua = pasangan.slice();
+  if (kosong) semua = [["", "— belum diisi —"]].concat(semua);
+  else if (!semua.some(([v]) => v === kini)) semua = semua.concat([[kini, kini]]);
+  return semua.map(([v, l]) =>
+    `<option value="${esc(v)}"${v === kini ? " selected" : ""}>${esc(l)}</option>`).join("");
+};
+
 /* ---------- tanggal penyaring: tampil dd/mm/yyyy, dikirim yyyy-mm-dd ----
    KENAPA kotaknya input teks dan bukan <input type="date">:
    format tampilan input date ditentukan BAHASA ANTARMUKA BROWSER dan
@@ -1199,31 +1238,8 @@ window.pcEdit = async (id, sesudah) => {
   const ro = v => `<div class="ed-ro">${esc(v == null || v === "" ? "—" : v)}</div>`;
   const opt = (nilai, kini) => nilai.map(v =>
     `<option value="${esc(v)}"${v === kini ? " selected" : ""}>${esc(v)}</option>`).join("");
-  /* Kotak pilihan yang TIDAK MENGHILANGKAN nilai yang sudah ada.
-     Dua alasan, keduanya dari data nyata:
-
-     1. LABEL boleh berbeda dari NILAI. Sejak 15 Agu 2026 keduanya kebetulan
-        SAMA untuk jenis pencairan: ejaan baku diseragamkan jadi "Dipercepat
-        (Break)" di parser, di baris lama, dan di semua penyaring. Kemampuan
-        memisahkan label dari nilai tetap dipertahankan - begitu ada kolom
-        yang labelnya ingin diperhalus sementara nilainya dipakai query,
-        inilah tempatnya. Mengubah nilai tersimpan tanpa ikut mengubah
-        seluruh penyaringnya membuat baris berhenti terhitung, tanpa galat.
-     2. Nilai di luar daftar DIPERTAHANKAN sebagai pilihan tambahan. Data
-        yang ada memuat "Pemindahbukuan" pada jenis penarikan; tanpa ini,
-        membuka dialog pada baris tersebut menampilkan opsi pertama dan
-        menekan Simpan menimpanya diam-diam.
-
-     Kalau nilainya kosong, opsi kosong ditaruh paling depan supaya
-     menyimpan tidak mengarang nilai yang tidak pernah dipilih siapa pun. */
-  const optJaga = (pasangan, kini) => {
-    const kosong = kini == null || kini === "";
-    let semua = pasangan.slice();
-    if (kosong) semua = [["", "— belum diisi —"]].concat(semua);
-    else if (!semua.some(([v]) => v === kini)) semua = semua.concat([[kini, kini]]);
-    return semua.map(([v, l]) =>
-      `<option value="${esc(v)}"${v === kini ? " selected" : ""}>${esc(l)}</option>`).join("");
-  };
+  /* optJaga() kini berada di lingkup modul, dipakai bersama tboEdit.
+     Lihat penjelasan lengkapnya di sana. */
 
   const bg = document.createElement("div");
   bg.className = "ed-bg";
@@ -1265,7 +1281,7 @@ window.pcEdit = async (id, sesudah) => {
           <div class="ed-ro" id="pcLate">—</div></div>
 
         <div class="ed-f"><label>Status TBO</label>
-          <select id="pcStatus">${opt(["Outstanding","Lengkap","Dikecualikan"], r.status_tbo)}</select></div>
+          <select id="pcStatus">${opt(["Outstanding","Lengkap","Tidak ada TBO"], r.status_tbo)}</select></div>
         <div class="ed-f"><label>Tanggal TBO lengkap</label>
           <input type="date" id="pcLengkap" value="${d(r.tgl_tbo_lengkap)}"></div>
 
@@ -1603,7 +1619,7 @@ function renderTBO() {
     ? notes.map(n => `<div class="qrow"><span class="qn">${esc(n)}</span></div>`).join("")
     : '<div class="muted" style="padding:8px 0">Tidak ada temuan menonjol pada filter ini.</div>';
 
-  const ST = {"Outstanding":"t-bad","Lengkap":"t-ok","Dikecualikan":"t-grey"};
+  const ST = {"Outstanding":"t-bad","Lengkap":"t-ok","Tidak ada TBO":"t-grey"};
 
   /* Nomor rekening dibandingkan setelah tanda bacanya dibuang, supaya
      "300-010-002" tetap cocok dengan "300010002". */
@@ -1784,7 +1800,7 @@ window.tboEdit = async (id, sesudah) => {
         <div class="ed-f"><label>Tanggal jatuh tempo</label>
           <input type="date" id="edJT" value="${d(r.tgl_jatuh_tempo)}"></div>
         <div class="ed-f"><label>Status TBO</label>
-          <select id="edStatus">${opt(["Outstanding","Lengkap","Dikecualikan"], r.status_tbo)}</select></div>
+          <select id="edStatus">${opt(["Outstanding","Lengkap","Tidak ada TBO"], r.status_tbo)}</select></div>
 
         <div class="ed-f"><label>Tanggal TBO lengkap</label>
           <input type="date" id="edLengkap" value="${d(r.tgl_tbo_lengkap)}"></div>
@@ -1796,13 +1812,35 @@ window.tboEdit = async (id, sesudah) => {
         <div class="ed-f"><label>Mata uang</label>
           <input type="text" id="edMata" value="${esc(r.mata_uang || "")}" maxlength="8"></div>
 
+        <!-- Ketiganya jadi kotak pilihan 16 Agu 2026 (permintaan pemilik),
+             supaya nilainya seragam di basis data. Lewat optJaga, BUKAN
+             opt(): baris lama yang nilainya di luar daftar harus tetap
+             terpilih apa adanya, kalau tidak satu tekan Simpan pada baris
+             yang tidak diapa-apakan akan menimpanya. Itu bukan kasus
+             hipotetis - 34 dari 176 baris memang begitu, lihat catatan di
+             atas optJaga. -->
         <div class="ed-f"><label>Jenis rekening</label>
-          <input type="text" id="edJRek" value="${esc(r.jenis_rekening || "")}" maxlength="60"></div>
+          <select id="edJRek">${optJaga([
+            ["Perorangan", "Perorangan"],
+            ["Non Perorangan (Perusahaan)", "Non Perorangan (Perusahaan)"]],
+            r.jenis_rekening)}</select></div>
         <div class="ed-f"><label>Jenis setoran</label>
-          <input type="text" id="edJSet" value="${esc(r.jenis_setoran || "")}" maxlength="60"></div>
+          <select id="edJSet">${optJaga([
+            ["Tunai", "Tunai"], ["Transfer", "Transfer"],
+            ["Pemindah-bukuan", "Pemindah-bukuan"]], r.jenis_setoran)}</select></div>
 
+        <!-- Jenis produk TIDAK diketik siapa pun dan tidak ada kolomnya di
+             berkas Excel: parse_tbo menurunkannya dari kolom Keterangan
+             lewat _PRODUK di ingest.py, yang masih bisa menghasilkan
+             "Deposito On Call" dan "Bundling". Daftar tiga ini adalah
+             keputusan pemilik 16 Agu 2026 dan sengaja lebih sempit
+             daripada yang bisa dihasilkan parser - kedua nilai itu tetap
+             muncul sebagai pilihan tambahan pada baris yang memilikinya.
+             Lihat aturan 26 di CLAUDE.md. -->
         <div class="ed-f"><label>Jenis produk</label>
-          <input type="text" id="edProduk" value="${esc(r.jenis_produk || "")}" maxlength="60"></div>
+          <select id="edProduk">${optJaga([
+            ["Tabungan", "Tabungan"], ["Giro", "Giro"],
+            ["Deposito", "Deposito"]], r.jenis_produk)}</select></div>
         <div class="ed-f"><label>Ada dokumen TBO</label>
           <select id="edAda">${opt(["Ya","Tidak"], r.ada_tbo ? "Ya" : "Tidak")}</select></div>
 
@@ -2551,7 +2589,7 @@ async function renderHome(){
   const ST_JUDUL = {
     Outstanding:  "Seluruh TBO yang masih terbuka",
     Lengkap:      "TBO yang sudah lengkap",
-    Dikecualikan: "TBO yang dikecualikan",
+    "Tidak ada TBO": "Baris yang memang tidak punya TBO",
     SEMUA:        "Seluruh TBO, semua status",
   };
   if (sumberTbo.length) {
@@ -2572,7 +2610,7 @@ async function renderHome(){
         : (sumberTbo[0] === "d3"
             ? "Seluruh pembukaan rekening ber-TBO sudah berstatus"
             : "Seluruh pencairan ber-TBO sudah berstatus")}
-      Lengkap atau Dikecualikan.</div>`;
+      Lengkap atau Tidak ada TBO.</div>`;
   }
   /* Spanduk oranye hanya kalau memang ADA yang outstanding. Isinya angka
      tetap - tidak ikut kotak Status TBO. */
@@ -2645,7 +2683,7 @@ async function renderHome(){
           <select id="hmStatus" style="margin-left:6px">
             <option value="Outstanding">Masih terbuka</option>
             <option value="Lengkap">Lengkap</option>
-            <option value="Dikecualikan">Dikecualikan</option>
+            <option value="Tidak ada TBO">Tidak ada TBO</option>
             <option value="SEMUA">Semua</option>
           </select></label>
         <span id="hmCariInfo" class="muted" style="font-size:11.5px"></span>

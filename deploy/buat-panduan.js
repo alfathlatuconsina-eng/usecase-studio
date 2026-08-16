@@ -531,7 +531,7 @@ isi.push(tabel(
   [
     ["TBO outstanding", "Dokumen belum lengkap dan masih dihitung keterlambatannya"],
     ["Lengkap", "Dokumen sudah dipenuhi; keterlambatan berhenti dihitung"],
-    ["Dikecualikan", "Baris yang memang tidak memerlukan dokumen TBO"],
+    ["Tidak ada TBO", "Baris yang memang tidak memerlukan dokumen TBO"],
     ["Target Pemenuhan TBO", "Tanggal batas dokumen harus lengkap"],
     ["Terlambat", "Jumlah hari melewati target. Tanda “—” berarti belum ada target, bukan tepat waktu"],
     ["Aging", "Usia hari sejak data diinput, untuk baris yang masih outstanding"],
@@ -689,7 +689,7 @@ isi.push(H2("7.1 Ubah data TBO"));
 isi.push(teks("Dari menu TBO atau dari daftar di Beranda, klik Ubah pada baris yang bersangkutan."));
 isi.push(teks("Yang umumnya perlu diubah:"));
 isi.push(butir("Target Pemenuhan TBO — tanggal batas dokumen harus lengkap."));
-isi.push(butir("Status TBO — Outstanding, Lengkap, atau Dikecualikan."));
+isi.push(butir("Status TBO — Outstanding, Lengkap, atau Tidak ada TBO."));
 isi.push(butir("Dokumen TBO dan keterangan."));
 isi.push(spasi());
 isi.push(teks(
@@ -770,7 +770,7 @@ isi.push(tabel(
     ["Break deposito", "Pencairan deposito sebelum tanggal jatuh tempo"],
     ["Committed", "Status batch yang sudah aktif dan tampil di dashboard"],
     ["Draft", "Status batch yang sudah terunggah tetapi belum tampil di dashboard"],
-    ["Dikecualikan", "Baris yang memang tidak memerlukan dokumen TBO"],
+    ["Tidak ada TBO", "Baris yang memang tidak memerlukan dokumen TBO"],
     ["Jatah", "Cabang mana saja yang boleh dilihat oleh seorang pengguna"],
     ["Lingkup", "Cakupan sebuah batch: satu cabang tertentu, atau se-bank"],
     ["Outstanding", "Dokumen TBO belum lengkap dan masih dihitung keterlambatannya"],

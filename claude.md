@@ -43,6 +43,84 @@ This is a personal showcase project. It is now FIVE dashboards served by ONE Fla
 - Never point DATABASE\_URL at the VPS during local development.  
 - Note: README.md still says "install Python 3.12". The version I actually run is 3.13 — trust this file, not the README, until the README is updated.
 
+## STATUS 16 Aug 2026 — rule 26 written, NOT committed, NOT deployed.
+
+Supersedes the 15 Aug block below for the git and VPS lines only; that
+block stays because its push write-up is still the reference.
+
+    HEAD           ca250e7 "Branch Ops: sandi 7-11 karakter, penyaring
+                   Status TBO dan Cabang di Beranda, cari no deposito di
+                   Break" — level with origin/main. That is where the
+                   16 Aug work of rules 10 (amended) and 25 landed.
+    origin/main    ca250e7. Level.
+    VPS code       still 7ebb8eb, last VERIFIED 15 Aug. TWO commits
+                   behind: 9eea0f6 (docs) and ca250e7 (code). Neither
+                   touches data, so both go by the code-only route.
+    working tree   rules 26 and 27 UNCOMMITTED, plus the VPS disk
+                   tooling. Ten edited files —
+                   frontend/branchops.html, backend/branchops/schema.sql,
+                   backend/branchops/ingest.py,
+                   backend/branchops/__init__.py,
+                   backend/branchops/analytics.py,
+                   deploy/buat-template-unggah.py, deploy/2-vps-muat.sh,
+                   deploy/buat-panduan.js, CLAUDE.md — five new files in
+                   deploy/ (0b and 0c pairs, LANGKAH-16-AGU-2026.md), and
+                   the three regenerated files in contoh/.
+                   `deploy/8-cadangkan-sebelum-restart.bat` reads as
+                   modified from a Linux box — that is the CRLF artefact
+                   noted in the 15 Aug block, not a real edit.
+    Local DB       UNCHANGED. TWO guarded migrations fire together at
+                   the next backend start, through `ensure_schema()`:
+                   `status_tbo_baku_migrasi` (Dikecualikan -> Tidak ada
+                   TBO, both tables, plus both CHECK constraints) and
+                   `jenis_rekening_baku_migrasi` (84 rows). Neither has
+                   run. **Back up first** —
+                   `deploy\8-cadangkan-sebelum-restart.bat`.
+    VPS DB         untouched, and this change needs no data push.
+
+**Owed before this is finished:** run the backend once locally and check
+BOTH migrations reported what they should, open one TBO row of each kind
+in the browser (a clean one, one of the 34 shifted ones), then commit and
+deploy by the code-only route. Step-by-step:
+`deploy/LANGKAH-16-AGU-2026.md`. Everything else was verified without a
+database — see the last bullet of rule 26 for exactly what that covered
+and what it did not.
+
+**Data findings from 16 Aug, recorded and NOT acted on.** Both are in
+"Known data problems"; nothing was changed in any database.
+
+1. The 9 `Pemindahbukuan` pencairan rows were traced to source. Not a
+   spelling problem and not a shifted column: branches typed their own
+   vocabulary into a pre-dropdown template. 5 are live, and **every live
+   one duplicates a row a bank-wide file already recorded correctly —
+   Rp 206 juta counted twice on 10 and 12 Aug**, plus a phantom Rp 200
+   juta dated 8 Nov 2026 from a file named (110826). The repair is
+   cancelling batches 50 and 51 on the Unggah tab, plus a decision on
+   batch 43. No SQL, and none of it can be done through the Ubah dialog
+   because those rows carry `data_tbo = 'Tidak Ada'`.
+2. The 34 shifted TBO rows in batches 26 and 62 — not yet investigated
+   to source, unlike the above.
+
+**Disk VPS — MEASURED 16 Aug, and it is NOT the problem.** 8.7 GB
+total, 6.6 GB used, **2.1 GB free (77%)**. No cleanup was needed or
+run; nothing on the VPS was changed. `deploy/0b-cek-disk-vps.bat`
+diagnoses, `deploy/0c-bersihkan-vps.bat` cleans (report first,
+`BERSIHKAN` to commit), and `2-vps-muat.sh` now prunes its own backups
+to the two newest per family — the structural fix push failure 1 had
+listed as outstanding since 8 Aug. The full composition, and the three
+corrections it forced on this file's long-standing assumptions, are in
+that failure's write-up. Report: `deploy/keluaran/laporan-disk.txt`.
+
+**Swap: FIXED 16 Aug.** This box has 458 MB of RAM and had NO active
+swap since June — and `dmesg` proved the OOM killer had already killed
+an `apt-get`. `/swapfile2` (1.5 GB) is now active AND in `/etc/fstab`;
+the dormant `/swapfile` was deleted. Details in push failure 1. This
+was done BEFORE the deploy on purpose: loading a database dump is the
+most memory-hungry thing this machine is ever asked to do.
+
+Still outstanding from 15 Aug and unaffected by any of this: the browser
+pass on the live site.
+
 ## STATUS 15 Aug 2026 — committed, PUSHED, and deployed to the VPS.
 
 Supersedes the 12 Aug block below. That block was also WRONG on two
@@ -298,8 +376,164 @@ disk. Prune after every successful push:
 
     ssh root@159.65.139.45 "ls -lht /root/*.sql"
 
-Keep the newest of each pair, delete the rest. The proper fix — having the
-script keep only the two most recent — is still not done.
+Keep the newest of each pair, delete the rest.
+
+**FIXED 16 Aug 2026 — the script now prunes itself.** `2-vps-muat.sh`
+ends with a retention block keeping the **two** newest of each family
+(`SIMPAN_CADANGAN=2`). Two, not one: with one, a failed push immediately
+overwrites the only rollback point you have, which is exactly when you
+need the previous one. It sits at the very END, after the service is
+proven alive at 7/7 — pruning at the start would delete old backups to
+make room for a push that may then fail. Every command carries `|| true`,
+because failing to tidy is not a reason to report a successful push as
+failed. Verified against six synthetic backups: two kept per family, the
+families never mixed.
+
+**MEASURED 16 Aug 2026, 13:28 UTC — and the received wisdom in this
+section turns out to be wrong at today's scale.** First real reading,
+from `0b-cek-disk-vps.bat`; report kept as
+`deploy/keluaran/laporan-disk.txt`.
+
+    8.7 GB total, 6.6 GB used, 2.1 GB free — 77%. NOT tight.
+
+What actually occupies it, largest first:
+
+    2560 MB  /swapfile2 (1.5G) + /swapfile (1.0G)   38% of everything
+     702 MB  Claude Code, THREE binaries — including claude.exe, a
+             WINDOWS executable, and a musl build unusable on Ubuntu
+     193 MB  /var/lib/apt/lists
+    ~250 MB  kernel 6.8.0-71 (estimate)
+     117 MB  playwright driver inside /opt/pmo/backend/venv
+      92 MB  journald
+      43 MB  database pmo — pd_training is 29 MB of it
+      30 MB  /root/*.sql   <- what this section has chased since 8 Aug
+      26 MB  /var/log/btmp + btmp.1
+
+**Three corrections worth more than the cleanup itself:**
+
+- **`/root/*.sql` is 30 MB, three files.** It is the SMALLEST item on
+  that list, and the new retention rule deletes none of them (one of
+  each family plus a 52 KB stray). Everything this section says about it
+  remains true — it does accumulate, nothing deleted it — but it was
+  never what filled the disk. Two swap files nobody ever wrote down are
+  85× larger.
+- **The 8 Aug composition no longer holds.** `/root/.npm` 710 MB and
+  `/root/.cache` 699 MB are now 0 and 4 KB. Somebody cleaned them and
+  they did NOT grow back in eight days. Do not quote those figures as
+  current.
+- **The whole `pmo` database is 43 MB**, and every `branchops_*` table
+  together is under 4 MB. The data this project worries about is not a
+  disk concern and on this trajectory never will be.
+
+Read off the same report: **a reboot is pending** — running `6.8.0-136`
+while `6.8.0-137` is installed — and `/var/log/btmp` holds 26 MB of
+FAILED login attempts, i.e. someone steadily trying the SSH port. Normal
+for an exposed droplet, worth knowing about.
+
+**THE SWAP FILES ARE BOTH DEAD, AND THAT IS THE REAL PROBLEM — not the
+2.5 GB.** Checked the same day:
+
+    swapon --show      printed NOTHING
+    free -h            Mem 458Mi total, 397Mi used, 60Mi available
+                       Swap  0B total, 0B used
+    ls -lh /swapfile*  /swapfile  1.0G  4 Jun 17:37
+                       /swapfile2 1.5G  9 Jun 02:58
+
+So this box runs PostgreSQL 16 + gunicorn + nginx on **458 MB of RAM
+with 60 MB available and no swap whatsoever**. Two swap files were
+created in June, four days apart, and neither is active — almost
+certainly because they were never added to `/etc/fstab` and did not
+survive a reboot. Nothing reports that; swap simply stops existing.
+
+**The fix is therefore the opposite of "reclaim 2.5 GB".** Turn ONE on
+and delete the other: the machine gains the memory safety net it has
+been missing since June, and the disk still gets 1 GB back. Order
+matters — activate the one you are keeping BEFORE deleting the other:
+
+    ssh root@159.65.139.45 "swapon /swapfile2 && swapon --show && free -h"
+    # if that fails with 'invalid argument', it was never formatted:
+    #   mkswap /swapfile2 && swapon /swapfile2
+    ssh root@159.65.139.45 "grep -q '/swapfile2' /etc/fstab || \
+      echo '/swapfile2 none swap sw 0 0' >> /etc/fstab"
+    ssh root@159.65.139.45 "rm -f /swapfile"
+
+**This is worth more than every disk item on the list above, and it is
+no longer hypothetical. `dmesg` on 16 Aug showed the OOM killer had
+ALREADY fired:**
+
+    oom-kill: constraint=CONSTRAINT_NONE, task=apt-get, pid=134876
+    Out of memory: Killed process 134876 (apt-get)
+
+That one cost nothing — apt-get is restartable. The same event during a
+`2-push-ke-vps.bat` run would hit `postgres` at step 4/7, with the
+service already stopped at 3/7, leaving production down and the database
+half-loaded. If `pmo.service` is ever found dead with nothing useful in
+its own log, read `dmesg` for oom-kill BEFORE looking anywhere else.
+
+**RESOLVED the same day.** `swapon /swapfile2` succeeded (the
+`Device or resource busy` seen afterwards was a SECOND attempt against
+an already-active file — correct behaviour, not a failure; `/proc/swaps`
+is the thing to trust, not the error text). It took 65 MB within
+minutes of coming up, which says plainly how much the box wanted it.
+`/swapfile2 none swap sw 0 0` is in `/etc/fstab`, so it survives reboot
+this time — the missing fstab line is almost certainly why both files
+went dormant back in June. `systemd-detect-virt` reports `kvm`, so swap
+is fully supported here; a container would have refused it outright.
+`/swapfile` (1.0 GB, never active) was then deleted, taking free space
+from 2.1 GB to roughly 3.1 GB.
+
+`0b` section 1b was rewritten after this: when NO swap is active it now
+says "activate one, delete the rest" and prints the RAM figure, instead
+of the original advice to delete inactive swap files — which, on this
+machine, would have been exactly the wrong move.
+
+**Both scripts were patched on the strength of this report** (16 Aug):
+`0b` now reports swap in its own section instead of letting 2.5 GB show
+up incidentally under "files over 20 MB", and `0c` now also empties
+`/var/lib/apt/lists` (193 MB, which `apt-get clean` does NOT touch —
+after it, `apt-get update` is needed once before installing anything),
+deletes the rotated `btmp.1`, and vacuums journald to **50M** instead of
+100M. The old 100M threshold would have freed nothing at all against a
+92 MB journal — a threshold never reached is the same as no threshold.
+
+**Three notes on the number 8.7 GB itself**, because it is easy to
+misread and was misread once:
+
+- It is the disk's **SIZE**, not what is used. Nothing ballooned to
+  8.7 GB; the whole machine is that small and has hit 100% before. So
+  the question to ask is always "what is GROWING", never "what is big".
+- The known composition when it filled on 8 Aug was `/root/.npm` 710 MB
+  and `/root/.cache` 699 MB — **1.4 GB of pure cache**, far more than
+  the SQL dumps. Both rebuild themselves; deleting them is free.
+- Deleted-but-still-open file handles held more. That space does not
+  come back by deleting anything — only by restarting the process
+  holding it.
+
+**Two scripts added 16 Aug 2026, both following the `0-cek-vps.bat`
+pattern (scp the .sh, `sed` the CRLF, run over ssh):**
+
+    0b-cek-disk-vps.bat + 0b-vps-disk.sh    READ-ONLY. Ten sections:
+      df and inodes, biggest directories, files over 20 MB, the /root
+      backups with what would be kept vs deleted, caches, journald,
+      deleted-but-open handles, database and pg_wal size with the ten
+      biggest tables, old kernels, and — labelled DO NOT DELETE — the
+      size of uploads/elibrary and any /tmp dump still holding real
+      customer names.
+
+    0c-bersihkan-vps.bat + 0c-vps-bersih.sh  Cleans. Defaults to a
+      REPORT that names every file and its size and deletes nothing;
+      only the word BERSIHKAN typed at the prompt runs the real pass.
+      Never touches the database (there is not one SQL statement in
+      it), `/opt/pmo`, `/opt/pmo/uploads/**`, or the two newest backups
+      per family. Old kernels and deleted-but-open handles are reported
+      only — the second would mean restarting production, which is not
+      a side effect a disk cleaner is entitled to have.
+
+Both were exercised end to end on a throwaway Linux box, including the
+destructive path: backups pruned to two per family, caches emptied,
+journal vacuumed, `/tmp/lokal-branchops.sql` shredded, and both the
+estimate and the actually-freed figure printed. They have NOT been run
+against the VPS.
 
 Check before pushing, not after it fails:
 
@@ -307,7 +541,8 @@ Check before pushing, not after it fails:
 
 Anything under ~1 GB free, clean up first. And these dumps contain REAL
 customer names (masking is at the API layer, not at rest), so leaving them
-lying around is a data problem as well as a disk problem.
+lying around is a data problem as well as a disk problem — which is why
+`0c` shreds them rather than `rm`-ing them.
 
 ### 2. Windows PowerShell 5.1 has no `Tee-Object -Encoding`
 
@@ -392,6 +627,24 @@ re-verifies stays in the notes forever.
   every commit with "Another git process seems to be running". It was
   0 bytes with no MERGE/REBASE state — leftover from a crashed git. Check
   its age and size before assuming something is genuinely running.
+
+  **Second cause, found 16 Aug 2026, and it will recur: running `git`
+  through the Cowork bridge leaves that lock behind.** The bridge cannot
+  DELETE files — `rm` on a mounted path fails with "Operation not
+  permitted" — so even a read-only `git status` creates
+  `.git/index.lock`, fails to remove it, and warns
+  `unable to unlink ... Operation not permitted`. The lock is 0 bytes
+  and nothing is running; it simply cannot be cleaned up from that side.
+
+  The workaround the bridge CAN do is rename, so the lock gets moved to
+  `.git/index.lock.stale-hapus-saja-<time>` and deleted from Windows
+  afterwards. Two consequences worth remembering: **a lock file blocking
+  your commits may have been left by a session that only READ the repo**,
+  and the "Could Not Find" that `del` answers with later usually means
+  it is already gone, not that you typed it wrong. If commits are ever
+  blocked with no git running, check the working directory first — a
+  Command Prompt opens in `C:\Users\...`, not on drive D, and `cd /d` is
+  required to change drive at all.
 - **The `[0/6]` connection test is `ssh ... >nul 2>&1`.** It hides any
   prompt, so a password or passphrase request looks like a plain failure.
   If it reports it cannot reach the VPS, run the same command by hand
@@ -571,6 +824,114 @@ Delete these notes once the data is corrected.
   The read-only query that produced all of this is
   `deploy/keluaran/periksa-pencairan-11agu.sql`. It deliberately selects
   no customer names.
+
+- **The nine "Pemindahbukuan" rows — traced to source 16 Aug 2026, and
+  the answer is NOT a spelling problem.** Read this before writing any
+  SQL against them; the repair is three clicks on the Unggah tab.
+
+  The raw Excel cells are in `branchops_stg` and were read out of
+  `deploy/cadangan/bo-sebelum-restart-20260815-1138.sql`. **Nothing is
+  shifted**: `r[2]` branch, `r[3]` date, `r[4]` deposit no, `r[9]`
+  nominal, `r[12]` Data TBO, `r[13..15]` NIPs, `r[16]` catatan, `r[17]`
+  CIF, `r[18]` rekening all line up perfectly. The branches genuinely
+  TYPED `Pemindahbukuan` into the Jenis Pencairan column and `Seluruhnya`
+  into Jenis Penarikan. That is their own vocabulary — *how* the money
+  moved, and *how much* — entered into the two columns that ask *when*
+  it was liquidated and *how* it was withdrawn. The files are all named
+  `Template-02-Pencairan-Deposito*.xlsx`: copies of the blank template
+  from before it had dropdowns (rule 24).
+
+  **Only 5 of the 9 are live.** Batches 48 and 49 are `dibatalkan`, so
+  their 4 rows are already invisible everywhere. The live ones are
+  batch 43 (ids 825, 826), batch 50 (913, 914) and batch 51 (915).
+
+  **Every live one duplicates a row that a BANK-WIDE file already
+  recorded correctly**, and that is the real finding:
+
+      id 825  batch 43  02001  10 Agu  Rp  66 jt  = id 890  batch 46 (bank-wide)
+      id 913  batch 50  04271  12 Agu  Rp  70 jt  = id 973  batch 57 (bank-wide)
+      id 914  batch 50  04271  12 Agu  Rp  70 jt  = id 974  batch 57 (bank-wide)
+      id 826  batch 43  02001  11 Agu  Rp 200 jt  = id 915  batch 51 (branch, 8 Nov)
+
+  The bank-wide twins hold `Sesuai Jatuh Tempo` / `Transfer` — the right
+  values for the same transactions. So **Rp 206 juta is currently counted
+  twice** on 10 and 12 Aug, and `is_duplikat` is FALSE on all of them
+  because duplicate detection runs WITHIN a batch, never across batches.
+  This is rule 18's documented consequence — bank-wide and single-branch
+  batches never supersede each other — happening for real and unnoticed.
+
+  **Batch 51 is the same Rp 200 juta as batch 43 under a wrong date.**
+  Its file is `Template-02-Pencairan-Deposito (110826).xlsx` — 11/08/26 —
+  and every date inside it reads 2026-11-08. Eight November, not eleven
+  August. Because the period differs, `commit_batch()` did not supersede
+  batch 43 (rule 14's trap), so both stayed committed and there is a
+  phantom Rp 200 juta sitting four months in the future, invisible under
+  any sane date filter.
+
+  **These rows CANNOT be repaired through the app.** All five carry
+  `data_tbo = 'Tidak Ada'`, which `_TIDAK_ADA_TBO` matches, so
+  `PUT /pencairan/<id>` refuses them by design (rule 7). The Ubah button
+  is not merely hidden — the endpoint says no.
+
+  **Recommended repair, no SQL, reversible (rule 11):**
+
+      batch 50  cancel.  Both rows exist correctly in batch 57. No loss.
+      batch 51  cancel.  Same Rp 200 jt as batch 43 under a wrong date.
+      batch 43  needs a decision. Its id 825 duplicates batch 46 and
+                should go, but id 826 (Rp 200 jt, 11 Aug) exists in NO
+                bank-wide file — cancelling 43 removes a real
+                transaction from the books. Either cancel it and have
+                branch 02001 re-upload that single row on the current
+                template, or keep it and accept the Rp 66 jt double
+                count until they do.
+
+  **Do NOT add `pemindahbukuan` to `_SERAGAM` under `jenis_pencairan`.**
+  It is not a spelling variant of anything; it is a value from the wrong
+  concept. Rule 24 passes unknown values through unchanged precisely so
+  they stay visible, and mapping this one would disguise a data problem
+  as a tidy value.
+
+  Worth building, if this recurs: `parse_pencairan` currently accepts any
+  string in `jenis_pencairan` without a murmur. A warning-level Issue
+  when the value is neither `Sesuai Jatuh Tempo` nor `Dipercepat (Break)`
+  — the same shape as the existing "Jenis setoran kosong" flag — would
+  have surfaced all nine at upload time, on the screen of the person who
+  could still fix the file. Not built as of 16 Aug.
+
+- **34 TBO rows are shifted ONE COLUMN — batches 26 and 62.** Found
+  16 Aug 2026 while adding the pickers of rule 26, by counting values in
+  `deploy/cadangan/bo-sebelum-restart-20260815-1138.sql`. Nothing was
+  changed. This is rule 8's silent corruption in the wild: no error was
+  ever raised, the rows loaded fine, and every value landed one field to
+  the left of where it belonged.
+
+      jenis_rekening   31 rows 'Transfer', 3 rows 'Deposito'
+                       (should be Perorangan / Non Perorangan)
+      jenis_setoran    19 'surat pernyataan dan kuasa gabungan format
+                       legal', 3 'Tidak Ada', 2 'Form Penempatan',
+                       2 'Tidak ada', 1 'Riplay', 1 'Form penempatan'
+                       (these are Dokumen TBO values)
+      dokumen_tbo      NIPs on several of the same rows
+
+  Per batch: **26 → 26 rows, 62 → 5, and one each in 52, 53, 54.** So it
+  is mostly two uploads, not a spreading problem. The shape says the
+  source file was missing one column to the left of Jenis Rekening, or
+  had one extra before it — `parse_tbo` reads by POSITION (`r[11]`,
+  `r[12]`, `r[13]`), so everything after that point moved together.
+
+  **The repair is a re-upload of the corrected file, not SQL and not
+  hand-editing 34 rows.** The correct value cannot be recovered from the
+  row itself: what belongs in jenis_rekening was never stored anywhere,
+  it fell off the left edge. `branchops_stg` holds the raw cells for
+  these batches, so what the file actually contained IS recoverable —
+  read it there before deciding. Cancel the old batch on the Unggah tab
+  first when replacing (rule 14's supersede trap).
+
+  Until then the rows stay visible with their wrong values, which is why
+  `_TBO_EDITABLE` was left as free text — see rule 26. They are also the
+  reason `optJaga()` has to preserve out-of-list values: without that,
+  opening one of these rows and pressing Simpan would overwrite the
+  evidence.
 
 - **batch 21** — one pencairan row with `tgl\_input` 2025-04-30 but
   `tgl\_pencairan` 2026-07-30, in a file covering 24–31 July 2026. Almost
@@ -1964,14 +2325,32 @@ looks like it is missing one, check here before assuming it was dropped:
       an empty cell is still legal — only wrong values are refused. The
       column NUMBERS are positional, like everything else here: reorder
       the headers and those numbers must move too (rule 8).
-    - **`jenis_setoran` on branchops_tbo keeps "Pemindahbukuan", no
-      hyphen** — owner's decision, matching the data as it stands. So the
-      two columns spell the same concept differently. That is safe
-      because they live in different TABLES and no code ever compares
-      them, and it is written down here precisely so nobody "tidies" it
-      later without migrating the data first. For the record, TBO had
-      zero rows with that value at the time; all 9 were on the pencairan
-      side.
+    - ~~**`jenis_setoran` on branchops_tbo keeps "Pemindahbukuan", no
+      hyphen** — owner's decision, matching the data as it stands.~~
+      **SUPERSEDED 16 Aug 2026 — see rule 26.** The owner reversed it and
+      TBO now uses "Pemindah-bukuan" as well, so both columns finally
+      spell the concept the same way. Reversing was free: zero rows held
+      either spelling on that column, so nothing needed migrating.
+
+      **This paragraph also placed 9 rows in the wrong column, and the
+      correction is worth reading in full — see "The nine
+      'Pemindahbukuan' rows" under "Known data problems".** Short
+      version: it said "all 9 were on the pencairan side", meaning 9 rows
+      of `jenis_penarikan = 'Pemindahbukuan'` that the guarded migration
+      would fix. Counted from the 15 Aug backups on 16 Aug, that is not
+      where they are. `jenis_penarikan` holds `Transfer` 892, NULL 135,
+      **`Seluruhnya` 9**, `Tunai` 6 — no `Pemindahbukuan` at all. The 9
+      sit in **`jenis_pencairan`**. So the migration's second UPDATE
+      matched **zero rows**, and the "0 old spelling" check on 15 Aug
+      passed for the wrong reason: it was looking at a column the value
+      was never in.
+
+      The comparison of the two backups did confirm the rest of the
+      migration ran exactly as claimed: 316 rows moved from `Dipercepat
+      dari Jatuh Tempo` to `Dipercepat (Break)` between 11:35 and 11:38.
+      General lesson, and it is the same one as failure 5: a migration
+      that reports "0 rows on the old spelling" has proved nothing until
+      someone checks the value is not hiding in a neighbouring column.
     - The four places that must agree on these lists are listed in the
       comment above `PILIHAN` in the generator: the ref_values seed, the
       API whitelists in `__init__.py`, `optJaga(...)` in branchops.html,
@@ -2059,4 +2438,186 @@ looks like it is missing one, check here before assuming it was dropped:
       other three screens use. Verified in headless Chromium: full number
       matches, `3000-1000-2826-025` matches `300010002826025`, Bersihkan
       restores all rows, and a miss says so in words.
+
+26. Three fields in "Ubah data TBO" became pickers — 16 Aug 2026.
+    Owner's request: uniform values in the database. Read the last three
+    bullets before changing any of the three lists.
+
+        Jenis rekening   Perorangan / Non Perorangan (Perusahaan)
+        Jenis setoran    Tunai / Transfer / Pemindah-bukuan
+        Jenis produk     Tabungan / Giro / Deposito
+
+    - **`optJaga()` moved to module scope.** It used to live inside
+      `pcEdit`, so `tboEdit` could not reach it. It was moved rather than
+      copied, for the reason this file keeps repeating: the copy nobody
+      edits is the one that starts behaving differently. Both dialogs now
+      call the same function; `pcEdit` was otherwise untouched.
+    - **A picker on its own does NOT make the data uniform, and assuming
+      it does is the trap here.** Three other things had to move with it:
+      `_SERAGAM` in ingest.py gained both TBO columns, `parse_tbo` was
+      made to actually CALL `seragam()` on them — before 16 Aug it never
+      did, so any mapping added there would have done nothing at all —
+      and the Excel template's dropdowns were regenerated. Without the
+      parser side, one branch re-using a July file puts the old spelling
+      straight back. That is rule 24's lesson, hit a second time.
+    - **`jenis_rekening` was migrated: `Perusahaan (Non Perorangan)` →
+      `Non Perorangan (Perusahaan)`**, 84 rows, guarded by
+      `jenis_rekening_baku_migrasi` in `branchops_settings`. Never delete
+      that key. Unlike the 15 Aug migration this string is not filtered on
+      anywhere — jenis_rekening is only displayed and grouped — so a row
+      left on the old spelling would show up as a separate group rather
+      than vanish silently. Migrated anyway, so the report is not split.
+    - **`jenis_setoran` REVERSES the 15 Aug decision** recorded in rule 24
+      (TBO keeps "Pemindahbukuan", no hyphen). Reversing cost nothing:
+      counted from the 15 Aug backup, ZERO rows held either spelling. No
+      UPDATE was needed — only the picker, the ref_values seed, the Excel
+      dropdown and `_SERAGAM`. Rule 24's paragraph has been marked.
+    - **`_TBO_EDITABLE` deliberately stays free text, NOT
+      `_pilihan_opsional`.** 34 of 176 rows hold values outside every list
+      (see "Known data problems"). `optJaga()` preserves such a value and
+      sends it back unchanged, on purpose — so a whitelist here would
+      reject any edit to those rows, including someone merely fixing a
+      date, with an error that reads as a broken app rather than a rule.
+      Same precedent as `jenis_pencairan` / `jenis_penarikan`, which got
+      pickers on 15 Aug and stayed free text at the API. Uniformity is
+      enforced by the parser (which sees every incoming row) and by the
+      picker — not by refusing saves. If those 34 rows are ever repaired,
+      tightening this is reasonable, but check the column is clean first.
+    - **The Jenis Produk list is deliberately NARROWER than what can
+      actually arrive, and that asymmetry is the thing to remember.**
+      Nobody types jenis_produk: there is no such column in the Excel file
+      at all. `parse_tbo` DERIVES it from the free-text Keterangan column
+      via `_PRODUK` in ingest.py, which can still produce `Deposito On
+      Call` (16 rows) and `Bundling` (5 rows). The owner chose three on
+      16 Aug knowing this. So the picker narrows what a person can newly
+      choose; it does not narrow what an upload creates, and the column
+      will keep holding five values. The ref_values seed still lists all
+      five on purpose — it describes what can arrive, not what the screen
+      offers. Making the column genuinely three-valued means changing
+      `_PRODUK`, which changes the MEANING of 21 rows and needs its own
+      guarded migration. That is a data decision, not a display one.
+    - Verified: both inline `<script>` blocks parse under Node; the three
+      Python files compile; `seragam()` exercised on 13 inputs including
+      unknown values and the shifted-column junk, all passing through as
+      intended; templates regenerated and re-parsed by the real parsers
+      ("SEMUA TEMPLATE LOLOS", 0 rejected), with the sample rows updated
+      so the template no longer violates its own dropdowns. In headless
+      Chromium against a stubbed API, 25 assertions: all three render as
+      `<select>` with the right options and order; a clean row round-trips
+      untouched; a row holding `Transfer` / a document string / `Deposito
+      On Call` keeps all three as preserved extra options AND still sends
+      them unchanged on a Simpan nobody edited; an all-empty row shows
+      "— belum diisi —" first and still saves as null; and `pcEdit` still
+      works after the move.
+    - **The migration was rehearsed on a real PostgreSQL 16** — a
+      throwaway cluster, NOT this machine's `pmo` and not the VPS. Worth
+      doing because 16 is the VPS's major version (16.14) while local is
+      18.4, so this also proves schema.sql still loads there (push
+      failure 3). `schema.sql` ran clean on an empty database, then
+      against 176 synthetic rows matching the real distribution: 84 rows
+      moved to the new spelling, 57 `Perorangan` untouched, and the
+      31 `Transfer` + 3 `Deposito` + 1 NULL — the shifted-column rows —
+      were left ALONE, which is the point: the migration does not guess.
+      Run a third time with the guard in place, five deliberately
+      re-introduced old-spelling rows survived, proving the block is
+      skipped rather than re-applied. **Nothing has touched the real
+      database**; the 84-row UPDATE fires at your next backend start,
+      through `ensure_schema()`.
+    - Deploying this is the **code-only** route: schema.sql changed, but
+      `ensure_schema()` applies it at start-up and no data moves between
+      machines. Note the mirror image of push failure 8 — because the VPS
+      runs schema.sql against ITS OWN `branchops_settings`, the guard key
+      is absent there and the migration WILL run. That is the wanted
+      behaviour here. Only a DATA push would carry the key across and
+      skip it.
+
+27. `Dikecualikan` became **`Tidak ada TBO`** — 16 Aug 2026, owner's
+    decision. Renaming a value that TWO tables share; read the first
+    three bullets before touching any of it.
+
+    "Dikecualikan" never said what was excluded. "Tidak ada TBO" states
+    the condition directly. Twenty sites across seven files.
+
+    - **It had to hit `branchops_pencairan` too, and that was not a
+      preference.** Both tables carry `status_tbo` with the same three
+      values, and `_STATUS_BERANDA` in analytics.py is ONE filter applied
+      to BOTH arms of the Beranda UNION. Renaming only `branchops_tbo`
+      leaves the Beranda "Status TBO" picker matching TBO rows and not
+      pencairan rows — no error, just rows missing from a list. So the
+      Ubah Pencairan dialog changed as well, on a screen nobody asked to
+      change. Contrast rule 24's `jenis_setoran`, where two tables could
+      safely disagree because no code ever compared them.
+    - **Safer than the 15 Aug rename, and worth knowing why.** NOTHING
+      filters on `'Dikecualikan'` — every KPI, chart, aging query and
+      reconciliation filter compares against `'Outstanding'`, which did
+      not move. The only functional comparison was `_STATUS_BERANDA`.
+      So this rename could not silently drop rows out of the numbers,
+      which is the failure that made the `jenis_pencairan` rename
+      dangerous.
+    - **What made it delicate instead: TWO CHECK constraints.** The
+      UPDATE is REFUSED while either still lists the old value, so the
+      order is load-bearing — drop, update, re-add. Getting it wrong
+      does not corrupt data; it aborts schema.sql, and since
+      `ensure_schema()` runs the whole file in one statement, the app
+      simply fails to start. Loud, not silent.
+    - **The constraint names are LOOKED UP, not hardcoded**, by scanning
+      `pg_constraint` for definitions containing the old value. Read off
+      a live PostgreSQL 16 rather than guessed: `branchops_tbo` carries
+      the auto-generated `branchops_tbo_status_tbo_check` (its CHECK is
+      inline in CREATE TABLE) while `branchops_pencairan` carries the
+      hand-named `ck_bo_pencairan_status_tbo`. The re-add uses those same
+      two names, so a migrated database and a freshly created one end up
+      identical.
+    - **A REAL BUG the rehearsal caught, and the general rule it gives.**
+      The migration block was first written AFTER the `pc_backfill` block
+      — and `pc_backfill` now writes the NEW value while the OLD CHECK is
+      still installed. schema.sql died at that line. It only reproduces
+      when `pencairan_status_tbo_migrasi` is absent, which is not this
+      machine's state, so it would have shipped and then failed on some
+      future rebuilt database. The block now sits BEFORE `pc_backfill`.
+      **The rule: a block that widens a constraint must come before every
+      block that writes the widened value.** Ordering inside schema.sql
+      is behaviour, not tidiness.
+    - `status_tbo` is `VARCHAR(16)`; `'Tidak ada TBO'` is 13 characters.
+      A future term longer than 16 needs the column widened FIRST.
+    - **The `<option value=...>` in branchops.html must equal the
+      `_STATUS_BERANDA` key**, because that value is what goes out as
+      `?status_tbo=`. Both moved together. A bookmarked URL still
+      carrying `Dikecualikan` now matches no key and falls back to
+      Outstanding — narrowing, never widening, which is the direction
+      rule 10 requires.
+    - **These pickers use `opt()`, NOT `optJaga()`, and that is
+      deliberate.** Unlike `jenis_rekening` (free text, rule 26), this
+      column has a CHECK, so a value outside the list cannot exist once
+      the migration has run — there is nothing to preserve. Consistent
+      with the other CHECK-backed pickers, `tipe_pembukaan` and
+      `arus_dana`. The consequence to respect: during the window between
+      new HTML and an un-migrated database, a row still holding
+      `Dikecualikan` would display as `Outstanding` and a Simpan would
+      write that. The code-only route closes the window by chaining
+      `git pull && systemctl restart` in one command, and
+      `ensure_schema()` migrates at start-up. **Never ship this HTML to a
+      machine whose backend is not restarted in the same breath.** The
+      reverse order is harmless: old HTML sending `Dikecualikan` to the
+      new backend is rejected by `_pilihan` with a visible 400.
+    - `deploy/buat-panduan.js` was updated; the **`.docx` was NOT
+      regenerated** (owner's choice). So `Panduan-Pengguna-BranchOps.docx`
+      on disk still says "Dikecualikan" until someone runs the generator.
+      Noted here rather than left to be discovered by a reader of the
+      manual.
+    - Verified on a throwaway PostgreSQL **16** — the VPS's major version
+      — in three scenarios. Old constraints plus old data: both CHECKs
+      found and dropped by name, 52 TBO rows and 137 pencairan rows moved,
+      `Lengkap` and `Outstanding` untouched, both CHECKs re-added with the
+      new list, and the old value afterwards genuinely REFUSED by the
+      constraint. With `pencairan_status_tbo_migrasi` already set — this
+      machine's actual state — only the rename ran and the backfill stayed
+      skipped. Run a third time: zero errors and identical counts, so the
+      guard holds. Also: three Python files compile, both inline
+      `<script>` blocks and `buat-panduan.js` parse under Node, the
+      `_STATUS_BERANDA` keys and the Beranda `<option>` values were
+      compared programmatically and agree, and in headless Chromium the
+      dialog shows the three new options with `Tidak ada TBO` selected,
+      Simpan sends it verbatim, and the string "Dikecualikan" appears
+      nowhere on the screen. **The real database has not been touched.**
 

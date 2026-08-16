@@ -387,7 +387,7 @@ def dash_pencairan(f, sertakan_dup=False):
 # Aturannya, sesuai keputusan Agustus 2026:
 #   - target kosong                  -> NULL (tampil "-"), bukan 0.
 #     0 akan terbaca "tepat waktu", padahal artinya "belum ada tenggat".
-#   - status Lengkap / Dikecualikan  -> NULL. TBO yang sudah selesai tidak
+#   - status Lengkap / Tidak ada TBO -> NULL. TBO yang sudah selesai tidak
 #     boleh terus menghitung keterlambatan hanya karena tanggalnya lewat.
 #   - target masih di depan          -> 0, bukan angka minus.
 #   - target sudah lewat             -> selisih hari, selalu positif.
@@ -589,7 +589,12 @@ def dash_rekon(f):
 _STATUS_BERANDA = {
     "Outstanding":  "f.status_tbo = 'Outstanding'",
     "Lengkap":      "f.status_tbo = 'Lengkap'",
-    "Dikecualikan": "f.status_tbo = 'Dikecualikan'",
+    # Kunci ini ikut menjadi nilai <option> di branchops.html dan
+    # nilai ?status_tbo= di URL. Berganti 16 Agu 2026 bersama datanya
+    # (aturan 27). URL lama yang masih membawa "Dikecualikan" tidak
+    # cocok dengan kunci mana pun, jadi jatuh ke Outstanding - bawaan
+    # layar, arah gagal yang benar: menyempit, bukan melebar.
+    "Tidak ada TBO": "f.status_tbo = 'Tidak ada TBO'",
     "SEMUA":        "TRUE",
 }
 

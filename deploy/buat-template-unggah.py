@@ -67,15 +67,28 @@ CABANG = ["01006", "01001", "01008", "01003", "01004"]
 PILIHAN = {
     "jenis_pencairan": ["Sesuai Jatuh Tempo", "Dipercepat (Break)"],
     "jenis_penarikan": ["Transfer", "Tunai", "Pemindah-bukuan"],
-    "jenis_rekening":  ["Perorangan", "Perusahaan (Non Perorangan)"],
-    # EJAAN BERBEDA DARI jenis_penarikan DI ATAS, dan itu disengaja
-    # (keputusan pemilik, 15 Agu 2026): kolom ini mengikuti ejaan yang
-    # sudah ada di data, tanpa tanda hubung. Kedua kolom ada di TABEL
-    # BERBEDA (branchops_tbo vs branchops_pencairan) dan tidak pernah
-    # dibandingkan satu sama lain oleh kode mana pun, jadi perbedaan ini
-    # tidak memecah laporan apa pun. Jangan "diseragamkan" tanpa
-    # memigrasikan datanya lebih dulu.
-    "jenis_setoran":   ["Transfer", "Tunai", "Pemindahbukuan"],
+    # Urutan katanya dibalik 16 Agu 2026, keputusan pemilik. 84 baris lama
+    # dipindahkan oleh blok 'jenis_rekening_baku_migrasi' di schema.sql, dan
+    # _SERAGAM di ingest.py mengubah ejaan lama pada setiap unggahan - jadi
+    # salinan template lama yang masih beredar di cabang tetap masuk dengan
+    # ejaan baru.
+    "jenis_rekening":  ["Perorangan", "Non Perorangan (Perusahaan)"],
+    # SAMA PERSIS dengan jenis_penarikan di atas sejak 16 Agu 2026.
+    #
+    # Sampai 15 Agu daftar ini sengaja dibedakan - tanpa tanda hubung -
+    # dengan alasan mengikuti ejaan yang sudah ada di data. Ternyata
+    # alasannya tidak berpijak: dihitung dari cadangan 15 Agu, NOL baris
+    # branchops_tbo memakai ejaan mana pun pada kolom ini (117 'Transfer',
+    # 2 'Tunai', 26 kosong, sisanya nilai kolom sebelah karena berkasnya
+    # bergeser satu kolom). Jadi tidak ada data yang perlu dimigrasikan,
+    # dan pemilik memilih menyamakan keduanya pada 16 Agu 2026.
+    "jenis_setoran":   ["Tunai", "Transfer", "Pemindah-bukuan"],
+    # CATATAN: tidak ada entri "jenis_produk" di sini, dan itu benar.
+    # Berkas TBO TIDAK punya kolom Jenis Produk sama sekali - nilainya
+    # DITURUNKAN parse_tbo dari kolom Keterangan lewat _PRODUK di
+    # ingest.py. Jadi tidak ada kotak turun yang bisa dipasang untuknya,
+    # dan daftar tiga pilihan di layar Ubah TBO (aturan 26) tidak punya
+    # pasangan di berkas Excel.
 }
 
 BARIS_VALIDASI = 500      # sampai baris berapa kotak turun dipasang
@@ -354,7 +367,7 @@ def pencairan():
         "  - terisi  -> baris dilacak sebagai TBO, status awal Outstanding,",
         "               muncul di Beranda, dan bisa disunting lewat tombol Ubah.",
         "  - kosong, atau berisi 'tidak ada' / 'tdk ada' / '-'",
-        "               -> status Dikecualikan, tidak dilacak.",
+        "               -> status Tidak ada TBO, tidak dilacak.",
         "Mengisi Target Pemenuhan TBO tanpa mengisi Data TBO menghasilkan",
         "peringatan: barisnya tidak akan pernah dihitung terlambat.",
         "",
@@ -402,7 +415,7 @@ def tbo():
     data = [
         [None, 1, "1006 - GREEN GARDEN (KCP)", d(2026, 8, 3), "959933",
          "300010003244775", "PT INOVASI CONTOH", d(2026, 8, 3), d(2026, 9, 3),
-         1_200_000_000, None, "Perusahaan (Non Perorangan)", "Transfer",
+         1_200_000_000, None, "Non Perorangan (Perusahaan)", "Transfer",
          "Form Penempatan", "202404801", "201127091", "201127092",
          "Deposito", d(2026, 8, 17)],
         [None, 2, "1001 - JKT WISMA BUMIPUTERA (KCP)", d(2026, 8, 3), "959934",
@@ -412,7 +425,7 @@ def tbo():
          "Deposito baru", d(2026, 8, 10)],
         [None, 3, "1008 - PURI INDAH (KCP)", d(2026, 8, 4), "959935/959936",
          "300010003244777", "SITI RAHAYU", d(2026, 8, 4), d(2026, 8, 11),
-         250_000_000, None, "Perorangan", "Pemindahbukuan",
+         250_000_000, None, "Perorangan", "Pemindah-bukuan",
          "Form OR", "202404803", "201127095", "201127096",
          "Deposito On Call", d(2026, 8, 8)],
         [None, 4, "1003 - WOLTER (KCP)", d(2026, 8, 4), "959937",
@@ -422,7 +435,7 @@ def tbo():
          "Tempatkan kembali dari jatuh tempo", None],
         [None, 5, "1004 - ROXY (KCP)", d(2026, 8, 5), "959938",
          "300010003244779", "CV MITRA CONTOH", d(2026, 8, 5), d(2026, 9, 5),
-         None, 25_000, "Perusahaan (Non Perorangan)", "Transfer",
+         None, 25_000, "Non Perorangan (Perusahaan)", "Transfer",
          "Form Penempatan dan Spesimen", "202404805", "201127099", "201127100",
          "Deposito valas", d(2026, 8, 19)],
     ]
@@ -454,7 +467,7 @@ def tbo():
         "KOLOM 'Dokumen TBO' MENENTUKAN STATUS AWAL:",
         "  - terisi  -> ada_tbo = benar, status awal Outstanding.",
         "  - kosong, atau 'tidak ada' / 'tdk ada' / '-'",
-        "               -> status Dikecualikan, tidak dilacak.",
+        "               -> status Tidak ada TBO, tidak dilacak.",
         "",
         "Nominal: isi kolom IDR ATAU kolom valas, jangan keduanya. Mengisi",
         "keduanya dengan nilai sama memicu peringatan 'nominal_dobel'.",
